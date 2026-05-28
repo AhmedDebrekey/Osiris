@@ -4,6 +4,7 @@
 #include "platform/Window.h"
 #include "EngineConfig.h"
 #include "Log.h"
+#include "rhi_vulkan/VulkanContext.h"
 
 namespace Osiris {
     class Engine {
@@ -28,6 +29,8 @@ namespace Osiris {
         Window m_Window;
 
         Log m_Logger;
+
+        VulkanContext m_VulkanContext;
 
     };
 }

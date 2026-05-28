@@ -5,9 +5,8 @@
 add_library(OsirisEngine STATIC
         core/Engine.cpp
         platform/Window.cpp
-        core/EngineConfig.h
         core/Log.cpp
-        core/Log.h
+        rhi_vulkan/VulkanContext.cpp
 )
 
 target_include_directories(OsirisEngine PUBLIC

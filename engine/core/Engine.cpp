@@ -5,6 +5,8 @@ namespace Osiris {
 
         m_Logger.Initialize();
 
+        m_VulkanContext.Initialize();
+
         const WindowDesc desc{
             "Osiris",
             1280,

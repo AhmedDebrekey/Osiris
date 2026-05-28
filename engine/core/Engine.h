@@ -3,6 +3,7 @@
 
 #include "platform/Window.h"
 #include "EngineConfig.h"
+#include "Log.h"
 
 namespace Osiris {
     class Engine {
@@ -25,6 +26,8 @@ namespace Osiris {
         bool m_IsRunning = true;
 
         Window m_Window;
+
+        Log m_Logger;
 
     };
 }

@@ -2,6 +2,9 @@
 
 namespace Osiris {
     bool Engine::Initialize() {
+
+        m_Logger.Initialize();
+
         const WindowDesc desc{
             "Osiris",
             1280,

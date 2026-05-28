@@ -54,6 +54,7 @@ FetchContent_MakeAvailable(EnTT)
 # ------------------------------------------------------------
 # spdlog — Logging
 # ------------------------------------------------------------
+set(SPDLOG_USE_STD_FORMAT ON CACHE BOOL "" FORCE)
 FetchContent_Declare(
     spdlog
     GIT_REPOSITORY https://github.com/gabime/spdlog.git
@@ -110,6 +111,7 @@ message(STATUS "Vulkan found: ${Vulkan_VERSION}")
 # ------------------------------------------------------------
 # Jolt Physics
 # ------------------------------------------------------------
+set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
         JoltPhysics
         GIT_REPOSITORY https://github.com/jrouwe/JoltPhysics.git

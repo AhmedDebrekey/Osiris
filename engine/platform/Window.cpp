@@ -5,10 +5,13 @@
 #include "Window.h"
 #include <SDL2/SDL.h>
 
+#include "core/Log.h"
+
 namespace Osiris {
 
     bool Window::Initialize(const WindowDesc &desc) {
         if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
+            OSIRIS_ERROR("Failed to initialise SDL2: {}", SDL_GetError());
             return false;
         }
 
@@ -28,6 +31,7 @@ namespace Osiris {
             flags);
 
         if (!m_Window) {
+            OSIRIS_ERROR("Failed to create window: {}", SDL_GetError());
             return false;
         }
         return true;
@@ -47,6 +51,7 @@ namespace Osiris {
                     {
                         m_Width  = static_cast<uint32_t>(event.window.data1);
                         m_Height = static_cast<uint32_t>(event.window.data2);
+                        OSIRIS_INFO("Resized Window: {}", m_Width, m_Height );
                     }
                     break;
 

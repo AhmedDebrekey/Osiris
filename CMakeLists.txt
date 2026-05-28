@@ -93,7 +93,7 @@ target_include_directories(imgui PUBLIC
     ${imgui_SOURCE_DIR}
     ${imgui_SOURCE_DIR}/backends
 )
-target_link_libraries(imgui PUBLIC SDL2::SDL2)
+target_link_libraries(imgui PUBLIC SDL2::SDL2 Vulkan::Vulkan)
 
 # ------------------------------------------------------------
 # Vulkan — must be installed on system

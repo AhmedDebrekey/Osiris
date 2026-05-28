@@ -3,6 +3,16 @@
 
 namespace Osiris {
     class Engine {
+    public:
+        Engine();
+        ~Engine();
+
+        Engine(const Engine &)=delete;
+        Engine &operator=(const Engine &)=delete;
+
+        void Initialize();
+        void Run();
+        void Shutdown();
     };
 }
 

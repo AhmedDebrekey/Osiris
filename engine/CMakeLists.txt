@@ -3,7 +3,9 @@
 # ============================================================
 
 add_library(OsirisEngine STATIC
-        Engine.cpp
+        core/Engine.cpp
+        platform/Window.cpp
+        core/EngineConfig.h
 )
 
 target_include_directories(OsirisEngine PUBLIC

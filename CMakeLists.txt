@@ -111,9 +111,10 @@ message(STATUS "Vulkan found: ${Vulkan_VERSION}")
 # Jolt Physics
 # ------------------------------------------------------------
 FetchContent_Declare(
-    JoltPhysics
-    GIT_REPOSITORY https://github.com/jrouwe/JoltPhysics.git
-    GIT_TAG        v5.1.0
+        JoltPhysics
+        GIT_REPOSITORY https://github.com/jrouwe/JoltPhysics.git
+        GIT_TAG        v5.1.0
+        SOURCE_SUBDIR  Build
 )
 FetchContent_MakeAvailable(JoltPhysics)
 
@@ -188,3 +189,7 @@ FetchContent_MakeAvailable(VulkanMemoryAllocator)
 # ============================================================
 add_subdirectory(engine)
 
+# ============================================================
+#  Games
+# ============================================================
+add_subdirectory(games/testbed)

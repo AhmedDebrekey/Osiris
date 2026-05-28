@@ -20,7 +20,7 @@ target_link_libraries(OsirisEngine PUBLIC
     nlohmann_json::nlohmann_json
     imgui
     Jolt
-    lua_static
+    liblua
     sol2
     fastgltf
     ufbx

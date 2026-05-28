@@ -49,6 +49,7 @@ namespace Osiris {
             return false;
         }
 #endif
+        SelectPhysicalDevice();
 
         return true;
     }
@@ -95,5 +96,29 @@ namespace Osiris {
             OSIRIS_INFO("Vulkan: {}", callbackData->pMessage);
 
         return VK_FALSE;
+    }
+
+    bool VulkanContext::SelectPhysicalDevice() {
+        uint32_t deviceCount = 0;
+        vkEnumeratePhysicalDevices(m_Instance, &deviceCount, nullptr);
+        if (deviceCount == 0) {
+            OSIRIS_ERROR("Vulkan found no physical devices (GPUS)");
+            return false;
+        }
+        std::vector<VkPhysicalDevice> physicalDevices(deviceCount);
+        vkEnumeratePhysicalDevices(m_Instance, &deviceCount, physicalDevices.data());
+
+        for (auto device : physicalDevices) {
+            VkPhysicalDeviceProperties props;
+            vkGetPhysicalDeviceProperties(device, &props);
+            if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+                OSIRIS_INFO("GPU: {}", props.deviceName);
+                m_PhysicalDevice = device;
+                return true;
+            }
+        }
+        OSIRIS_INFO("Using Integrated GPU");
+        m_PhysicalDevice = physicalDevices[0];
+        return true;
     }
 } // Osiris

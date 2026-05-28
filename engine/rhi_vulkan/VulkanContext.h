@@ -25,8 +25,12 @@ namespace Osiris {
             const VkDebugUtilsMessengerCallbackDataEXT* callbackData,
             void* userData);
 
+        bool SelectPhysicalDevice();
+
         VkInstance m_Instance = VK_NULL_HANDLE;
         VkDebugUtilsMessengerEXT m_DebugMessenger = VK_NULL_HANDLE;
+
+        VkPhysicalDevice m_PhysicalDevice = VK_NULL_HANDLE;
     };
 } // Osiris
 

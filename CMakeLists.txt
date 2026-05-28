@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(Osiris VERSION 0.1.0 LANGUAGES CXX)
+project(Osiris VERSION 0.1.0 LANGUAGES C CXX)
 
 # ============================================================
 #  Global C++ standard
@@ -121,9 +121,9 @@ FetchContent_MakeAvailable(JoltPhysics)
 # Lua
 # ------------------------------------------------------------
 FetchContent_Declare(
-    lua
-    GIT_REPOSITORY https://github.com/walterschell/Lua.git
-    GIT_TAG        v5.4.5
+        lua
+        GIT_REPOSITORY https://github.com/marovira/lua.git
+        GIT_TAG        4737fb9
 )
 FetchContent_MakeAvailable(lua)
 

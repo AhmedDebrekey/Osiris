@@ -3,11 +3,7 @@
 # ============================================================
 
 add_library(OsirisEngine STATIC
-    # Core
-    core/Log.cpp
-
-    # Platform
-    platform/Window.cpp
+        Engine.cpp
 )
 
 target_include_directories(OsirisEngine PUBLIC

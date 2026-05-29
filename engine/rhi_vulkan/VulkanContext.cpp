@@ -50,6 +50,7 @@ namespace Osiris {
         }
 #endif
         SelectPhysicalDevice();
+        CreateLogicalDevice();
 
         return true;
     }
@@ -119,6 +120,48 @@ namespace Osiris {
         }
         OSIRIS_INFO("Using Integrated GPU");
         m_PhysicalDevice = physicalDevices[0];
+        return true;
+    }
+
+    bool VulkanContext::CreateLogicalDevice() {
+        uint32_t queueCount = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(m_PhysicalDevice, &queueCount, nullptr);
+        if (queueCount == 0) {
+            OSIRIS_ERROR("Vulkan found no queue families");
+            return false;
+        }
+        OSIRIS_INFO("Queue count : {}", queueCount);
+        std::vector<VkQueueFamilyProperties> queueFamilies(queueCount);
+        vkGetPhysicalDeviceQueueFamilyProperties(m_PhysicalDevice, &queueCount, queueFamilies.data());
+
+        for (uint32_t i = 0; i < queueCount; i++) {
+            if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+                m_GraphicsQueueFamilyIndex = i;
+                break;
+            }
+        }
+        float queuePriority = 1.0f;
+        VkDeviceQueueCreateInfo queueCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            .queueFamilyIndex = m_GraphicsQueueFamilyIndex,
+            .queueCount = 1,
+            .pQueuePriorities = &queuePriority,
+        };
+
+       VkPhysicalDeviceFeatures physicalDeviceFeatures = {};
+        VkDeviceCreateInfo deviceCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+            .queueCreateInfoCount = 1,
+            .pQueueCreateInfos = &queueCreateInfo,
+            .pEnabledFeatures = &physicalDeviceFeatures
+        };
+
+        VkResult result = vkCreateDevice(m_PhysicalDevice, &deviceCreateInfo, nullptr, &m_Device);
+        if (result != VK_SUCCESS) {
+            OSIRIS_ERROR("Failed to create logical device!");
+        }
+        vkGetDeviceQueue(m_Device, m_GraphicsQueueFamilyIndex, 0, &m_GraphicsQueue);
+        OSIRIS_INFO("Graphics queue created!");
         return true;
     }
 } // Osiris

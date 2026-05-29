@@ -7,13 +7,15 @@
 
 #include <vulkan/vulkan.h>
 
+#include "core/EngineConfig.h"
+
 namespace Osiris {
     class VulkanContext {
         public:
         VulkanContext() = default;
         ~VulkanContext() = default;
 
-        bool Initialize();
+        bool Initialize(const VulkanContextDesc& context);
         void Shutdown() const;
 
         private:
@@ -29,6 +31,8 @@ namespace Osiris {
 
         bool CreateLogicalDevice();
 
+        bool CreateSurface();
+
         VkInstance m_Instance = VK_NULL_HANDLE;
 
         VkPhysicalDevice m_PhysicalDevice = VK_NULL_HANDLE;
@@ -37,6 +41,10 @@ namespace Osiris {
         uint32_t m_GraphicsQueueFamilyIndex = 0;
 
         VkDebugUtilsMessengerEXT m_DebugMessenger = VK_NULL_HANDLE;
+
+        VkSurfaceKHR m_Surface = VK_NULL_HANDLE;
+
+        VulkanContextDesc m_VulkanContextDesc;
     };
 } // Osiris
 

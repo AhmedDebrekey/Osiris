@@ -5,7 +5,6 @@ namespace Osiris {
 
         m_Logger.Initialize();
 
-        m_VulkanContext.Initialize();
 
         const WindowDesc desc{
             "Osiris",
@@ -14,6 +13,15 @@ namespace Osiris {
             true,
             false};
         m_Window.Initialize(desc);
+
+        VulkanContextDesc vulkanContextDesc = {
+            .windowHandle = m_Window.GetNativeWindow(),
+            .windowWidth = m_Window.GetWidth(),
+            .windowHeight = m_Window.GetHeight(),
+        };
+
+        m_VulkanContext.Initialize(vulkanContextDesc);
+
         return true;
     }
 

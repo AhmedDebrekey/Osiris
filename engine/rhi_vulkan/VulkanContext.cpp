@@ -3,35 +3,46 @@
 //
 
 #include "VulkanContext.h"
-
 #include "core/Log.h"
 
+#include <SDL_vulkan.h>
+#include <SDL2/SDL.h>
+
 namespace Osiris {
-    bool VulkanContext::Initialize()
+    bool VulkanContext::Initialize(const VulkanContextDesc& context)
     {
+
+        m_VulkanContextDesc = context;
+
         VkApplicationInfo appInfo{};
         appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         appInfo.pApplicationName = "Osiris";
         appInfo.applicationVersion = VK_MAKE_VERSION(0, 1, 0);
         appInfo.apiVersion = VK_API_VERSION_1_4;
 
+        uint32_t sdlExtensionCount = 0;
+        SDL_Vulkan_GetInstanceExtensions(m_VulkanContextDesc.windowHandle, &sdlExtensionCount, nullptr);
+        if (sdlExtensionCount == 0) {
+            OSIRIS_ERROR("Vulkan extensions not found!");
+            return false;
+        }
+
+        std::vector<const char*> extensions_names(sdlExtensionCount);
+        SDL_Vulkan_GetInstanceExtensions(m_VulkanContextDesc.windowHandle, &sdlExtensionCount, extensions_names.data());
+        if (extensions_names.empty()) {
+            OSIRIS_ERROR("Couldn't get Vulkan Extensions");
+            return false;
+        }
+
+#ifndef NDEBUG
+        extensions_names.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+#endif
+
         VkInstanceCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         createInfo.pApplicationInfo = &appInfo;
-
-#ifndef NDEBUG
-        const char* validationLayers[] = {
-            "VK_LAYER_KHRONOS_validation"
-        };
-        createInfo.enabledLayerCount = 1;
-        createInfo.ppEnabledLayerNames = validationLayers;
-
-        const char* extensions[] = {
-            VK_EXT_DEBUG_UTILS_EXTENSION_NAME
-        };
-        createInfo.enabledExtensionCount = 1;
-        createInfo.ppEnabledExtensionNames = extensions;
-#endif
+        createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions_names.size());
+        createInfo.ppEnabledExtensionNames = extensions_names.data();
 
         VkResult result = vkCreateInstance(&createInfo, nullptr, &m_Instance);
         if (result != VK_SUCCESS)
@@ -51,11 +62,14 @@ namespace Osiris {
 #endif
         SelectPhysicalDevice();
         CreateLogicalDevice();
+        CreateSurface();
 
         return true;
     }
 
     void VulkanContext::Shutdown() const {
+        vkDestroySurfaceKHR(m_Instance, m_Surface, nullptr);
+        vkDestroyDevice(m_Device, nullptr);
         vkDestroyInstance(m_Instance, nullptr);
     }
 
@@ -162,6 +176,15 @@ namespace Osiris {
         }
         vkGetDeviceQueue(m_Device, m_GraphicsQueueFamilyIndex, 0, &m_GraphicsQueue);
         OSIRIS_INFO("Graphics queue created!");
+        return true;
+    }
+
+    bool VulkanContext::CreateSurface() {
+        if (!SDL_Vulkan_CreateSurface(m_VulkanContextDesc.windowHandle, m_Instance, &m_Surface)) {
+            OSIRIS_ERROR("Failed to create Vulkan surface!");
+            return false;
+        }
+        OSIRIS_INFO("Vulkan surface created!");
         return true;
     }
 } // Osiris

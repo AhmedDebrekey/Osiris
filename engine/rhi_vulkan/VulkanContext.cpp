@@ -63,12 +63,14 @@ namespace Osiris {
         SelectPhysicalDevice();
         CreateLogicalDevice();
         CreateSurface();
+        CreateSwapChain();
 
         return true;
     }
 
     void VulkanContext::Shutdown() const {
         vkDestroySurfaceKHR(m_Instance, m_Surface, nullptr);
+        vkDestroySwapchainKHR(m_Device, m_Swapchain, nullptr);
         vkDestroyDevice(m_Device, nullptr);
         vkDestroyInstance(m_Instance, nullptr);
     }
@@ -163,10 +165,13 @@ namespace Osiris {
         };
 
        VkPhysicalDeviceFeatures physicalDeviceFeatures = {};
+        const char* deviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
         VkDeviceCreateInfo deviceCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
             .queueCreateInfoCount = 1,
             .pQueueCreateInfos = &queueCreateInfo,
+            .enabledExtensionCount = 1,
+            .ppEnabledExtensionNames = deviceExtensions,
             .pEnabledFeatures = &physicalDeviceFeatures
         };
 
@@ -185,6 +190,75 @@ namespace Osiris {
             return false;
         }
         OSIRIS_INFO("Vulkan surface created!");
+        return true;
+    }
+
+    bool VulkanContext::CreateSwapChain() {
+        VkSurfaceCapabilitiesKHR surfaceCapabilities;
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_PhysicalDevice, m_Surface, &surfaceCapabilities);
+
+        uint32_t formatCount;
+        vkGetPhysicalDeviceSurfaceFormatsKHR(m_PhysicalDevice, m_Surface, &formatCount, nullptr);
+        if (formatCount == 0) {
+            OSIRIS_ERROR("Vulkan found no surface formats");
+            return false;
+        }
+        std::vector<VkSurfaceFormatKHR> surfaceFormats(formatCount);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(m_PhysicalDevice, m_Surface, &formatCount, surfaceFormats.data());
+
+        VkSurfaceFormatKHR surfaceFormat = surfaceFormats.at(0);
+        for (const auto format : surfaceFormats) {
+            if (format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+                &&
+                format.format == VK_FORMAT_B8G8R8A8_SRGB ) {
+                surfaceFormat = format;
+                OSIRIS_INFO("Vulkan found surface format");
+            }
+        }
+
+        uint32_t presentModeCount;
+        vkGetPhysicalDeviceSurfacePresentModesKHR(m_PhysicalDevice, m_Surface, &presentModeCount, nullptr);
+        if (presentModeCount == 0) {
+            OSIRIS_ERROR("Vulkan found no present modes");
+            return false;
+        }
+        std::vector<VkPresentModeKHR> presentModes(presentModeCount);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(m_PhysicalDevice, m_Surface, &presentModeCount, presentModes.data());
+
+        VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
+        for (const auto mode : presentModes) {
+            if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
+                presentMode = mode;
+                OSIRIS_INFO("Vulkan found present mode Mailbox");
+                break;
+            }
+        }
+
+        VkExtent2D extent = surfaceCapabilities.currentExtent;
+
+        VkSwapchainCreateInfoKHR swapchainCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+            .surface = m_Surface,
+            .minImageCount = surfaceCapabilities.minImageCount + 1,
+            .imageFormat = surfaceFormat.format,
+            .imageColorSpace = surfaceFormat.colorSpace,
+            .imageExtent = extent,
+            .imageArrayLayers = 1,
+            .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+            .preTransform = surfaceCapabilities.currentTransform,
+            .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+            .presentMode = presentMode,
+            .clipped = VK_TRUE,
+
+        };
+
+        VkResult result = vkCreateSwapchainKHR(m_Device, &swapchainCreateInfo, nullptr, &m_Swapchain);
+        if (result != VK_SUCCESS) {
+            OSIRIS_ERROR("Failed to create swapchain!");
+            return false;
+        }
+
+        OSIRIS_INFO("SwapChain Created!");
         return true;
     }
 } // Osiris

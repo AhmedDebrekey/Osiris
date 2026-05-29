@@ -33,6 +33,8 @@ namespace Osiris {
 
         bool CreateSurface();
 
+        bool CreateSwapChain();
+
         VkInstance m_Instance = VK_NULL_HANDLE;
 
         VkPhysicalDevice m_PhysicalDevice = VK_NULL_HANDLE;
@@ -43,6 +45,8 @@ namespace Osiris {
         VkDebugUtilsMessengerEXT m_DebugMessenger = VK_NULL_HANDLE;
 
         VkSurfaceKHR m_Surface = VK_NULL_HANDLE;
+
+        VkSwapchainKHR m_Swapchain = VK_NULL_HANDLE;
 
         VulkanContextDesc m_VulkanContextDesc;
     };

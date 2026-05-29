@@ -5,6 +5,7 @@
 #ifndef OSIRIS_VULKANCONTEXT_H
 #define OSIRIS_VULKANCONTEXT_H
 
+#include <vector>
 #include <vulkan/vulkan.h>
 
 #include "core/EngineConfig.h"
@@ -35,6 +36,12 @@ namespace Osiris {
 
         bool CreateSwapChain();
 
+        bool CreateSwapChainImages();
+
+        VkShaderModule LoadShader(const std::string& shaderPath) const;
+
+        bool CreatePipeline();
+
         VkInstance m_Instance = VK_NULL_HANDLE;
 
         VkPhysicalDevice m_PhysicalDevice = VK_NULL_HANDLE;
@@ -47,6 +54,13 @@ namespace Osiris {
         VkSurfaceKHR m_Surface = VK_NULL_HANDLE;
 
         VkSwapchainKHR m_Swapchain = VK_NULL_HANDLE;
+
+        VkFormat m_SwapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
+        VkExtent2D m_SwapchainExtent;
+
+        std::vector<VkImage> m_SwapchainImages;
+        std::vector<VkImageView> m_SwapchainImageViews;
+
 
         VulkanContextDesc m_VulkanContextDesc;
     };

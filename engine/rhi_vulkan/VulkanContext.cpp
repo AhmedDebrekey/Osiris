@@ -3,6 +3,9 @@
 //
 
 #include "VulkanContext.h"
+
+#include <fstream>
+
 #include "core/Log.h"
 
 #include <SDL_vulkan.h>
@@ -64,6 +67,8 @@ namespace Osiris {
         CreateLogicalDevice();
         CreateSurface();
         CreateSwapChain();
+        CreateSwapChainImages();
+        CreatePipeline();
 
         return true;
     }
@@ -215,6 +220,7 @@ namespace Osiris {
                 OSIRIS_INFO("Vulkan found surface format");
             }
         }
+        m_SwapchainFormat = surfaceFormat.format;
 
         uint32_t presentModeCount;
         vkGetPhysicalDeviceSurfacePresentModesKHR(m_PhysicalDevice, m_Surface, &presentModeCount, nullptr);
@@ -234,7 +240,7 @@ namespace Osiris {
             }
         }
 
-        VkExtent2D extent = surfaceCapabilities.currentExtent;
+        m_SwapchainExtent = surfaceCapabilities.currentExtent;
 
         VkSwapchainCreateInfoKHR swapchainCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -242,7 +248,7 @@ namespace Osiris {
             .minImageCount = surfaceCapabilities.minImageCount + 1,
             .imageFormat = surfaceFormat.format,
             .imageColorSpace = surfaceFormat.colorSpace,
-            .imageExtent = extent,
+            .imageExtent = m_SwapchainExtent,
             .imageArrayLayers = 1,
             .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
             .preTransform = surfaceCapabilities.currentTransform,
@@ -259,6 +265,101 @@ namespace Osiris {
         }
 
         OSIRIS_INFO("SwapChain Created!");
+        return true;
+    }
+
+    bool VulkanContext::CreateSwapChainImages() {
+        uint32_t imageCount;
+        vkGetSwapchainImagesKHR(m_Device, m_Swapchain, &imageCount, nullptr);
+        if (imageCount == 0) {
+            OSIRIS_ERROR("Vulkan found no swapchain images");
+            return false;
+        }
+
+        m_SwapchainImages.resize(imageCount);
+        vkGetSwapchainImagesKHR(m_Device, m_Swapchain, &imageCount, m_SwapchainImages.data());
+
+        m_SwapchainImageViews.resize(m_SwapchainImages.size());
+
+        for (uint32_t i = 0; i < m_SwapchainImageViews.size(); i++) {
+            VkImageViewCreateInfo imageViewCreateInfo = {
+                .sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                .image = m_SwapchainImages.at(i),
+                .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                .format = m_SwapchainFormat,
+
+                .subresourceRange = {
+                    .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel   = 0,
+                    .levelCount     = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount     = 1,
+                },
+            };
+
+            VkResult result = vkCreateImageView(m_Device, &imageViewCreateInfo, nullptr, &m_SwapchainImageViews[i]);
+            if (result != VK_SUCCESS) {
+                OSIRIS_ERROR("Failed to create swapchain image view!");
+                return false;
+            }
+        }
+
+        OSIRIS_INFO("Swapcahin image view created: {}", m_SwapchainImageViews.size());
+        return true;
+    }
+
+    std::vector<char> readFileBinary(const std::string& filePath) {
+        std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+        if (!file) {
+            OSIRIS_ERROR("Failed to open file!");
+            return {};
+        }
+
+        std::streamsize size = file.tellg();
+        file.seekg(0, std::ios::beg);
+
+        std::vector<char> buffer(size);
+
+        if (!file.read(buffer.data(), size)) {
+            OSIRIS_ERROR("Failed to read file: {}", filePath);
+        }
+
+        return buffer;
+    }
+
+    VkShaderModule VulkanContext::LoadShader(const std::string& shaderPath) const {
+        std::vector<char> shaderCode = readFileBinary(shaderPath);
+        if (shaderCode.empty()) {
+            OSIRIS_ERROR("Unable to load shader code: {}", shaderPath);
+            return VK_NULL_HANDLE;
+        }
+
+        VkShaderModuleCreateInfo createInfo = {
+            .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+            .codeSize = shaderCode.size(),
+            .pCode = reinterpret_cast<const uint32_t*>(shaderCode.data()),
+        };
+
+        VkShaderModule module = VK_NULL_HANDLE;
+
+        VkResult result = vkCreateShaderModule(m_Device, &createInfo, nullptr, &module);
+        if (result != VK_SUCCESS) {
+            OSIRIS_ERROR("Failed to create shader module!");
+            return VK_NULL_HANDLE;
+        }
+
+        return module;
+    }
+
+    bool VulkanContext::CreatePipeline() {
+        VkShaderModule vertShader = LoadShader("assets/shaders/triangle.vert.spv");
+        VkShaderModule fragShader = LoadShader("assets/shaders/triangle.frag.spv");
+
+        if (!vertShader || !fragShader) {
+            return false;
+        }
+
+        OSIRIS_INFO("Shaders loaded!");
         return true;
     }
 } // Osiris

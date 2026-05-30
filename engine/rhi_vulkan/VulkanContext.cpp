@@ -76,6 +76,8 @@ namespace Osiris {
     void VulkanContext::Shutdown() const {
         vkDestroySurfaceKHR(m_Instance, m_Surface, nullptr);
         vkDestroySwapchainKHR(m_Device, m_Swapchain, nullptr);
+        vkDestroyPipeline(m_Device, m_Pipeline, nullptr);
+        vkDestroyPipelineLayout(m_Device, m_PipelineLayout, nullptr);
         vkDestroyDevice(m_Device, nullptr);
         vkDestroyInstance(m_Instance, nullptr);
     }
@@ -360,6 +362,121 @@ namespace Osiris {
         }
 
         OSIRIS_INFO("Shaders loaded!");
+
+
+        VkPipelineShaderStageCreateInfo vertStage= {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_VERTEX_BIT,
+            .module = vertShader,
+            .pName = "main",
+        };
+
+        VkPipelineShaderStageCreateInfo fragStage= {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .module = fragShader,
+            .pName = "main",
+        };
+
+        VkPipelineShaderStageCreateInfo stages [] = {vertStage, fragStage};
+
+        VkPipelineVertexInputStateCreateInfo vertexInputInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+            .vertexBindingDescriptionCount = 0,
+            .vertexAttributeDescriptionCount = 0,
+        };
+
+        VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+            .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+            .primitiveRestartEnable = VK_FALSE,
+        };
+
+        VkPipelineViewportStateCreateInfo viewportInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+            .viewportCount = 1,
+            .scissorCount = 1,
+        };
+
+        VkPipelineRasterizationStateCreateInfo rasterizationInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+            .depthClampEnable = VK_FALSE,
+            .rasterizerDiscardEnable = VK_FALSE,
+            .polygonMode = VK_POLYGON_MODE_FILL,
+            .cullMode = VK_CULL_MODE_BACK_BIT,
+            .frontFace = VK_FRONT_FACE_CLOCKWISE,
+            .depthBiasEnable = VK_FALSE,
+            .lineWidth = 1.0f,
+        };
+
+        VkPipelineMultisampleStateCreateInfo multisampleInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+            .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+            .sampleShadingEnable = VK_FALSE,
+        };
+
+        VkPipelineColorBlendAttachmentState colorBlendAttachment = {
+            .blendEnable = VK_FALSE,
+            .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                      VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+        };
+
+        VkPipelineColorBlendStateCreateInfo colorBlendInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+            .logicOpEnable = VK_FALSE,
+            .attachmentCount = 1,
+            .pAttachments = &colorBlendAttachment,
+        };
+
+        VkDynamicState dynamicState[] = {
+            VK_DYNAMIC_STATE_VIEWPORT,
+            VK_DYNAMIC_STATE_SCISSOR,
+        };
+
+        VkPipelineDynamicStateCreateInfo dynamicStateInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+            .dynamicStateCount = 2,
+            .pDynamicStates = dynamicState,
+        };
+
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        };
+
+        VkResult result = vkCreatePipelineLayout(m_Device, &pipelineLayoutInfo, nullptr, &m_PipelineLayout);
+        if (result != VK_SUCCESS) {
+            OSIRIS_ERROR("Failed to create pipeline layout!");
+            return false;
+        }
+
+        VkPipelineRenderingCreateInfo pipelineRenderingInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+            .colorAttachmentCount = 1,
+            .pColorAttachmentFormats = &m_SwapchainFormat,
+        };
+
+        VkGraphicsPipelineCreateInfo pipelineCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+            .pNext = &pipelineRenderingInfo,
+            .stageCount = 2,
+            .pStages = stages,
+            .pVertexInputState = &vertexInputInfo,
+            .pInputAssemblyState = &inputAssemblyInfo,
+            .pViewportState = &viewportInfo,
+            .pRasterizationState = &rasterizationInfo,
+            .pMultisampleState = &multisampleInfo,
+            .pColorBlendState = &colorBlendInfo,
+            .pDynamicState = &dynamicStateInfo,
+            .layout = m_PipelineLayout,
+        };
+
+        result = vkCreateGraphicsPipelines(m_Device, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &m_Pipeline);
+        if (result != VK_SUCCESS) {
+            OSIRIS_ERROR("Failed to create graphics pipeline!");
+            return false;
+        }
+
+        OSIRIS_INFO("Created Graphics pipeline!");
         return true;
     }
 } // Osiris

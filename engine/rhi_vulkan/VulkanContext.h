@@ -61,6 +61,8 @@ namespace Osiris {
         std::vector<VkImage> m_SwapchainImages;
         std::vector<VkImageView> m_SwapchainImageViews;
 
+        VkPipelineLayout m_PipelineLayout = VK_NULL_HANDLE;
+        VkPipeline m_Pipeline = VK_NULL_HANDLE;
 
         VulkanContextDesc m_VulkanContextDesc;
     };

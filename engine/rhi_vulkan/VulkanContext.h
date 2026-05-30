@@ -12,21 +12,22 @@
 
 namespace Osiris {
     class VulkanContext {
-        public:
+    public:
         VulkanContext() = default;
         ~VulkanContext() = default;
 
         bool Initialize(const VulkanContextDesc& context);
         void Shutdown() const;
 
-        private:
+        void DrawFrame();
 
+    private:
         bool SetupDebugMessenger();
 
         static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
-            VkDebugUtilsMessageTypeFlagsEXT type,
-            const VkDebugUtilsMessengerCallbackDataEXT* callbackData,
-            void* userData);
+                                                            VkDebugUtilsMessageTypeFlagsEXT type,
+                                                            const VkDebugUtilsMessengerCallbackDataEXT* callbackData,
+                                                            void* userData);
 
         bool SelectPhysicalDevice();
 
@@ -41,6 +42,10 @@ namespace Osiris {
         VkShaderModule LoadShader(const std::string& shaderPath) const;
 
         bool CreatePipeline();
+
+        bool CreateCommandBuffers();
+
+        void RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex);
 
         VkInstance m_Instance = VK_NULL_HANDLE;
 
@@ -63,6 +68,15 @@ namespace Osiris {
 
         VkPipelineLayout m_PipelineLayout = VK_NULL_HANDLE;
         VkPipeline m_Pipeline = VK_NULL_HANDLE;
+
+        VkCommandPool m_CommandPool = VK_NULL_HANDLE;
+        std::vector<VkCommandBuffer> m_CommandBuffers;
+        std::vector<VkSemaphore> m_ImageAvailableSemaphores;
+        std::vector<VkSemaphore> m_RenderFinishedSemaphores;
+        std::vector<VkFence> m_InFlightFences;
+        uint32_t m_CurrentFrame = 0;
+        const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+
 
         VulkanContextDesc m_VulkanContextDesc;
     };

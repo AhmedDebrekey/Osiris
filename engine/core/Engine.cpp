@@ -48,6 +48,7 @@ namespace Osiris {
     }
 
     void Engine::Render() {
+        m_VulkanContext.DrawFrame();
     }
 
     void Engine::Present() {

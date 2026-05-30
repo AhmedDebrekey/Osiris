@@ -69,6 +69,7 @@ namespace Osiris {
         CreateSwapChain();
         CreateSwapChainImages();
         CreatePipeline();
+        CreateCommandBuffers();
 
         return true;
     }
@@ -80,6 +81,43 @@ namespace Osiris {
         vkDestroyPipelineLayout(m_Device, m_PipelineLayout, nullptr);
         vkDestroyDevice(m_Device, nullptr);
         vkDestroyInstance(m_Instance, nullptr);
+    }
+
+    void VulkanContext::DrawFrame() {
+        vkWaitForFences(m_Device, 1, &m_InFlightFences[m_CurrentFrame], VK_TRUE, UINT64_MAX);
+        vkResetFences(m_Device, 1, &m_InFlightFences[m_CurrentFrame]);
+
+        uint32_t imageIndex = 0;
+        vkAcquireNextImageKHR(m_Device, m_Swapchain, UINT64_MAX, m_ImageAvailableSemaphores[m_CurrentFrame], VK_NULL_HANDLE, &imageIndex);
+
+        vkResetCommandBuffer(m_CommandBuffers[m_CurrentFrame], 0);
+        RecordCommandBuffer(m_CommandBuffers[m_CurrentFrame], imageIndex);
+
+        VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        VkSubmitInfo submitInfo{
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &m_ImageAvailableSemaphores[m_CurrentFrame],
+            .pWaitDstStageMask = &waitStage,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &m_CommandBuffers[m_CurrentFrame],
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores = &m_RenderFinishedSemaphores[m_CurrentFrame],
+        };
+        vkQueueSubmit(m_GraphicsQueue, 1, &submitInfo, m_InFlightFences[m_CurrentFrame]);
+
+        VkPresentInfoKHR presentInfo{
+            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &m_RenderFinishedSemaphores[m_CurrentFrame],
+            .swapchainCount = 1,
+            .pSwapchains = &m_Swapchain,
+            .pImageIndices = &imageIndex,
+        };
+
+        vkQueuePresentKHR(m_GraphicsQueue, &presentInfo);
+
+        m_CurrentFrame = (m_CurrentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
     bool VulkanContext::SetupDebugMessenger() {
@@ -478,5 +516,136 @@ namespace Osiris {
 
         OSIRIS_INFO("Created Graphics pipeline!");
         return true;
+    }
+
+    bool VulkanContext::CreateCommandBuffers() {
+        VkCommandPoolCreateInfo poolInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+            .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+            .queueFamilyIndex = m_GraphicsQueueFamilyIndex,
+        };
+
+        VkResult result = vkCreateCommandPool(m_Device, &poolInfo, nullptr, &m_CommandPool);
+        if (result != VK_SUCCESS) {
+            OSIRIS_ERROR("Failed to create command pool!");
+            return false;
+        }
+
+        m_CommandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+
+        VkCommandBufferAllocateInfo cmdBufferAllocateInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .commandPool = m_CommandPool,
+            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = MAX_FRAMES_IN_FLIGHT,
+        };
+
+        result = vkAllocateCommandBuffers(m_Device, &cmdBufferAllocateInfo, m_CommandBuffers.data());
+        if (result != VK_SUCCESS) {
+            OSIRIS_ERROR("Failed to allocate command buffers!");
+            return false;
+        }
+
+        m_ImageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        m_RenderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+        m_InFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+
+        VkSemaphoreCreateInfo semaphoreInfo = {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+        };
+
+        VkFenceCreateInfo fenceInfo = {
+            .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+            .flags = VK_FENCE_CREATE_SIGNALED_BIT,
+        };
+
+        for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            vkCreateSemaphore(m_Device, &semaphoreInfo, nullptr, &m_ImageAvailableSemaphores[i]);
+            vkCreateSemaphore(m_Device, &semaphoreInfo, nullptr, &m_RenderFinishedSemaphores[i]);
+            vkCreateFence(m_Device, &fenceInfo, nullptr, &m_InFlightFences[i]);
+        }
+
+        OSIRIS_INFO("Command buffers and sync objects created");
+        return true;
+
+    }
+
+    void VulkanContext::RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex) {
+        VkCommandBufferBeginInfo beginInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        };
+        vkBeginCommandBuffer(cmd, &beginInfo);
+
+        VkImageMemoryBarrier imageMemoryBarrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_NONE,
+            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .image = m_SwapchainImages[imageIndex],
+            .subresourceRange = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            },
+        };
+        vkCmdPipelineBarrier(cmd,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
+
+        VkRenderingAttachmentInfo colorAttachment = {
+            .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView   = m_SwapchainImageViews[imageIndex],
+            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
+            .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
+            .clearValue  = {.color = {0.0f, 0.0f, 0.0f, 1.0f}},
+        };
+
+        VkRenderingInfo renderingInfo = {
+            .sType                = VK_STRUCTURE_TYPE_RENDERING_INFO,
+            .renderArea           = {.offset = {0, 0}, .extent = m_SwapchainExtent},
+            .layerCount           = 1,
+            .colorAttachmentCount = 1,
+            .pColorAttachments    = &colorAttachment,
+        };
+        vkCmdBeginRendering(cmd, &renderingInfo);
+
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_Pipeline);
+
+        VkViewport viewport = {
+            .x        = 0.0f,
+            .y        = 0.0f,
+            .width    = static_cast<float>(m_SwapchainExtent.width),
+            .height   = static_cast<float>(m_SwapchainExtent.height),
+            .minDepth = 0.0f,
+            .maxDepth = 1.0f,
+        };
+        vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+        VkRect2D scissor = {
+            .offset = {0, 0},
+            .extent = m_SwapchainExtent,
+        };
+        vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+        vkCmdDraw(cmd, 3, 1, 0, 0);
+
+        vkCmdEndRendering(cmd);
+
+        imageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        imageMemoryBarrier.dstAccessMask = VK_ACCESS_NONE;
+        imageMemoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        imageMemoryBarrier.newLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+        vkCmdPipelineBarrier(cmd,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
+
+        vkEndCommandBuffer(cmd);
     }
 } // Osiris

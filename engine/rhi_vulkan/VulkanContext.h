@@ -47,6 +47,8 @@ namespace Osiris {
 
         void RecordCommandBuffer(VkCommandBuffer cmd, uint32_t imageIndex);
 
+        void RecreateSwapChain();
+
         VkInstance m_Instance = VK_NULL_HANDLE;
 
         VkPhysicalDevice m_PhysicalDevice = VK_NULL_HANDLE;

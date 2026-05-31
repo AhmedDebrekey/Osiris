@@ -11,6 +11,8 @@
 #include <SDL_vulkan.h>
 #include <SDL2/SDL.h>
 
+#include "VulkanUtils.h"
+
 namespace Osiris {
     bool VulkanContext::Initialize(const VulkanContextDesc& context)
     {
@@ -88,8 +90,12 @@ namespace Osiris {
         vkResetFences(m_Device, 1, &m_InFlightFences[m_CurrentFrame]);
 
         uint32_t imageIndex = 0;
-        vkAcquireNextImageKHR(m_Device, m_Swapchain, UINT64_MAX, m_ImageAvailableSemaphores[m_CurrentFrame], VK_NULL_HANDLE, &imageIndex);
-
+        VkResult result = vkAcquireNextImageKHR(m_Device, m_Swapchain, UINT64_MAX, m_ImageAvailableSemaphores[m_CurrentFrame], VK_NULL_HANDLE, &imageIndex);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+            RecreateSwapChain();
+        }else if (result != VK_SUCCESS) {
+            OSIRIS_ERROR("Failed to AcquireNextImage");
+        }
         vkResetCommandBuffer(m_CommandBuffers[m_CurrentFrame], 0);
         RecordCommandBuffer(m_CommandBuffers[m_CurrentFrame], imageIndex);
 
@@ -115,8 +121,12 @@ namespace Osiris {
             .pImageIndices = &imageIndex,
         };
 
-        vkQueuePresentKHR(m_GraphicsQueue, &presentInfo);
-
+        result = vkQueuePresentKHR(m_GraphicsQueue, &presentInfo);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+            RecreateSwapChain();
+        }else if (result != VK_SUCCESS) {
+            OSIRIS_ERROR("Failed to present");
+        }
         m_CurrentFrame = (m_CurrentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
@@ -211,7 +221,7 @@ namespace Osiris {
 
        VkPhysicalDeviceFeatures physicalDeviceFeatures = {};
         const char* deviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
-        VkDeviceCreateInfo deviceCreateInfo = {
+        const VkDeviceCreateInfo deviceCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
             .queueCreateInfoCount = 1,
             .pQueueCreateInfos = &queueCreateInfo,
@@ -344,7 +354,7 @@ namespace Osiris {
             }
         }
 
-        OSIRIS_INFO("Swapcahin image view created: {}", m_SwapchainImageViews.size());
+        OSIRIS_INFO("Swapchain image view created: {}", m_SwapchainImageViews.size());
         return true;
     }
 
@@ -647,5 +657,21 @@ namespace Osiris {
         0, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
 
         vkEndCommandBuffer(cmd);
+    }
+
+    void VulkanContext::RecreateSwapChain() {
+
+        vkDeviceWaitIdle(m_Device);
+
+        for (const auto imageView : m_SwapchainImageViews) {
+            vkDestroyImageView(m_Device, imageView, nullptr);
+        }
+        m_SwapchainImageViews.clear();
+        m_SwapchainImages.clear();
+
+        vkDestroySwapchainKHR(m_Device, m_Swapchain, nullptr);
+
+        CreateSwapChain();
+        CreateSwapChainImages();
     }
 } // Osiris

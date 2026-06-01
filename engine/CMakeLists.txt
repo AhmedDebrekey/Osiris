@@ -8,6 +8,11 @@ add_library(OsirisEngine STATIC
         core/Log.cpp
         rhi_vulkan/VulkanContext.cpp
         rhi_vulkan/VulkanUtils.h
+        rhi/RHITypes.h
+        rhi/RHI.h
+        rhi_vulkan/VulkanRHI.cpp
+        rhi_vulkan/VulkanRHI.h
+        rhi_vulkan/VulkanTypes.h
 )
 
 target_include_directories(OsirisEngine PUBLIC

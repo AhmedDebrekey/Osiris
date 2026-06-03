@@ -33,11 +33,14 @@ namespace Osiris {
 
         SDL_Window* GetNativeWindow() const {return m_Window;}
 
+        std::string GetTitle() const { return m_Title; }
+
     private:
         SDL_Window* m_Window = nullptr;
         uint32_t m_Width = 0;
         uint32_t m_Height = 0;
         bool m_ShouldClose = false;
+        std::string m_Title;
 
     };
 } // Osiris

@@ -4,8 +4,7 @@
 #include "platform/Window.h"
 #include "EngineConfig.h"
 #include "Log.h"
-#include "rhi_vulkan/VulkanContext.h"
-
+#include "rhi/RHI.h"
 namespace Osiris {
     class Engine {
     public:
@@ -30,8 +29,7 @@ namespace Osiris {
 
         Log m_Logger;
 
-        VulkanContext m_VulkanContext;
-
+        std::unique_ptr<IRHI> m_RHI;
     };
 }
 

@@ -8,7 +8,6 @@
 #define VK_CHECK(x) \
     if (x != VK_SUCCESS) { \
     OSIRIS_ERROR("Vulkan error at line {}", __LINE__); \
-    assert(false); \
     }
 
 #endif //OSIRIS_VULKANUTILS_H

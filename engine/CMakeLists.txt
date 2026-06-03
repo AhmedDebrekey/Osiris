@@ -6,7 +6,6 @@ add_library(OsirisEngine STATIC
         core/Engine.cpp
         platform/Window.cpp
         core/Log.cpp
-        rhi_vulkan/VulkanContext.cpp
         rhi_vulkan/VulkanUtils.h
         rhi/RHITypes.h
         rhi/RHI.h

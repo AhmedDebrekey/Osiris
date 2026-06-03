@@ -19,5 +19,6 @@ struct VulkanContextDesc {
     SDL_Window* windowHandle = nullptr;
     uint32_t windowWidth = 1280;
     uint32_t windowHeight = 720;
+    std::string windowTitle = "Osiris";
 };
 #endif //OSIRIS_ENGINECONFIG_H

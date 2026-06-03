@@ -8,12 +8,15 @@
 
 #include "rhi/RHI.h"
 #include "VulkanTypes.h"
+#include "core/EngineConfig.h"
 
 namespace Osiris {
     constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 
     class VulkanRHI : public IRHI{
     public:
+        void Configure(const VulkanContextDesc& desc);
+
         bool Init() override;
 
         void Shutdown() override;
@@ -43,16 +46,48 @@ namespace Osiris {
         void DrawIndexed(uint32_t indexCount) override;
 
         void Dispatch(uint32_t x, uint32_t y, uint32_t z) override;
+
     private:
-        VkInstance      m_Instance      = VK_NULL_HANDLE;
-        VkSurfaceKHR    m_Surface       = VK_NULL_HANDLE;
-        VkCommandPool   m_CommandPool   = VK_NULL_HANDLE;
+        bool SetupDebugMessenger();
+
+        VkDebugUtilsMessengerEXT m_DebugMessenger = VK_NULL_HANDLE;
+
+        static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+                                                            VkDebugUtilsMessageTypeFlagsEXT type,
+                                                            const VkDebugUtilsMessengerCallbackDataEXT* callbackData,
+                                                            void* userData);
+
+        bool SelectPhysicalDevice();
+        bool CreateLogicalDevice();
+        bool CreateSurface();
+        bool CreateSwapChain();
+        bool CreateSwapChainImages();
+        bool CreatePipeline();
+        bool CreateCommandBuffers();
+        void RecordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) const;
+
+        void RecreateSwapChain();
+
+
+        VkShaderModule LoadShader(const std::string& shaderPath);
+
+        uint32_t m_ImageIndex = 0;
+
+        VkInstance          m_Instance          = VK_NULL_HANDLE;
+        VkSurfaceKHR        m_Surface           = VK_NULL_HANDLE;
+        VkPipelineLayout    m_PipelineLayout    = VK_NULL_HANDLE;
+        VkPipeline          m_GraphicsPipeline  = VK_NULL_HANDLE;
+        VkCommandPool       m_CommandPool       = VK_NULL_HANDLE;
+
+        std::vector<VkSemaphore> m_ImageAvailableSemaphores;
 
         VulkanDevice       m_Device;
         VulkanSwapChain    m_SwapChain;
 
         std::array<VulkanFrameData, MAX_FRAMES_IN_FLIGHT> m_Frames;
         uint32_t m_CurrentFrame = 0;
+
+        VulkanContextDesc m_Desc;
     };
 } // Osiris
 

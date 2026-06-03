@@ -17,13 +17,14 @@ namespace Osiris {
 
         m_Width = desc.width;
         m_Height = desc.height;
+        m_Title = desc.title;
 
         Uint32 flags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE;
         if (desc.fullscreen)
             flags |= SDL_WINDOW_FULLSCREEN;
 
         m_Window = SDL_CreateWindow(
-            desc.title.c_str(),
+            m_Title.c_str(),
             SDL_WINDOWPOS_CENTERED,
             SDL_WINDOWPOS_CENTERED,
             m_Width,

@@ -79,7 +79,8 @@ namespace Osiris {
         VkPipeline          m_GraphicsPipeline  = VK_NULL_HANDLE;
         VkCommandPool       m_CommandPool       = VK_NULL_HANDLE;
 
-        std::vector<VkSemaphore> m_ImageAvailableSemaphores;
+        std::array<VkSemaphore, MAX_FRAMES_IN_FLIGHT> m_ImageAvailableSemaphores;
+        std::vector<VkSemaphore> m_RenderFinishedSemaphores;
 
         VulkanDevice       m_Device;
         VulkanSwapChain    m_SwapChain;

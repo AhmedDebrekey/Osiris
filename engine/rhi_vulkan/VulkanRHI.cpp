@@ -102,13 +102,40 @@ namespace Osiris {
     }
 
     void VulkanRHI::Shutdown() {
+        vkDeviceWaitIdle(m_Device.logicalDevice);
+
+        for (const auto& semaphore : m_ImageAvailableSemaphores) {
+            vkDestroySemaphore(m_Device.logicalDevice, semaphore, nullptr);
+        }
+        for (const auto& semaphore : m_RenderFinishedSemaphores) {
+            vkDestroySemaphore(m_Device.logicalDevice, semaphore, nullptr);
+        }
+        for (const auto& frame : m_Frames) {
+            vkDestroyFence(m_Device.logicalDevice, frame.inFlightFence, nullptr);
+        }
+
+        vkDestroyCommandPool(m_Device.logicalDevice, m_CommandPool, nullptr);
+
+        vkDestroyPipeline(m_Device.logicalDevice, m_GraphicsPipeline, nullptr);
+
+        vkDestroyPipelineLayout(m_Device.logicalDevice, m_PipelineLayout, nullptr);
+
+        for (const auto& imageView: m_SwapChain.swapChainImageViews) {
+            vkDestroyImageView(m_Device.logicalDevice, imageView, nullptr);
+        }
+
+        vkDestroySwapchainKHR(m_Device.logicalDevice, m_SwapChain.swapChain, nullptr);
+
+        vkDestroySurfaceKHR(m_Instance, m_Surface, nullptr);
+
         vkDestroyDevice(m_Device.logicalDevice, nullptr);
 #ifndef NDEBUG
         const auto vkDestroyDebugUtilsMessengerEXT = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(
             m_Instance, "vkDestroyDebugUtilsMessengerEXT"));
         if (!vkDestroyDebugUtilsMessengerEXT)
             OSIRIS_ERROR("Failed to Destroy Debug Messenger");
-        vkDestroyDebugUtilsMessengerEXT(m_Instance, m_DebugMessenger, nullptr);
+        else
+            vkDestroyDebugUtilsMessengerEXT(m_Instance, m_DebugMessenger, nullptr);
 #endif
         vkDestroyInstance(m_Instance, nullptr);
     }
@@ -139,7 +166,7 @@ namespace Osiris {
             .commandBufferCount = 1,
             .pCommandBuffers = &m_Frames[m_CurrentFrame].commandBuffer,
             .signalSemaphoreCount = 1,
-            .pSignalSemaphores = &m_Frames[m_CurrentFrame].renderFinishedSemaphore,
+            .pSignalSemaphores = &m_RenderFinishedSemaphores.at(m_ImageIndex),
         };
         vkQueueSubmit(m_Device.graphicsQueue, 1, &submitInfo, m_Frames[m_CurrentFrame].inFlightFence);
 
@@ -149,7 +176,7 @@ namespace Osiris {
         VkPresentInfoKHR presentInfo{
             .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
             .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &m_Frames[m_CurrentFrame].renderFinishedSemaphore,
+            .pWaitSemaphores = &m_RenderFinishedSemaphores.at(m_ImageIndex),
             .swapchainCount = 1,
             .pSwapchains = &m_SwapChain.swapChain,
             .pImageIndices = &m_ImageIndex,
@@ -394,6 +421,21 @@ namespace Osiris {
         }
         m_SwapChain.swapChainImages.resize(imageCount);
         vkGetSwapchainImagesKHR(m_Device.logicalDevice, m_SwapChain.swapChain, &imageCount, m_SwapChain.swapChainImages.data());
+        m_RenderFinishedSemaphores.resize(m_SwapChain.swapChainImages.size());
+
+        VkSemaphoreCreateInfo semaphoreInfo = {
+            .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
+        };
+
+        for (auto& semaphore : m_RenderFinishedSemaphores) {
+            VkResult result = vkCreateSemaphore(
+                m_Device.logicalDevice,
+                &semaphoreInfo,
+                nullptr,
+                &semaphore
+            );
+            VK_CHECK(result);
+        }
 
         m_SwapChain.swapChainImageViews.resize(imageCount);
         for (uint32_t i = 0; i < imageCount; i++) {
@@ -605,17 +647,17 @@ namespace Osiris {
         for (auto& frame : m_Frames) {
             result = vkAllocateCommandBuffers(m_Device.logicalDevice, &commandBufferAllocateInfo, &frame.commandBuffer);
             VK_CHECK(result);
-
-            result = vkCreateSemaphore(m_Device.logicalDevice, &semaphoreInfo, nullptr, &frame.renderFinishedSemaphore);
-            VK_CHECK(result);
-
             result = vkCreateFence(m_Device.logicalDevice, &fenceInfo, nullptr, &frame.inFlightFence);
             VK_CHECK(result);
         }
 
-        m_ImageAvailableSemaphores.resize(m_SwapChain.swapChainImages.size());
-        for (auto& semaphore : m_ImageAvailableSemaphores) {
-            result = vkCreateSemaphore(m_Device.logicalDevice, &semaphoreInfo, nullptr, &semaphore);
+        for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+                result = vkCreateSemaphore(
+                m_Device.logicalDevice,
+                &semaphoreInfo,
+                nullptr,
+                &m_ImageAvailableSemaphores[i]
+            );
             VK_CHECK(result);
         }
 
@@ -703,6 +745,11 @@ namespace Osiris {
 
     void VulkanRHI::RecreateSwapChain() {
         vkDeviceWaitIdle(m_Device.logicalDevice);
+
+        for (const auto semaphore : m_RenderFinishedSemaphores) {
+            vkDestroySemaphore(m_Device.logicalDevice, semaphore, nullptr);
+        }
+        m_RenderFinishedSemaphores.clear();
 
         for (const auto imageView : m_SwapChain.swapChainImageViews) {
             vkDestroyImageView(m_Device.logicalDevice, imageView, nullptr);

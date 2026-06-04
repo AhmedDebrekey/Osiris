@@ -40,6 +40,7 @@ enum class BufferUsage {
     Index,
     Uniform,
     Storage,
+    Transfer
 };
 
 struct BufferDesc {

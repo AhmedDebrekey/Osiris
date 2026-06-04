@@ -1,7 +1,8 @@
 //
 // Created by ahtal on 01/06/2026.
 //
-
+#define VMA_IMPLEMENTATION
+#include <vk_mem_alloc.h>
 #include "VulkanRHI.h"
 
 #include <fstream>
@@ -191,8 +192,76 @@ namespace Osiris {
         m_CurrentFrame = (m_CurrentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
-    BufferHandle VulkanRHI::CreateBuffer(const BufferDesc &) {
-        return BufferHandle();
+    void VulkanRHI::UploadBufferData(BufferHandle handle, const void *data, uint64_t size) {
+        BufferDesc stagingDesc = {
+            .size       = size,
+            .usage      = BufferUsage::Transfer,
+            .cpuVisible = true,
+        };
+        BufferHandle stagingHandle = CreateBuffer(stagingDesc);
+        VulkanBuffer& staging = m_Buffers[stagingHandle.id];
+
+        memcpy(staging.allocationInfo.pMappedData, data, size);
+
+        VkCommandBufferBeginInfo beginInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        };
+        vkBeginCommandBuffer(m_Frames[0].commandBuffer, &beginInfo);
+
+        VkBufferCopy copyRegion = {
+            .srcOffset = 0,
+            .dstOffset = 0,
+            .size      = size,
+        };
+        vkCmdCopyBuffer(m_Frames[0].commandBuffer,
+            staging.buffer,
+            m_Buffers[handle.id].buffer,
+            1, &copyRegion);
+
+        vkEndCommandBuffer(m_Frames[0].commandBuffer);
+
+        VkSubmitInfo submitInfo = {
+            .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .commandBufferCount = 1,
+            .pCommandBuffers    = &m_Frames[0].commandBuffer,
+        };
+        vkQueueSubmit(m_Device.graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+        vkQueueWaitIdle(m_Device.graphicsQueue);
+
+        // 5. Destroy staging buffer
+        DestroyBuffer(stagingHandle);
+    }
+
+    BufferHandle VulkanRHI::CreateBuffer(const BufferDesc & desc) {
+        VkBufferUsageFlags usage = 0;
+        switch (desc.usage) {
+            case BufferUsage::Vertex:  usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;  break;
+            case BufferUsage::Index:   usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;   break;
+            case BufferUsage::Uniform: usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT; break;
+            case BufferUsage::Storage: usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT; break;
+            case BufferUsage::Transfer: usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT; break;
+        }
+        VkBufferCreateInfo bufferCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .size = desc.size,
+            .usage = usage | (desc.usage != BufferUsage::Transfer ? VK_BUFFER_USAGE_TRANSFER_DST_BIT : 0),
+            .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        };
+
+        VmaAllocationCreateInfo allocationCreateInfo = {
+            .usage = desc.cpuVisible ? VMA_MEMORY_USAGE_CPU_TO_GPU : VMA_MEMORY_USAGE_GPU_ONLY,
+        };
+        allocationCreateInfo.flags = desc.cpuVisible ? VMA_ALLOCATION_CREATE_MAPPED_BIT : 0;
+
+        VulkanBuffer vulkanBuffer;
+        vulkanBuffer.size = desc.size;
+        const VkResult result = vmaCreateBuffer(m_Allocator, &bufferCreateInfo, &allocationCreateInfo, &vulkanBuffer.buffer, &vulkanBuffer.allocation, &vulkanBuffer.allocationInfo);
+        VK_CHECK(result);
+
+        uint32_t bufferIndex = AllocateBufferSlot(vulkanBuffer);
+
+        return BufferHandle{ bufferIndex };
     }
 
     TextureHandle VulkanRHI::CreateTexture(const TextureDesc &) {
@@ -203,7 +272,13 @@ namespace Osiris {
         return ShaderHandle();
     }
 
-    void VulkanRHI::DestroyBuffer(BufferHandle) {
+    void VulkanRHI::DestroyBuffer(BufferHandle handle) {
+        if (!handle.IsValid()) return;
+        VulkanBuffer& buffer = m_Buffers[handle.id];
+        vmaDestroyBuffer(m_Allocator, buffer.buffer, buffer.allocation);
+        buffer.buffer     = VK_NULL_HANDLE;
+        buffer.allocation = VK_NULL_HANDLE;
+        buffer.size       = 0;
     }
 
     void VulkanRHI::DestroyTexture(TextureHandle) {
@@ -334,6 +409,14 @@ namespace Osiris {
         vkGetDeviceQueue(m_Device.logicalDevice, m_Device.graphicsQueueIndex, 0, &m_Device.graphicsQueue);
         // vkGetDeviceQueue(m_Device.logicalDevice, m_Device.computeQueueIndex, 0, &m_Device.computeQueue);
         // vkGetDeviceQueue(m_Device.logicalDevice, m_Device.transferQueueIndex, 0, &m_Device.transferQueue);
+
+        VmaAllocatorCreateInfo allocatorInfo = {
+            .physicalDevice = m_Device.physicalDevice,
+            .device         = m_Device.logicalDevice,
+            .instance       = m_Instance,
+        };
+        result = vmaCreateAllocator(&allocatorInfo, &m_Allocator);
+        VK_CHECK(result);
         return true;
     }
 
@@ -761,5 +844,16 @@ namespace Osiris {
 
         CreateSwapChain();
         CreateSwapChainImages();
+    }
+
+    uint32_t VulkanRHI::AllocateBufferSlot(const VulkanBuffer &buffer) {
+        for (uint32_t i = 0; i < m_Buffers.size(); i++) {
+            if (m_Buffers.at(i).buffer == VK_NULL_HANDLE) {
+                m_Buffers.at(i) = buffer;
+                return  i;
+            }
+        }
+        m_Buffers.push_back(buffer);
+        return m_Buffers.size() - 1;
     }
 } // Osiris

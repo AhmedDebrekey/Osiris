@@ -9,6 +9,7 @@
 #include "rhi/RHI.h"
 #include "VulkanTypes.h"
 #include "core/EngineConfig.h"
+#include <vk_mem_alloc.h>
 
 namespace Osiris {
     constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
@@ -26,6 +27,8 @@ namespace Osiris {
         void EndFrame() override;
 
         void Present() override;
+
+        void UploadBufferData(BufferHandle handle, const void* data, uint64_t size) override;
 
         BufferHandle CreateBuffer(const BufferDesc &) override;
 
@@ -68,6 +71,7 @@ namespace Osiris {
 
         void RecreateSwapChain();
 
+        uint32_t AllocateBufferSlot(const VulkanBuffer& buffer);
 
         VkShaderModule LoadShader(const std::string& shaderPath);
 
@@ -87,6 +91,9 @@ namespace Osiris {
 
         std::array<VulkanFrameData, MAX_FRAMES_IN_FLIGHT> m_Frames;
         uint32_t m_CurrentFrame = 0;
+
+        VmaAllocator m_Allocator = VK_NULL_HANDLE;
+        std::vector<VulkanBuffer> m_Buffers;
 
         VulkanContextDesc m_Desc;
     };

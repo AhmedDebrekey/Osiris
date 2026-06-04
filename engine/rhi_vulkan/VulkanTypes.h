@@ -8,6 +8,7 @@
 #include <vulkan/vulkan.h>
 #include <cstdint>
 #include <vector>
+#include <vk_mem_alloc.h>
 
 struct VulkanDevice {
     VkPhysicalDevice    physicalDevice  = VK_NULL_HANDLE;
@@ -32,6 +33,13 @@ struct VulkanSwapChain {
 struct VulkanFrameData {
     VkCommandBuffer     commandBuffer           = VK_NULL_HANDLE;
     VkFence             inFlightFence           = VK_NULL_HANDLE;
+};
+
+struct VulkanBuffer {
+    VkBuffer        buffer     = VK_NULL_HANDLE;
+    VmaAllocation   allocation = VK_NULL_HANDLE;
+    VmaAllocationInfo allocationInfo = {};
+    uint64_t        size       = 0;
 };
 
 #endif //OSIRIS_VULKANTYPES_H

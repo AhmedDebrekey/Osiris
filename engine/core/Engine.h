@@ -11,12 +11,15 @@ namespace Osiris {
         Engine() = default;
         ~Engine() = default;
 
+
         Engine(const Engine &)=delete;
         Engine &operator=(const Engine &)=delete;
 
         bool Initialize();
         void Run();
         void Shutdown();
+
+        IRHI* GetRHI() const { return m_RHI.get(); }
 
     private:
         void PollEvents();

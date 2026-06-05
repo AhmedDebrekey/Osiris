@@ -6,6 +6,7 @@
 #define OSIRIS_RHI_H
 
 #include "RHITypes.h"
+#include "renderer/MeshType.h"
 
 namespace Osiris {
     class IRHI {
@@ -20,7 +21,7 @@ namespace Osiris {
         virtual void Present()      = 0;
 
         virtual void UploadBufferData(BufferHandle handle, const void* data, uint64_t size) = 0;
-        virtual void SetVertexBuffer(const BufferHandle handle) = 0;
+        virtual void SetMeshData(const Mesh& mesh) = 0;
 
         virtual BufferHandle    CreateBuffer(const BufferDesc&)     = 0;
         virtual TextureHandle   CreateTexture(const TextureDesc&)   = 0;
@@ -33,6 +34,7 @@ namespace Osiris {
         virtual void BindPipeline       (PipelineHandle pipeline)  = 0;
         virtual void Draw               (uint32_t vertexCount)     = 0;
         virtual void DrawIndexed        (uint32_t indexCount)      = 0;
+
         virtual void Dispatch           (uint32_t x, uint32_t y, uint32_t z) = 0;
 
     };

@@ -30,7 +30,7 @@ namespace Osiris {
 
         void UploadBufferData(BufferHandle handle, const void* data, uint64_t size) override;
 
-        void SetVertexBuffer(const BufferHandle handle) override;
+        void SetMeshData(const Mesh &mesh) override;
 
         BufferHandle CreateBuffer(const BufferDesc &) override;
 
@@ -97,7 +97,7 @@ namespace Osiris {
         VmaAllocator m_Allocator = VK_NULL_HANDLE;
         std::vector<VulkanBuffer> m_Buffers;
 
-        BufferHandle m_BoundVertexBuffer = BufferHandle();
+        Mesh m_BoundMesh;
         VulkanContextDesc m_Desc;
     };
 } // Osiris

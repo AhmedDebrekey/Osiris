@@ -234,8 +234,8 @@ namespace Osiris {
         DestroyBuffer(stagingHandle);
     }
 
-    void VulkanRHI::SetVertexBuffer(const BufferHandle handle) {
-        m_BoundVertexBuffer = handle;
+    void VulkanRHI::SetMeshData(const Mesh &mesh) {
+        m_BoundMesh = mesh;
     }
 
     BufferHandle VulkanRHI::CreateBuffer(const BufferDesc & desc) {
@@ -828,13 +828,19 @@ namespace Osiris {
         };
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        if (m_BoundVertexBuffer.IsValid()) {
-            const VkBuffer vertexBuffers[] = { m_Buffers[m_BoundVertexBuffer.id].buffer };
+        if (m_BoundMesh.vertexBuffer.IsValid()) {
+            const VkBuffer vertexBuffers[] = { m_Buffers[m_BoundMesh.vertexBuffer.id].buffer };
             constexpr VkDeviceSize offsets[]   = { 0 };
             vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
         }
 
-        vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+        if (m_BoundMesh.indexBuffer.IsValid()) {
+            const VkBuffer indexBuffer = m_Buffers[m_BoundMesh.indexBuffer.id].buffer;
+            vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdDrawIndexed(commandBuffer, m_BoundMesh.indexCount, 1, 0, 0, 0);
+        }
+        else
+            vkCmdDraw(commandBuffer, m_BoundMesh.vertexCount, 1, 0, 0);
 
         vkCmdEndRendering(commandBuffer);
 

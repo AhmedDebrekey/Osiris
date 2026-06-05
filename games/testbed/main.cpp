@@ -18,8 +18,9 @@ int main() {
     };
 
     engine.Initialize();
-    BufferHandle vertexBuffer = engine.GetRHI()->CreateBuffer(vertexBufferDesc);
+    const BufferHandle vertexBuffer = engine.GetRHI()->CreateBuffer(vertexBufferDesc);
     engine.GetRHI()->UploadBufferData(vertexBuffer, vertices, sizeof(vertices));
+    engine.GetRHI()->SetVertexBuffer(vertexBuffer);
     engine.Run();
     engine.Shutdown();
     return 0;

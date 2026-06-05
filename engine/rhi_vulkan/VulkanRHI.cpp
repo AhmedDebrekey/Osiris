@@ -10,6 +10,7 @@
 
 #include "VulkanUtils.h"
 #include "core/Log.h"
+#include "renderer/MeshType.h"
 
 namespace Osiris {
     void VulkanRHI::Configure(const VulkanContextDesc &desc) {
@@ -233,6 +234,10 @@ namespace Osiris {
         DestroyBuffer(stagingHandle);
     }
 
+    void VulkanRHI::SetVertexBuffer(const BufferHandle handle) {
+        m_BoundVertexBuffer = handle;
+    }
+
     BufferHandle VulkanRHI::CreateBuffer(const BufferDesc & desc) {
         VkBufferUsageFlags usage = 0;
         switch (desc.usage) {
@@ -258,6 +263,8 @@ namespace Osiris {
         vulkanBuffer.size = desc.size;
         const VkResult result = vmaCreateBuffer(m_Allocator, &bufferCreateInfo, &allocationCreateInfo, &vulkanBuffer.buffer, &vulkanBuffer.allocation, &vulkanBuffer.allocationInfo);
         VK_CHECK(result);
+
+
 
         uint32_t bufferIndex = AllocateBufferSlot(vulkanBuffer);
 
@@ -606,12 +613,24 @@ namespace Osiris {
 
         VkPipelineShaderStageCreateInfo stages[] = {vertStage, fragStage};
 
+        VkVertexInputBindingDescription vertexDescription = {
+            .binding = 0,
+            .stride = sizeof(Vertex),
+            .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
+        };
+        VkVertexInputAttributeDescription vertexAttributeDescription = {
+            .location = 0,
+            .binding = 0,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+            .offset = 0,
+        };
+
         VkPipelineVertexInputStateCreateInfo vertexInput = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-            .vertexBindingDescriptionCount = 0,
-            .pVertexBindingDescriptions = nullptr,
-            .vertexAttributeDescriptionCount = 0,
-            .pVertexAttributeDescriptions = nullptr,
+            .vertexBindingDescriptionCount = 1,
+            .pVertexBindingDescriptions = &vertexDescription,
+            .vertexAttributeDescriptionCount = 1,
+            .pVertexAttributeDescriptions = &vertexAttributeDescription,
         };
 
         VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo = {
@@ -808,6 +827,12 @@ namespace Osiris {
             .extent = m_SwapChain.swapChainExtent,
         };
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+        if (m_BoundVertexBuffer.IsValid()) {
+            const VkBuffer vertexBuffers[] = { m_Buffers[m_BoundVertexBuffer.id].buffer };
+            constexpr VkDeviceSize offsets[]   = { 0 };
+            vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+        }
 
         vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 

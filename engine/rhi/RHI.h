@@ -20,6 +20,7 @@ namespace Osiris {
         virtual void Present()      = 0;
 
         virtual void UploadBufferData(BufferHandle handle, const void* data, uint64_t size) = 0;
+        virtual void SetVertexBuffer(const BufferHandle handle) = 0;
 
         virtual BufferHandle    CreateBuffer(const BufferDesc&)     = 0;
         virtual TextureHandle   CreateTexture(const TextureDesc&)   = 0;

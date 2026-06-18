@@ -8,6 +8,8 @@ add_library(OsirisEngine STATIC
         core/Log.cpp
         rhi_vulkan/VulkanRHI.cpp
         renderer/MeshType.h
+        renderer/Camera.cpp
+        renderer/Camera.h
 )
 
 target_include_directories(OsirisEngine PUBLIC

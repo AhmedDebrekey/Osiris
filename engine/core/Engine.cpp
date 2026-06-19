@@ -26,7 +26,10 @@ namespace Osiris {
         auto vulkanIRHI = std::make_unique<VulkanRHI>();
         vulkanIRHI->Configure(vulkanContextDesc);
         m_RHI = std::move(vulkanIRHI);
-        m_RHI->Init();
+        if (!m_RHI->Init()) {
+            OSIRIS_ERROR("Failed to initialize RHI!");
+            return false;
+        }
 
         return true;
     }
@@ -43,6 +46,16 @@ namespace Osiris {
     }
 
     void Engine::Shutdown() {
+    }
+
+    void Engine::BeginFrame() {
+        PollEvents();
+        m_RHI->BeginFrame();
+    }
+
+    void Engine::EndFrame() const {
+        m_RHI->EndFrame();
+        m_RHI->Present();
     }
 
     void Engine::PollEvents() {

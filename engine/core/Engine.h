@@ -21,6 +21,11 @@ namespace Osiris {
 
         IRHI* GetRHI() const { return m_RHI.get(); }
 
+        bool IsRunning() const { return m_IsRunning; }
+
+        void BeginFrame();
+        void EndFrame() const;
+
     private:
         void PollEvents();
         void Update();

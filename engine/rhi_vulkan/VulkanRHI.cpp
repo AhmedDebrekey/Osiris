@@ -12,6 +12,7 @@
 #include "core/Log.h"
 #include "renderer/MeshType.h"
 
+
 namespace Osiris {
     void VulkanRHI::Configure(const VulkanContextDesc &desc) {
         m_Desc = desc;
@@ -95,6 +96,16 @@ namespace Osiris {
             return false;
         }
 
+        if (!CreateDescriptorPool()) {
+            OSIRIS_ERROR("Failed to create descriptor pool!");
+            return false;
+        }
+
+        if (!CreateDescriptorSet()) {
+            OSIRIS_ERROR("Failed to create descriptor set!");
+            return false;
+        }
+
         if (!CreateCommandBuffers()) {
             OSIRIS_ERROR("Failed to create command buffers!");
             return false;
@@ -119,6 +130,8 @@ namespace Osiris {
         vkDestroyCommandPool(m_Device.logicalDevice, m_CommandPool, nullptr);
 
         vkDestroyPipeline(m_Device.logicalDevice, m_GraphicsPipeline, nullptr);
+
+        vkDestroyDescriptorPool(m_Device.logicalDevice, m_DescriptorPool, nullptr);
 
         vkDestroyPipelineLayout(m_Device.logicalDevice, m_PipelineLayout, nullptr);
 
@@ -234,6 +247,11 @@ namespace Osiris {
         DestroyBuffer(stagingHandle);
     }
 
+    void VulkanRHI::UploadDynamicBuffer(BufferHandle handle, const void *data, uint64_t size) {
+        // TODO: Fix Race condition between CPU and GPU
+        memcpy(m_Buffers[handle.id].allocationInfo.pMappedData, data, size);
+    }
+
     void VulkanRHI::SetMeshData(const Mesh &mesh) {
         m_BoundMesh = mesh;
     }
@@ -304,6 +322,15 @@ namespace Osiris {
     }
 
     void VulkanRHI::Dispatch(uint32_t x, uint32_t y, uint32_t z) {
+    }
+
+    void VulkanRHI::UpdateCamera(const glm::mat4 &view, const glm::mat4 &projection) {
+        struct CameraBuffer {
+            glm::mat4 view;
+            glm::mat4 projection;
+        };
+        const CameraBuffer camera_buffer = {.view = view, .projection = projection};
+        UploadDynamicBuffer(m_CameraUniformBuffer, &camera_buffer, sizeof(CameraBuffer));
     }
 
     bool VulkanRHI::SetupDebugMessenger() {
@@ -686,8 +713,23 @@ namespace Osiris {
             .pDynamicStates = dynamicState,
         };
 
+        VkDescriptorSetLayoutBinding descriptorSetLayoutBinding = {
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        };
+        VkDescriptorSetLayoutCreateInfo descriptorSetLayoutInfo = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .bindingCount = 1,
+            .pBindings = &descriptorSetLayoutBinding
+        };
+        VK_CHECK(vkCreateDescriptorSetLayout(m_Device.logicalDevice, &descriptorSetLayoutInfo, nullptr, &m_DescriptorLayout));
+
         VkPipelineLayoutCreateInfo pipelineLayoutInfo = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+            .setLayoutCount = 1,
+            .pSetLayouts = &m_DescriptorLayout,
         };
 
         VkResult result = vkCreatePipelineLayout(m_Device.logicalDevice, &pipelineLayoutInfo, nullptr, &m_PipelineLayout);
@@ -716,6 +758,68 @@ namespace Osiris {
 
         result = vkCreateGraphicsPipelines(m_Device.logicalDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &m_GraphicsPipeline);
         VK_CHECK(result);
+
+        return true;
+    }
+
+    bool VulkanRHI::CreateDescriptorPool() {
+
+        VkDescriptorPoolSize descriptorPoolSize = {
+            .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+        };
+        const VkDescriptorPoolCreateInfo descriptorPoolInfo = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+            .maxSets = 1,
+            .poolSizeCount = 1,
+            .pPoolSizes = &descriptorPoolSize,
+        };
+
+        const VkResult result = vkCreateDescriptorPool(m_Device.logicalDevice, &descriptorPoolInfo, nullptr, &m_DescriptorPool);
+        if (result != VK_SUCCESS) {
+            return false;
+        }
+        return true;
+    }
+
+    bool VulkanRHI::CreateDescriptorSet() {
+        VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .descriptorPool = m_DescriptorPool,
+            .descriptorSetCount = 1,
+            .pSetLayouts = &m_DescriptorLayout,
+        };
+
+        VkResult result = vkAllocateDescriptorSets(m_Device.logicalDevice, &descriptorSetAllocateInfo, &m_DescriptorSet);
+
+        if (result != VK_SUCCESS) {
+            return false;
+        }
+
+        BufferDesc uniformBufferDesc = {
+            .size = sizeof(glm::mat4) * 2,
+            .usage = BufferUsage::Uniform,
+            .cpuVisible= true,
+        };
+
+        m_CameraUniformBuffer = CreateBuffer(uniformBufferDesc);
+
+        VkDescriptorBufferInfo bufferInfo = {
+            .buffer = m_Buffers.at(m_CameraUniformBuffer.id).buffer,
+            .offset = 0,
+            .range = sizeof(glm::mat4) * 2,
+        };
+        const VkWriteDescriptorSet writeDescriptorSet = {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = m_DescriptorSet,
+            .dstBinding = 0,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .pBufferInfo = &bufferInfo,
+        };
+
+        vkUpdateDescriptorSets(m_Device.logicalDevice, 1, &writeDescriptorSet, 0, nullptr);
 
         return true;
     }
@@ -811,6 +915,7 @@ namespace Osiris {
         vkCmdBeginRendering(commandBuffer, &renderingInfo);
 
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicsPipeline);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0, 1, &m_DescriptorSet, 0, nullptr);
 
         VkViewport viewport = {
             .x        = 0.0f,

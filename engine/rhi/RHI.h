@@ -7,6 +7,7 @@
 
 #include "RHITypes.h"
 #include "renderer/MeshType.h"
+#include <glm/glm.hpp>
 
 namespace Osiris {
     class IRHI {
@@ -21,7 +22,10 @@ namespace Osiris {
         virtual void Present()      = 0;
 
         virtual void UploadBufferData(BufferHandle handle, const void* data, uint64_t size) = 0;
+        virtual void UploadDynamicBuffer(BufferHandle handle, const void* data, uint64_t size) = 0;
         virtual void SetMeshData(const Mesh& mesh) = 0;
+
+        virtual void UpdateCamera(const glm::mat4& view, const glm::mat4& projection) = 0;
 
         virtual BufferHandle    CreateBuffer(const BufferDesc&)     = 0;
         virtual TextureHandle   CreateTexture(const TextureDesc&)   = 0;

@@ -16,6 +16,10 @@ target_include_directories(OsirisEngine PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+target_compile_definitions(OsirisEngine PUBLIC
+        GLM_FORCE_DEPTH_ZERO_TO_ONE
+)
+
 target_link_libraries(OsirisEngine PUBLIC
     glm
     SDL2::SDL2

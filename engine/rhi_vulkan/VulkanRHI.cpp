@@ -91,6 +91,11 @@ namespace Osiris {
             return false;
         }
 
+        if (!CreateDepthResources()) {
+            OSIRIS_ERROR("Failed to create depth resources!");
+            return false;
+        }
+
         if (!CreatePipeline()) {
             OSIRIS_ERROR("Failed to create pipeline!");
             return false;
@@ -577,6 +582,49 @@ namespace Osiris {
         return true;
     }
 
+    bool VulkanRHI::CreateDepthResources() {
+        VkImageCreateInfo imageCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .imageType = VK_IMAGE_TYPE_2D,
+            .format = VK_FORMAT_D32_SFLOAT,
+            .extent = {m_SwapChain.swapChainExtent.width, m_SwapChain.swapChainExtent.height, 1},
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .samples = VK_SAMPLE_COUNT_1_BIT,
+            .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+        };
+
+        m_DepthImage.format = VK_FORMAT_D32_SFLOAT;
+
+        VmaAllocationCreateInfo allocationCreateInfo = {
+            .usage = VMA_MEMORY_USAGE_GPU_ONLY,
+        };
+
+        VK_CHECK(vmaCreateImage(m_Allocator, &imageCreateInfo, &allocationCreateInfo, &m_DepthImage.image, &m_DepthImage.allocation, nullptr));
+
+        VkImageViewCreateInfo viewCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = m_DepthImage.image,
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format = VK_FORMAT_D32_SFLOAT,
+
+            .subresourceRange = {
+                .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer= 0,
+                .layerCount = 1
+            }
+        };
+        const VkResult result = vkCreateImageView(m_Device.logicalDevice, &viewCreateInfo, nullptr, &m_DepthImage.imageView);
+        if (result != VK_SUCCESS) {
+            OSIRIS_ERROR("Failed to create image view for depth buffer!");
+            return false;
+        }
+
+        return true;
+    }
+
     std::vector<char> readFileBinary(const std::string& filePath) {
         std::ifstream file(filePath, std::ios::binary | std::ios::ate);
         if (!file) {
@@ -735,10 +783,18 @@ namespace Osiris {
         VkResult result = vkCreatePipelineLayout(m_Device.logicalDevice, &pipelineLayoutInfo, nullptr, &m_PipelineLayout);
         VK_CHECK(result);
 
+        VkPipelineDepthStencilStateCreateInfo depthStencilInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+            .depthTestEnable = VK_TRUE,
+            .depthWriteEnable = VK_TRUE,
+            .depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL,
+        };
+
         VkPipelineRenderingCreateInfo pipelineRenderingInfo = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
             .colorAttachmentCount = 1,
             .pColorAttachmentFormats = &m_SwapChain.swapChainImageFormat,
+            .depthAttachmentFormat = VK_FORMAT_D32_SFLOAT,
         };
 
         VkGraphicsPipelineCreateInfo pipelineCreateInfo = {
@@ -751,6 +807,7 @@ namespace Osiris {
             .pViewportState = &viewportInfo,
             .pRasterizationState = &rasterizationInfo,
             .pMultisampleState = &multisampleInfo,
+            .pDepthStencilState = &depthStencilInfo,
             .pColorBlendState = &colorBlendInfo,
             .pDynamicState = &dynamicStateInfo,
             .layout = m_PipelineLayout,
@@ -891,10 +948,38 @@ namespace Osiris {
                 .layerCount = 1
             },
         };
+
+        VkImageMemoryBarrier depthBarrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_NONE,
+            .dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+            .image = m_DepthImage.image,
+            .subresourceRange = {
+                .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1
+            }
+        };
+
+        VkRenderingAttachmentInfo depthAttachmentInfo = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView = m_DepthImage.imageView,
+            .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+            .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
+            .storeOp     = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .clearValue  = {.depthStencil = {1.0f, 0}},
+        };
+
+        VkImageMemoryBarrier barriers[] = { imageMemoryBarrier, depthBarrier };
+
         vkCmdPipelineBarrier(commandBuffer,
-        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        0, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+            0, 0, nullptr, 0, nullptr, 2, barriers);
 
         VkRenderingAttachmentInfo colorAttachment = {
             .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
@@ -905,12 +990,13 @@ namespace Osiris {
             .clearValue  = {.color = {0.0f, 0.0f, 0.0f, 1.0f}},
         };
 
-        VkRenderingInfo renderingInfo = {
+        const VkRenderingInfo renderingInfo = {
             .sType                = VK_STRUCTURE_TYPE_RENDERING_INFO,
             .renderArea           = {.offset = {0, 0}, .extent = m_SwapChain.swapChainExtent},
             .layerCount           = 1,
             .colorAttachmentCount = 1,
             .pColorAttachments    = &colorAttachment,
+            .pDepthAttachment     = &depthAttachmentInfo,
         };
         vkCmdBeginRendering(commandBuffer, &renderingInfo);
 
@@ -976,10 +1062,25 @@ namespace Osiris {
         m_SwapChain.swapChainImageViews.clear();
         m_SwapChain.swapChainImages.clear();
 
+        vkDestroyImageView(m_Device.logicalDevice, m_DepthImage.imageView, nullptr);
+        m_DepthImage.imageView = VK_NULL_HANDLE;
+        vmaDestroyImage(m_Allocator, m_DepthImage.image, nullptr);
+        m_DepthImage.image = VK_NULL_HANDLE;
+
         vkDestroySwapchainKHR(m_Device.logicalDevice, m_SwapChain.swapChain, nullptr);
 
-        CreateSwapChain();
-        CreateSwapChainImages();
+        if  (!CreateSwapChain()) {
+            OSIRIS_ERROR("Failed to create swap chain on resize!");
+            return;
+        }
+        if (!CreateSwapChainImages()) {
+            OSIRIS_ERROR("Failed to create swap chain images on resize!");
+            return;
+        }
+        if (!CreateDepthResources()) {
+            OSIRIS_ERROR("Failed to create depth resources on resize!");
+            return;
+        }
     }
 
     uint32_t VulkanRHI::AllocateBufferSlot(const VulkanBuffer &buffer) {

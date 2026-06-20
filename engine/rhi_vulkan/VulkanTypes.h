@@ -42,4 +42,11 @@ struct VulkanBuffer {
     uint64_t        size       = 0;
 };
 
+struct VulkanImage {
+    VkImage       image         = VK_NULL_HANDLE;
+    VmaAllocation allocation    = VK_NULL_HANDLE;
+    VkImageView   imageView     = VK_NULL_HANDLE;
+    VkFormat      format        = VK_FORMAT_B8G8R8A8_UNORM;
+};
+
 #endif //OSIRIS_VULKANTYPES_H

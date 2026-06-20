@@ -71,6 +71,7 @@ namespace Osiris {
         bool CreateSurface();
         bool CreateSwapChain();
         bool CreateSwapChainImages();
+        bool CreateDepthResources();
         bool CreatePipeline();
         bool CreateDescriptorPool();
         bool CreateDescriptorSet();
@@ -101,6 +102,9 @@ namespace Osiris {
 
         VulkanDevice       m_Device;
         VulkanSwapChain    m_SwapChain;
+        VulkanImage        m_DepthImage;
+
+        VulkanContextDesc m_Desc;
 
         std::array<VulkanFrameData, MAX_FRAMES_IN_FLIGHT> m_Frames;
         uint32_t m_CurrentFrame = 0;
@@ -111,7 +115,6 @@ namespace Osiris {
         BufferHandle m_CameraUniformBuffer;
 
         Mesh m_BoundMesh;
-        VulkanContextDesc m_Desc;
     };
 } // Osiris
 

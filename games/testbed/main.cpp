@@ -13,10 +13,10 @@ int main() {
     std::cout << "Osiris Engine" << std::endl;
     Osiris::Engine engine;
 
-    constexpr Vertex vertices[] = {
-        { 0.0f, -0.5f, 0.0f},
-        { 0.5f,  0.5f, 0.0f},
-        {-0.5f,  0.5f, 0.0f},
+    constexpr Osiris::Vertex vertices[] = {
+        { .Position = {0.0f, -0.5f, 0.0f}, .Normal = {0.0f, 0.0f, 1.0f}, .TexCoord = {0.5f, 0.0f} },
+        { .Position = {0.5f,  0.5f, 0.0f}, .Normal = {0.0f, 0.0f, 1.0f}, .TexCoord = {1.0f, 1.0f} },
+        { .Position = {-0.5f, 0.5f, 0.0f}, .Normal = {0.0f, 0.0f, 1.0f}, .TexCoord = {0.0f, 1.0f} },
     };
     constexpr BufferDesc vertexBufferDesc = {
         .size       = sizeof(vertices),
@@ -45,10 +45,10 @@ int main() {
     const BufferHandle indexBuffer = engine.GetRHI()->CreateBuffer(indexBufferDesc);
     engine.GetRHI()->UploadBufferData(indexBuffer, indices, sizeof(indices));
 
-    const Mesh mesh = {
+    const Osiris::Mesh mesh = {
         .vertexBuffer = vertexBuffer,
         .indexBuffer = indexBuffer,
-        .vertexCount = sizeof(vertices) / sizeof(Vertex),
+        .vertexCount = sizeof(vertices) / sizeof(Osiris::Vertex),
         .indexCount = sizeof(indices) / sizeof(uint32_t),
     };
 

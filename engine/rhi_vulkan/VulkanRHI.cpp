@@ -693,20 +693,42 @@ namespace Osiris {
             .stride = sizeof(Vertex),
             .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
         };
-        VkVertexInputAttributeDescription vertexAttributeDescription = {
+        VkVertexInputAttributeDescription vertexAttributeDescriptionPosition = {
             .location = 0,
             .binding = 0,
             .format = VK_FORMAT_R32G32B32_SFLOAT,
-            .offset = 0,
+            .offset = offsetof(Vertex, Position),
+        };
+
+        VkVertexInputAttributeDescription vertexAttributeDescriptionNormal = {
+            .location = 1,
+            .binding = 0,
+            .format = VK_FORMAT_R32G32B32_SFLOAT,
+            .offset = offsetof(Vertex, Normal),
+        };
+
+        VkVertexInputAttributeDescription vertexAttributeDescriptionTexCoords = {
+            .location = 2,
+            .binding = 0,
+            .format = VK_FORMAT_R32G32_SFLOAT,
+            .offset = offsetof(Vertex, TexCoord),
+        };
+
+        VkVertexInputAttributeDescription attributes[] = {
+            vertexAttributeDescriptionPosition,
+            vertexAttributeDescriptionNormal,
+            vertexAttributeDescriptionTexCoords,
         };
 
         VkPipelineVertexInputStateCreateInfo vertexInput = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
             .vertexBindingDescriptionCount = 1,
             .pVertexBindingDescriptions = &vertexDescription,
-            .vertexAttributeDescriptionCount = 1,
-            .pVertexAttributeDescriptions = &vertexAttributeDescription,
+            .vertexAttributeDescriptionCount = 3,
+            .pVertexAttributeDescriptions = attributes,
         };
+
+
 
         VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,

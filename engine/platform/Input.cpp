@@ -1,0 +1,46 @@
+//
+// Created by ahtal on 21/07/2026.
+//
+
+#include "Input.h"
+
+namespace Osiris {
+
+    void Input::Update() {
+        const uint8_t* keys = SDL_GetKeyboardState(nullptr);
+        memcpy(m_PreviousKeys, keys, SDL_NUM_SCANCODES);
+        m_CurrentKeys = keys;
+
+        int dx, dy;
+        SDL_GetRelativeMouseState(&dx, &dy);
+        m_MouseDelta = { static_cast<float>(dx), static_cast<float>(dy) };
+
+        int mx, my;
+        SDL_GetMouseState(&mx, &my);
+        m_MousePosition = { static_cast<float>(mx), static_cast<float>(my) };
+
+        m_MouseButtons = SDL_GetMouseState(nullptr, nullptr);
+    }
+
+    bool Input::IsKeyHeld(SDL_Scancode key) const {
+        if (!m_CurrentKeys) return false;
+        return m_CurrentKeys[key] == 1;
+    }
+
+    bool Input::IsKeyPressed(SDL_Scancode key) const {
+        if (!m_CurrentKeys) return false;
+        return m_CurrentKeys[key] == 1 && m_PreviousKeys[key] == 0;
+    }
+
+    glm::vec2 Input::GetMouseDelta() const {
+        return m_MouseDelta;
+    }
+
+    glm::vec2 Input::GetMousePosition() const {
+        return m_MousePosition;
+    }
+
+    bool Input::IsMouseButtonHeld(int button) const {
+        return (m_MouseButtons & SDL_BUTTON(button)) != 0;
+    }
+} // Osiris

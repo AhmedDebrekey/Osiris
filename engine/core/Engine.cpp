@@ -60,6 +60,7 @@ namespace Osiris {
 
     void Engine::PollEvents() {
         m_Window.PollEvents();
+        m_Input.Update();
         m_IsRunning = !m_Window.ShouldClose();
     }
 

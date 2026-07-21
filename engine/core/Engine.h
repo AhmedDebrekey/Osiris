@@ -5,6 +5,7 @@
 #include "EngineConfig.h"
 #include "Log.h"
 #include "rhi/RHI.h"
+#include "platform/Input.h"
 namespace Osiris {
     class Engine {
     public:
@@ -21,6 +22,8 @@ namespace Osiris {
 
         IRHI* GetRHI() const { return m_RHI.get(); }
 
+        Input* GetInput() { return &m_Input; }
+
         bool IsRunning() const { return m_IsRunning; }
 
         void BeginFrame();
@@ -34,6 +37,8 @@ namespace Osiris {
         bool m_IsRunning = true;
 
         Window m_Window;
+
+        Input m_Input;
 
         Log m_Logger;
 

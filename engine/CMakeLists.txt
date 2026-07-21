@@ -10,6 +10,8 @@ add_library(OsirisEngine STATIC
         renderer/MeshType.h
         renderer/Camera.cpp
         renderer/Camera.h
+        platform/Input.cpp
+        platform/Input.h
 )
 
 target_include_directories(OsirisEngine PUBLIC

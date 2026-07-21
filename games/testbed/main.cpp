@@ -8,6 +8,7 @@
 
 #include <iostream>
 
+#include <glm/gtc/matrix_transform.hpp>
 
 
 int main() {
@@ -20,7 +21,7 @@ int main() {
     }
 
     Osiris::Mesh Box = Osiris::MeshLoader::LoadFromGLTF("C:/Dev/Osiris/assets/models/BoxGLTF/Box.gltf", engine.GetRHI());
-
+    engine.GetRHI()->SetModelMatrix(glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.0f, 0.0f)));
     engine.GetRHI()->SetMeshData(Box);
 
     Osiris::Camera camera(

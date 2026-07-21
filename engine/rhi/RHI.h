@@ -24,6 +24,7 @@ namespace Osiris {
         virtual void UploadBufferData(BufferHandle handle, const void* data, uint64_t size) = 0;
         virtual void UploadDynamicBuffer(BufferHandle handle, const void* data, uint64_t size) = 0;
         virtual void SetMeshData(const Mesh& mesh) = 0;
+        virtual void SetModelMatrix(const glm::mat4& model) = 0;
 
         virtual void UpdateCamera(const glm::mat4& view, const glm::mat4& projection) = 0;
 

@@ -34,6 +34,8 @@ namespace Osiris {
 
         void SetMeshData(const Mesh &mesh) override;
 
+        void SetModelMatrix(const glm::mat4 &model) override;
+
         BufferHandle CreateBuffer(const BufferDesc &) override;
 
         TextureHandle CreateTexture(const TextureDesc &) override;
@@ -115,6 +117,7 @@ namespace Osiris {
         BufferHandle m_CameraUniformBuffer;
 
         Mesh m_BoundMesh;
+        glm::mat4 m_ModelMatrix = glm::mat4(1.0f);
     };
 } // Osiris
 

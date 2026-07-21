@@ -9,11 +9,15 @@ layout(binding = 0) uniform CameraUBO {
     mat4 projection;
 } camera;
 
+layout(push_constant) uniform PushConstants {
+    mat4 model;
+} push;
+
 layout(location = 0) out vec3 outNormal;
 layout(location = 1) out vec2 outTexCoord;
 
 void main() {
-    gl_Position = camera.projection * camera.view * vec4(inPosition, 1.0);
-    outNormal   = inNormal;
+    gl_Position = camera.projection * camera.view * push.model * vec4(inPosition, 1.0);
+    outNormal   = mat3(transpose(inverse(push.model))) * inNormal;
     outTexCoord = inTexCoord;
 }

@@ -35,15 +35,11 @@ namespace Osiris {
         auto& mesh = asset->meshes[0];
         auto& primitive = mesh.primitives[0];
 
-        // Extract indices
+        OSIRIS_INFO("Has indices: {}", primitive.indicesAccessor.has_value());
         if (primitive.indicesAccessor.has_value()) {
-            auto& accessor = asset->accessors[primitive.indicesAccessor.value()];
-            indices.resize(accessor.count);
-            std::size_t i = 0;
-            fastgltf::iterateAccessor<std::uint32_t>(asset.get(), accessor, [&](std::uint32_t index) {
-                indices[i++] = index;
-            });
+            OSIRIS_INFO("Indices accessor index: {}", primitive.indicesAccessor.value());
         }
+
 
         // Extract positions
         auto posIt = std::find_if(primitive.attributes.begin(), primitive.attributes.end(),
@@ -55,6 +51,22 @@ namespace Osiris {
             fastgltf::iterateAccessor<glm::vec3>(asset.get(), accessor, [&](glm::vec3 pos) {
                 vertices[i++].Position = pos;
             });
+        }
+
+        // Extract indices
+        if (primitive.indicesAccessor.has_value()) {
+            auto& accessor = asset->accessors[primitive.indicesAccessor.value()];
+            indices.resize(accessor.count);
+            std::size_t i = 0;
+            fastgltf::iterateAccessor<std::uint32_t>(asset.get(), accessor, [&](std::uint32_t index) {
+                indices[i++] = index;
+            });
+        } else {
+            // No index buffer — generate sequential indices
+            indices.resize(vertices.size());
+            for (uint32_t i = 0; i < vertices.size(); i++) {
+                indices[i] = i;
+            }
         }
 
         // Extract normals
@@ -77,6 +89,14 @@ namespace Osiris {
             fastgltf::iterateAccessor<glm::vec2>(asset.get(), accessor, [&](glm::vec2 uv) {
                 vertices[i++].TexCoord = uv;
             });
+        }
+
+        OSIRIS_INFO("Vertices: {}", vertices.size());
+        OSIRIS_INFO("Indices: {}", indices.size());
+
+        if (vertices.empty() || indices.empty()) {
+            OSIRIS_ERROR("Failed to extract mesh data from glTF");
+            return Mesh{};
         }
 
         // Upload to GPU

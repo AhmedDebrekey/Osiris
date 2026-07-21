@@ -261,6 +261,10 @@ namespace Osiris {
         m_BoundMesh = mesh;
     }
 
+    void VulkanRHI::SetModelMatrix(const glm::mat4 &model) {
+        m_ModelMatrix = model;
+    }
+
     BufferHandle VulkanRHI::CreateBuffer(const BufferDesc & desc) {
         VkBufferUsageFlags usage = 0;
         switch (desc.usage) {
@@ -796,10 +800,18 @@ namespace Osiris {
         };
         VK_CHECK(vkCreateDescriptorSetLayout(m_Device.logicalDevice, &descriptorSetLayoutInfo, nullptr, &m_DescriptorLayout));
 
+        VkPushConstantRange pushConstantRange = {
+            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .offset     = 0,
+            .size       = sizeof(glm::mat4),
+        };
+
         VkPipelineLayoutCreateInfo pipelineLayoutInfo = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
             .setLayoutCount = 1,
             .pSetLayouts = &m_DescriptorLayout,
+            .pushConstantRangeCount = 1,
+            .pPushConstantRanges    = &pushConstantRange,
         };
 
         VkResult result = vkCreatePipelineLayout(m_Device.logicalDevice, &pipelineLayoutInfo, nullptr, &m_PipelineLayout);
@@ -1020,9 +1032,11 @@ namespace Osiris {
             .pColorAttachments    = &colorAttachment,
             .pDepthAttachment     = &depthAttachmentInfo,
         };
+
         vkCmdBeginRendering(commandBuffer, &renderingInfo);
 
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicsPipeline);
+        vkCmdPushConstants(commandBuffer, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &m_ModelMatrix);
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0, 1, &m_DescriptorSet, 0, nullptr);
 
         VkViewport viewport = {

@@ -1,0 +1,82 @@
+//
+// Created by ahtal on 21/07/2026.
+//
+
+#include "MeshLoader.h"
+#include "fastgltf/core.hpp"
+#include "fastgltf/types.hpp"
+#include "fastgltf/tools.hpp"
+#include "core/Log.h"
+#include "fastgltf/glm_element_traits.hpp"
+
+namespace Osiris {
+    Mesh MeshLoader::LoadFromGLTF(const std::string &path, IRHI *rhi) {
+        fastgltf::Parser parser;
+        fastgltf::GltfDataBuffer data;
+
+        if (!data.loadFromFile(path)) {
+            OSIRIS_ERROR("Failed to load glTF file: {}", path);
+            return Mesh{};
+        }
+
+        auto asset = parser.loadGltf(&data,
+            std::filesystem::path(path).parent_path(),
+            fastgltf::Options::LoadExternalBuffers);
+
+        if (asset.error() != fastgltf::Error::None) {
+            OSIRIS_ERROR("Failed to parse glTF file: {}", path);
+            return Mesh{};
+        }
+
+        std::vector<Vertex> vertices;
+        std::vector<uint32_t> indices;
+
+        // Get the first mesh's first primitive
+        auto& mesh = asset->meshes[0];
+        auto& primitive = mesh.primitives[0];
+
+        // Extract indices
+        if (primitive.indicesAccessor.has_value()) {
+            auto& accessor = asset->accessors[primitive.indicesAccessor.value()];
+            indices.resize(accessor.count);
+            std::size_t i = 0;
+            fastgltf::iterateAccessor<std::uint32_t>(asset.get(), accessor, [&](std::uint32_t index) {
+                indices[i++] = index;
+            });
+        }
+
+        // Extract positions
+        auto posIt = std::find_if(primitive.attributes.begin(), primitive.attributes.end(),
+            [](const auto& attr) { return attr.first == "POSITION"; });
+        if (posIt != primitive.attributes.end()) {
+            auto& accessor = asset->accessors[posIt->second];
+            vertices.resize(accessor.count);
+            std::size_t i = 0;
+            fastgltf::iterateAccessor<glm::vec3>(asset.get(), accessor, [&](glm::vec3 pos) {
+                vertices[i++].Position = pos;
+            });
+        }
+
+        // Extract normals
+        auto normIt = std::find_if(primitive.attributes.begin(), primitive.attributes.end(),
+            [](const auto& attr) { return attr.first == "NORMAL"; });
+        if (normIt != primitive.attributes.end()) {
+            auto& accessor = asset->accessors[normIt->second];
+            std::size_t i = 0;
+            fastgltf::iterateAccessor<glm::vec3>(asset.get(), accessor, [&](glm::vec3 norm) {
+                vertices[i++].Normal = norm;
+            });
+        }
+
+        // Extract UVs
+        auto uvIt = std::find_if(primitive.attributes.begin(), primitive.attributes.end(),
+            [](const auto& attr) { return attr.first == "TEXCOORD_0"; });
+        if (uvIt != primitive.attributes.end()) {
+            auto& accessor = asset->accessors[uvIt->second];
+            std::size_t i = 0;
+            fastgltf::iterateAccessor<glm::vec2>(asset.get(), accessor, [&](glm::vec2 uv) {
+                vertices[i++].TexCoord = uv;
+            });
+        }
+    }
+} // Osiris

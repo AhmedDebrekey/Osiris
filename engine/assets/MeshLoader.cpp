@@ -78,5 +78,31 @@ namespace Osiris {
                 vertices[i++].TexCoord = uv;
             });
         }
+
+        // Upload to GPU
+        BufferDesc vertexBufferDesc = {
+            .size       = sizeof(Vertex) * vertices.size(),
+            .usage      = BufferUsage::Vertex,
+            .cpuVisible = false,
+        };
+
+        BufferDesc indexBufferDesc = {
+            .size       = sizeof(uint32_t) * indices.size(),
+            .usage      = BufferUsage::Index,
+            .cpuVisible = false,
+        };
+
+        BufferHandle vertexBuffer = rhi->CreateBuffer(vertexBufferDesc);
+        rhi->UploadBufferData(vertexBuffer, vertices.data(), sizeof(Vertex) * vertices.size());
+
+        BufferHandle indexBuffer = rhi->CreateBuffer(indexBufferDesc);
+        rhi->UploadBufferData(indexBuffer, indices.data(), sizeof(uint32_t) * indices.size());
+
+        return Mesh {
+            .vertexBuffer = vertexBuffer,
+            .indexBuffer  = indexBuffer,
+            .vertexCount  = static_cast<uint32_t>(vertices.size()),
+            .indexCount   = static_cast<uint32_t>(indices.size()),
+        };
     }
 } // Osiris

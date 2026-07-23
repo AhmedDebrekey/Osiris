@@ -37,6 +37,15 @@ int main() {
         engine.BeginFrame();
         camera.Update(*engine.GetInput(), deltaTime);
         engine.GetRHI()->UpdateCamera(camera.GetViewMatrix(), camera.GetProjectionMatrix());
+
+        // First box
+        engine.GetRHI()->SetModelMatrix(glm::mat4(1.0f));
+        engine.GetRHI()->DrawIndexed(Box.indexCount);
+
+        // Second box offset to the right
+        engine.GetRHI()->SetModelMatrix(glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.0f, 0.0f)));
+        engine.GetRHI()->DrawIndexed(Box.indexCount);
+
         engine.EndFrame();
     }
     engine.Shutdown();

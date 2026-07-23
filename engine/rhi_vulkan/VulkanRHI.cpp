@@ -176,20 +176,45 @@ namespace Osiris {
     }
 
     void VulkanRHI::EndFrame() {
+        const VkCommandBuffer commandBuffer = m_Frames.at(m_CurrentFrame).commandBuffer;
+
+        vkCmdEndRendering(commandBuffer);
+
+        VkImageMemoryBarrier presentBarrier = {
+            .sType         = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_NONE,
+            .oldLayout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .newLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            .image         = m_SwapChain.swapChainImages[m_ImageIndex],
+            .subresourceRange = {
+                .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel   = 0,
+                .levelCount     = 1,
+                .baseArrayLayer = 0,
+                .layerCount     = 1
+            },
+        };
+
+        vkCmdPipelineBarrier(commandBuffer,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &presentBarrier);
+
+        vkEndCommandBuffer(commandBuffer);
 
         VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSubmitInfo submitInfo{
-            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &m_ImageAvailableSemaphores[m_CurrentFrame],
-            .pWaitDstStageMask = &waitStage,
-            .commandBufferCount = 1,
-            .pCommandBuffers = &m_Frames[m_CurrentFrame].commandBuffer,
+            .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .waitSemaphoreCount   = 1,
+            .pWaitSemaphores      = &m_ImageAvailableSemaphores[m_CurrentFrame],
+            .pWaitDstStageMask    = &waitStage,
+            .commandBufferCount   = 1,
+            .pCommandBuffers      = &m_Frames[m_CurrentFrame].commandBuffer,
             .signalSemaphoreCount = 1,
-            .pSignalSemaphores = &m_RenderFinishedSemaphores.at(m_ImageIndex),
+            .pSignalSemaphores    = &m_RenderFinishedSemaphores.at(m_ImageIndex),
         };
         vkQueueSubmit(m_Device.graphicsQueue, 1, &submitInfo, m_Frames[m_CurrentFrame].inFlightFence);
-
     }
 
     void VulkanRHI::Present() {
@@ -328,6 +353,23 @@ namespace Osiris {
     }
 
     void VulkanRHI::DrawIndexed(uint32_t indexCount) {
+        VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
+
+        vkCmdPushConstants(cmd, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT,
+            0, sizeof(glm::mat4), &m_ModelMatrix);
+
+        if (m_BoundMesh.vertexBuffer.IsValid()) {
+            const VkBuffer vertexBuffers[] = { m_Buffers[m_BoundMesh.vertexBuffer.id].buffer };
+            constexpr VkDeviceSize offsets[] = { 0 };
+            vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
+        }
+
+        if (m_BoundMesh.indexBuffer.IsValid()) {
+            vkCmdBindIndexBuffer(cmd, m_Buffers[m_BoundMesh.indexBuffer.id].buffer, 0, VK_INDEX_TYPE_UINT32);
+            vkCmdDrawIndexed(cmd, indexCount, 1, 0, 0, 0);
+        } else {
+            vkCmdDraw(cmd, m_BoundMesh.vertexCount, 1, 0, 0);
+        }
     }
 
     void VulkanRHI::Dispatch(uint32_t x, uint32_t y, uint32_t z) {
@@ -1036,7 +1078,7 @@ namespace Osiris {
         vkCmdBeginRendering(commandBuffer, &renderingInfo);
 
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicsPipeline);
-        vkCmdPushConstants(commandBuffer, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &m_ModelMatrix);
+        //vkCmdPushConstants(commandBuffer, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &m_ModelMatrix);
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0, 1, &m_DescriptorSet, 0, nullptr);
 
         VkViewport viewport = {
@@ -1055,33 +1097,6 @@ namespace Osiris {
         };
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        if (m_BoundMesh.vertexBuffer.IsValid()) {
-            const VkBuffer vertexBuffers[] = { m_Buffers[m_BoundMesh.vertexBuffer.id].buffer };
-            constexpr VkDeviceSize offsets[]   = { 0 };
-            vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-        }
-
-        if (m_BoundMesh.indexBuffer.IsValid()) {
-            const VkBuffer indexBuffer = m_Buffers[m_BoundMesh.indexBuffer.id].buffer;
-            vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
-            vkCmdDrawIndexed(commandBuffer, m_BoundMesh.indexCount, 1, 0, 0, 0);
-        }
-        else
-            vkCmdDraw(commandBuffer, m_BoundMesh.vertexCount, 1, 0, 0);
-
-        vkCmdEndRendering(commandBuffer);
-
-        imageMemoryBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        imageMemoryBarrier.dstAccessMask = VK_ACCESS_NONE;
-        imageMemoryBarrier.oldLayout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        imageMemoryBarrier.newLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-        vkCmdPipelineBarrier(commandBuffer,
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-        0, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
-
-        vkEndCommandBuffer(commandBuffer);
     }
 
     void VulkanRHI::RecreateSwapChain() {

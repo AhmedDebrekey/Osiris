@@ -10,6 +10,8 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "assets/TextureLoader.h"
+
 
 int main() {
     std::cout << "Osiris Engine" << std::endl;
@@ -20,7 +22,10 @@ int main() {
         return -1;
     }
 
-    Osiris::Mesh Box = Osiris::MeshLoader::LoadFromGLTF("C:/Dev/Osiris/assets/models/BoxGLTF/Box.gltf", engine.GetRHI());
+    Osiris::Mesh Box = Osiris::MeshLoader::LoadFromGLTF("C:/Dev/Osiris/assets/models/BoxTexturedGLTF/BoxTextured.gltf", engine.GetRHI());
+    TextureHandle boxTexture = Osiris::TextureLoader::LoadFromFile("C:/Dev/Osiris/assets/textures/box.png", engine.GetRHI());
+    engine.GetRHI()->BindTexture(boxTexture);
+    OSIRIS_INFO("Texture handle id: {}", boxTexture.id);
     engine.GetRHI()->SetModelMatrix(glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.0f, 0.0f)));
     engine.GetRHI()->SetMeshData(Box);
 
@@ -30,6 +35,9 @@ int main() {
     );
     uint64_t lastTime = SDL_GetTicks64();
     float deltaTime = 0.0f;
+
+    float rotation = 0.0f;
+
     while (engine.IsRunning()) {
         uint64_t currentTime = SDL_GetTicks64();
         deltaTime = (currentTime - lastTime) / 1000.0f; // convert ms to seconds
@@ -39,7 +47,8 @@ int main() {
         engine.GetRHI()->UpdateCamera(camera.GetViewMatrix(), camera.GetProjectionMatrix());
 
         // First box
-        engine.GetRHI()->SetModelMatrix(glm::mat4(1.0f));
+        rotation += deltaTime * 45.0f; // 45 degrees per second
+        engine.GetRHI()->SetModelMatrix(glm::rotate(glm::mat4(1.0f), glm::radians(rotation), glm::vec3(0.5f, 1.0f, 0.1f)));
         engine.GetRHI()->DrawIndexed(Box.indexCount);
 
         // Second box offset to the right

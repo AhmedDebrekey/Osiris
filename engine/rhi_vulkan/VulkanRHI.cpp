@@ -132,6 +132,12 @@ namespace Osiris {
             vkDestroyFence(m_Device.logicalDevice, frame.inFlightFence, nullptr);
         }
 
+        for (auto& texture : m_Textures) {
+            vkDestroySampler(m_Device.logicalDevice, texture.sampler, nullptr);
+            vkDestroyImageView(m_Device.logicalDevice, texture.imageView, nullptr);
+            vmaDestroyImage(m_Allocator, texture.image, texture.allocation);
+        }
+
         vkDestroyCommandPool(m_Device.logicalDevice, m_CommandPool, nullptr);
 
         vkDestroyPipeline(m_Device.logicalDevice, m_GraphicsPipeline, nullptr);
@@ -247,36 +253,19 @@ namespace Osiris {
 
         memcpy(staging.allocationInfo.pMappedData, data, size);
 
-        VkCommandBufferBeginInfo beginInfo = {
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-        };
-        vkBeginCommandBuffer(m_Frames[0].commandBuffer, &beginInfo);
+        VkCommandBuffer cmd = BeginOneTimeCommands();
 
         VkBufferCopy copyRegion = {
             .srcOffset = 0,
             .dstOffset = 0,
             .size      = size,
         };
-        vkCmdCopyBuffer(m_Frames[0].commandBuffer,
-            staging.buffer,
-            m_Buffers[handle.id].buffer,
-            1, &copyRegion);
+        vkCmdCopyBuffer(cmd, staging.buffer, m_Buffers[handle.id].buffer, 1, &copyRegion);
 
-        vkEndCommandBuffer(m_Frames[0].commandBuffer);
+        EndOneTimeCommands(cmd);
 
-        VkSubmitInfo submitInfo = {
-            .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .commandBufferCount = 1,
-            .pCommandBuffers    = &m_Frames[0].commandBuffer,
-        };
-        vkQueueSubmit(m_Device.graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
-        vkQueueWaitIdle(m_Device.graphicsQueue);
-
-        // 5. Destroy staging buffer
         DestroyBuffer(stagingHandle);
     }
-
     void VulkanRHI::UploadDynamicBuffer(BufferHandle handle, const void *data, uint64_t size) {
         // TODO: Fix Race condition between CPU and GPU
         memcpy(m_Buffers[handle.id].allocationInfo.pMappedData, data, size);
@@ -323,8 +312,179 @@ namespace Osiris {
         return BufferHandle{ bufferIndex };
     }
 
-    TextureHandle VulkanRHI::CreateTexture(const TextureDesc &) {
-        return TextureHandle();
+    VkCommandBuffer VulkanRHI::BeginOneTimeCommands() {
+        VkCommandBufferAllocateInfo allocInfo = {
+            .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .commandPool        = m_CommandPool,
+            .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = 1,
+        };
+        VkCommandBuffer cmd;
+        vkAllocateCommandBuffers(m_Device.logicalDevice, &allocInfo, &cmd);
+
+        VkCommandBufferBeginInfo beginInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        };
+        vkBeginCommandBuffer(cmd, &beginInfo);
+        return cmd;
+    }
+
+    void VulkanRHI::EndOneTimeCommands(VkCommandBuffer cmd) {
+        vkEndCommandBuffer(cmd);
+
+        VkSubmitInfo submitInfo = {
+            .sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .commandBufferCount = 1,
+            .pCommandBuffers    = &cmd,
+        };
+        vkQueueSubmit(m_Device.graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+        vkQueueWaitIdle(m_Device.graphicsQueue);
+        vkFreeCommandBuffers(m_Device.logicalDevice, m_CommandPool, 1, &cmd);
+    }
+
+    void VulkanRHI::TransitionImageLayout(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout) {
+        VkImageMemoryBarrier barrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .oldLayout = oldLayout,
+            .newLayout = newLayout,
+            .image = image,
+            .subresourceRange = {
+                .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel   = 0,
+                .levelCount     = 1,
+                .baseArrayLayer = 0,
+                .layerCount     = 1,
+            },
+        };
+
+        VkPipelineStageFlags srcStage, dstStage;
+
+        if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+            barrier.srcAccessMask = VK_ACCESS_NONE;
+            barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        } else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        } else {
+            OSIRIS_ERROR("Unsupported layout transition!");
+            return;
+        }
+
+        VkCommandBuffer cmd = BeginOneTimeCommands();
+        vkCmdPipelineBarrier(cmd, srcStage, dstStage,
+            0, 0, nullptr, 0, nullptr, 1, &barrier);
+        EndOneTimeCommands(cmd);
+    }
+
+    TextureHandle VulkanRHI::CreateTexture(const TextureDesc &desc) {
+        // Create image
+        VkImageCreateInfo imageCreateInfo = {
+            .sType       = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .imageType   = VK_IMAGE_TYPE_2D,
+            .format      = VK_FORMAT_R8G8B8A8_UNORM,
+            .extent      = {desc.width, desc.height, 1},
+            .mipLevels   = 1,
+            .arrayLayers = 1,
+            .samples     = VK_SAMPLE_COUNT_1_BIT,
+            .tiling      = VK_IMAGE_TILING_OPTIMAL,
+            .usage       = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        };
+
+        const VmaAllocationCreateInfo allocationCreateInfo = {
+            .usage = VMA_MEMORY_USAGE_GPU_ONLY,
+        };
+
+        VulkanImage textureImage;
+        textureImage.format = VK_FORMAT_R8G8B8A8_UNORM;
+        VK_CHECK(vmaCreateImage(m_Allocator, &imageCreateInfo, &allocationCreateInfo,
+            &textureImage.image, &textureImage.allocation, nullptr));
+
+        // Transition to transfer destination
+        TransitionImageLayout(textureImage.image,
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+        // Upload via staging buffer
+        BufferDesc stagingDesc = {
+            .size       = desc.dataSize,
+            .usage      = BufferUsage::Transfer,
+            .cpuVisible = true,
+        };
+        BufferHandle stagingHandle = CreateBuffer(stagingDesc);
+        memcpy(m_Buffers[stagingHandle.id].allocationInfo.pMappedData, desc.pixels, desc.dataSize);
+
+        VkCommandBuffer cmd = BeginOneTimeCommands();
+
+        VkBufferImageCopy copyRegion = {
+            .bufferOffset      = 0,
+            .bufferRowLength   = 0,
+            .bufferImageHeight = 0,
+            .imageSubresource  = {
+                .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                .mipLevel       = 0,
+                .baseArrayLayer = 0,
+                .layerCount     = 1,
+            },
+            .imageOffset = {0, 0, 0},
+            .imageExtent = {desc.width, desc.height, 1},
+        };
+
+        vkCmdCopyBufferToImage(cmd,
+            m_Buffers[stagingHandle.id].buffer,
+            textureImage.image,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            1, &copyRegion);
+
+        EndOneTimeCommands(cmd);
+
+        DestroyBuffer(stagingHandle);
+
+        // Transition to shader readable
+        TransitionImageLayout(textureImage.image,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+        // Create image view
+        VkImageViewCreateInfo viewCreateInfo = {
+            .sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image    = textureImage.image,
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format   = VK_FORMAT_R8G8B8A8_UNORM,
+            .subresourceRange = {
+                .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel   = 0,
+                .levelCount     = 1,
+                .baseArrayLayer = 0,
+                .layerCount     = 1,
+            },
+        };
+        VK_CHECK(vkCreateImageView(m_Device.logicalDevice, &viewCreateInfo, nullptr, &textureImage.imageView));
+
+        // Create sampler
+        VkSamplerCreateInfo samplerInfo = {
+            .sType        = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+            .magFilter    = VK_FILTER_LINEAR,
+            .minFilter    = VK_FILTER_LINEAR,
+            .mipmapMode   = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+            .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .anisotropyEnable = VK_FALSE,
+            .maxAnisotropy    = 1.0f,
+            .compareEnable    = VK_FALSE,
+            .borderColor      = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+            .unnormalizedCoordinates = VK_FALSE,
+        };
+        VK_CHECK(vkCreateSampler(m_Device.logicalDevice, &samplerInfo, nullptr, &textureImage.sampler));
+
+        // Store in slot map
+        m_Textures.push_back(textureImage);
+        return TextureHandle{ static_cast<uint32_t>(m_Textures.size() - 1) };
     }
 
     ShaderHandle VulkanRHI::CreateShader(const ShaderDesc &) {
@@ -344,6 +504,30 @@ namespace Osiris {
     }
 
     void VulkanRHI::DestroyShader(ShaderHandle) {
+    }
+
+    void VulkanRHI::BindTexture(TextureHandle handle) {
+        if (!handle.IsValid()) return;
+
+        VulkanImage& texture = m_Textures[handle.id];
+
+        VkDescriptorImageInfo imageInfo = {
+            .sampler     = texture.sampler,
+            .imageView   = texture.imageView,
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        };
+
+        VkWriteDescriptorSet write = {
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet          = m_DescriptorSet,
+            .dstBinding      = 1,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo      = &imageInfo,
+        };
+
+        vkUpdateDescriptorSets(m_Device.logicalDevice, 1, &write, 0, nullptr);
     }
 
     void VulkanRHI::BindPipeline(PipelineHandle pipeline) {
@@ -835,10 +1019,20 @@ namespace Osiris {
             .descriptorCount = 1,
             .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
         };
+        VkDescriptorSetLayoutBinding samplerBinding = {
+            .binding         = 1,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = 1,
+            .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+        };
+
+        VkDescriptorSetLayoutBinding bindings[] = { descriptorSetLayoutBinding, samplerBinding };
+
+
         VkDescriptorSetLayoutCreateInfo descriptorSetLayoutInfo = {
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            .bindingCount = 1,
-            .pBindings = &descriptorSetLayoutBinding
+            .bindingCount = 2,
+            .pBindings = bindings
         };
         VK_CHECK(vkCreateDescriptorSetLayout(m_Device.logicalDevice, &descriptorSetLayoutInfo, nullptr, &m_DescriptorLayout));
 
@@ -896,16 +1090,15 @@ namespace Osiris {
     }
 
     bool VulkanRHI::CreateDescriptorPool() {
-
-        VkDescriptorPoolSize descriptorPoolSize = {
-            .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 1,
+        VkDescriptorPoolSize poolSizes[] = {
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         1 },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 },
         };
         const VkDescriptorPoolCreateInfo descriptorPoolInfo = {
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
             .maxSets = 1,
-            .poolSizeCount = 1,
-            .pPoolSizes = &descriptorPoolSize,
+            .poolSizeCount = 2,
+            .pPoolSizes = poolSizes,
         };
 
         const VkResult result = vkCreateDescriptorPool(m_Device.logicalDevice, &descriptorPoolInfo, nullptr, &m_DescriptorPool);

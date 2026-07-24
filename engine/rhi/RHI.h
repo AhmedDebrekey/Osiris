@@ -36,9 +36,11 @@ namespace Osiris {
         virtual void DestroyTexture(TextureHandle) = 0;
         virtual void DestroyShader (ShaderHandle)  = 0;
 
+        virtual void BindTexture        (TextureHandle handle)     = 0;
         virtual void BindPipeline       (PipelineHandle pipeline)  = 0;
         virtual void Draw               (uint32_t vertexCount)     = 0;
         virtual void DrawIndexed        (uint32_t indexCount)      = 0;
+
 
         virtual void Dispatch           (uint32_t x, uint32_t y, uint32_t z) = 0;
 

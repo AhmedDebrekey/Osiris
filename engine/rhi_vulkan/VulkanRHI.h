@@ -48,6 +48,8 @@ namespace Osiris {
 
         void DestroyShader(ShaderHandle) override;
 
+        void BindTexture(TextureHandle handle) override;
+
         void BindPipeline(PipelineHandle pipeline) override;
 
         void Draw(uint32_t vertexCount) override;
@@ -86,6 +88,10 @@ namespace Osiris {
 
         VkShaderModule LoadShader(const std::string& shaderPath);
 
+        void TransitionImageLayout(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout);
+        VkCommandBuffer BeginOneTimeCommands();
+        void EndOneTimeCommands(VkCommandBuffer cmd);
+
 
     private:
         uint32_t m_ImageIndex = 0;
@@ -113,6 +119,7 @@ namespace Osiris {
 
         VmaAllocator m_Allocator = VK_NULL_HANDLE;
         std::vector<VulkanBuffer> m_Buffers;
+        std::vector<VulkanImage> m_Textures;
 
         BufferHandle m_CameraUniformBuffer;
 

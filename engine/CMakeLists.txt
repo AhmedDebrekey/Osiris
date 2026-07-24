@@ -14,6 +14,8 @@ add_library(OsirisEngine STATIC
         platform/Input.h
         assets/MeshLoader.cpp
         assets/MeshLoader.h
+        assets/TextureLoader.cpp
+        assets/TextureLoader.h
 )
 
 target_include_directories(OsirisEngine PUBLIC

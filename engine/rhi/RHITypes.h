@@ -51,11 +51,13 @@ struct BufferDesc {
 };
 
 struct TextureDesc {
-    uint32_t      width     = 0;
-    uint32_t      height    = 0;
-    uint32_t      mipLevels = 1;
-    TextureFormat format    = TextureFormat::RGBA8_UNORM;
-    const char*   debugName = nullptr;
+    const void*     pixels = nullptr;
+    uint64_t        dataSize  = 0;
+    uint32_t        width     = 0;
+    uint32_t        height    = 0;
+    uint32_t        mipLevels = 1;
+    TextureFormat   format    = TextureFormat::RGBA8_UNORM;
+    const char*     debugName = nullptr;
 };
 
 struct ShaderDesc {

@@ -195,3 +195,29 @@ add_subdirectory(engine)
 #  Games
 # ============================================================
 add_subdirectory(games/testbed)
+
+# ============================================================
+#  Shader Compilations
+# ============================================================
+find_program(GLSLC glslc HINTS "C:/VulkanSDK/1.4.350.0/Bin")
+
+file(GLOB_RECURSE GLSL_SOURCE_FILES
+        "${CMAKE_SOURCE_DIR}/assets/shaders/*.vert"
+        "${CMAKE_SOURCE_DIR}/assets/shaders/*.frag"
+        "${CMAKE_SOURCE_DIR}/assets/shaders/*.comp"
+)
+
+foreach(GLSL_FILE ${GLSL_SOURCE_FILES})
+    set(SPIRV_FILE "${GLSL_FILE}.spv")
+    add_custom_command(
+            OUTPUT ${SPIRV_FILE}
+            COMMAND ${GLSLC} ${GLSL_FILE} -o ${SPIRV_FILE}
+            DEPENDS ${GLSL_FILE}
+            COMMENT "Compiling shader: ${GLSL_FILE}"
+            VERBATIM
+    )
+    list(APPEND SPIRV_FILES ${SPIRV_FILE})
+endforeach()
+
+add_custom_target(CompileShaders ALL DEPENDS ${SPIRV_FILES})
+add_dependencies(OsirisEngine CompileShaders)

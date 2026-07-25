@@ -16,6 +16,8 @@ add_library(OsirisEngine STATIC
         assets/MeshLoader.h
         assets/TextureLoader.cpp
         assets/TextureLoader.h
+        core/AssetManager.cpp
+        core/AssetManager.h
 )
 
 target_include_directories(OsirisEngine PUBLIC

@@ -11,6 +11,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "assets/TextureLoader.h"
+#include "core/AssetManager.h"
 
 
 int main() {
@@ -22,8 +23,8 @@ int main() {
         return -1;
     }
 
-    Osiris::Mesh Box = Osiris::MeshLoader::LoadFromGLTF("C:/Dev/Osiris/assets/models/BoxTexturedGLTF/BoxTextured.gltf", engine.GetRHI());
-    TextureHandle boxTexture = Osiris::TextureLoader::LoadFromFile("C:/Dev/Osiris/assets/textures/box.png", engine.GetRHI());
+    Osiris::Mesh Box = Osiris::MeshLoader::LoadFromGLTF(Osiris::AssetManager::GetPath("models/BoxTexturedGLTF/BoxTextured.gltf"), engine.GetRHI());
+    TextureHandle boxTexture = Osiris::TextureLoader::LoadFromFile(Osiris::AssetManager::GetPath("textures/box.png"), engine.GetRHI());
     engine.GetRHI()->BindTexture(boxTexture);
     OSIRIS_INFO("Texture handle id: {}", boxTexture.id);
     engine.GetRHI()->SetModelMatrix(glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.0f, 0.0f)));

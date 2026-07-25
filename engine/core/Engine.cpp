@@ -1,5 +1,6 @@
 #include "Engine.h"
 
+#include "AssetManager.h"
 #include "rhi_vulkan/VulkanRHI.h"
 
 namespace Osiris {
@@ -30,6 +31,8 @@ namespace Osiris {
             OSIRIS_ERROR("Failed to initialize RHI!");
             return false;
         }
+
+        AssetManager::SetAssetRoot("assets");
 
         return true;
     }

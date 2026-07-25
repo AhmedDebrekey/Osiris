@@ -510,6 +510,7 @@ namespace Osiris {
         if (!handle.IsValid()) return;
         if (handle.id == m_BoundTexture.id) return; // already bound, skip
         m_BoundTexture = handle;
+        vkQueueWaitIdle(m_Device.graphicsQueue); // wait for GPU to finish
 
         VulkanImage& texture = m_Textures[handle.id];
 

@@ -1,0 +1,25 @@
+{
+  "name": "level_01",
+  "entities": [
+    {
+      "name": "Crate_01",
+      "transform": {
+        "position": [0.0, 0.0, 0.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale":    [1.0, 1.0, 1.0]
+      },
+      "mesh":    "models/BoxTexturedGLTF/BoxTextured.gltf",
+      "texture": "textures/box.png"
+    },
+    {
+      "name": "Crate_02",
+      "transform": {
+        "position": [2.0, 0.0, 0.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale":    [1.0, 1.0, 1.0]
+      },
+      "mesh":    "models/BoxTexturedGLTF/BoxTextured.gltf",
+      "texture": "textures/box.png"
+    }
+  ]
+}

@@ -23,6 +23,8 @@ add_library(OsirisEngine STATIC
         scene/Scene.cpp
         scene/Scene.h
         scene/Entity.h
+        assets/SceneLoader.cpp
+        assets/SceneLoader.h
 )
 
 target_include_directories(OsirisEngine PUBLIC

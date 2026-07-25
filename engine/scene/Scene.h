@@ -8,6 +8,7 @@
 #include <entt/entt.hpp>
 #include "Entity.h"
 #include "Components.h"
+#include "core/Engine.h"
 
 namespace Osiris {
     class Camera;
@@ -18,6 +19,9 @@ namespace Osiris {
         Entity CreateEntity(const std::string& name);
         void Update(float deltaTime);
         void Render(IRHI* rhi, const Camera& camera);
+
+        void PreRender(IRHI * irhi);
+
     private:
         friend class Entity;
         entt::registry m_Registry;

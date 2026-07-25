@@ -29,4 +29,11 @@ namespace Osiris {
         }
     }
 
+    void Scene::PreRender(IRHI *rhi) {
+        auto view = m_Registry.view<MaterialComponent>();
+        for (auto entity : view) {
+            auto& material = view.get<MaterialComponent>(entity);
+            rhi->BindTexture(material.albedo);
+        }
+    }
 } // Osiris

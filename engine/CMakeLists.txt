@@ -18,6 +18,11 @@ add_library(OsirisEngine STATIC
         assets/TextureLoader.h
         core/AssetManager.cpp
         core/AssetManager.h
+        scene/Components.h
+        scene/Components.cpp
+        scene/Scene.cpp
+        scene/Scene.h
+        scene/Entity.h
 )
 
 target_include_directories(OsirisEngine PUBLIC

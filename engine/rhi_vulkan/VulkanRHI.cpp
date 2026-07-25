@@ -508,6 +508,8 @@ namespace Osiris {
 
     void VulkanRHI::BindTexture(TextureHandle handle) {
         if (!handle.IsValid()) return;
+        if (handle.id == m_BoundTexture.id) return; // already bound, skip
+        m_BoundTexture = handle;
 
         VulkanImage& texture = m_Textures[handle.id];
 

@@ -124,6 +124,7 @@ namespace Osiris {
         BufferHandle m_CameraUniformBuffer;
 
         Mesh m_BoundMesh;
+        TextureHandle m_BoundTexture;
         glm::mat4 m_ModelMatrix = glm::mat4(1.0f);
     };
 } // Osiris

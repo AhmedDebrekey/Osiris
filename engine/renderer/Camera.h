@@ -17,8 +17,8 @@ namespace Osiris
             float aspect_ratio = 16.0f/9.0f, float fov = 60.0f, float z_near = 0.1f, float z_far = 100.0f);
         ~Camera();
 
-        glm::mat4 GetViewMatrix();
-        glm::mat4 GetProjectionMatrix();
+        glm::mat4 GetViewMatrix() const;
+        glm::mat4 GetProjectionMatrix() const;
         void Update(const Input& input, float deltaTime);
 
     private:

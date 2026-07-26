@@ -14,12 +14,19 @@ namespace Osiris
         glm::vec2 TexCoord;
     };
 
+    struct AABB {
+        glm::vec3 min = glm::vec3( std::numeric_limits<float>::max());
+        glm::vec3 max = glm::vec3(-std::numeric_limits<float>::max());
+    };
+
     struct Mesh {
         BufferHandle vertexBuffer   = BufferHandle();
         BufferHandle indexBuffer    = BufferHandle();
         uint32_t     vertexCount    = 0;
         uint32_t     indexCount     = 0;
+        AABB bounds;
     };
+
 }
 
 #endif //OSIRIS_MESHTYPE_H

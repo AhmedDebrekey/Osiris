@@ -30,6 +30,7 @@ namespace Osiris {
 
         std::vector<Vertex> vertices;
         std::vector<uint32_t> indices;
+        AABB bounds;
 
         // Get the first mesh's first primitive
         auto& mesh = asset->meshes[0];
@@ -51,6 +52,11 @@ namespace Osiris {
             fastgltf::iterateAccessor<glm::vec3>(asset.get(), accessor, [&](glm::vec3 pos) {
                 vertices[i++].Position = pos;
             });
+        }
+
+        for (const auto& vertex : vertices) {
+            bounds.min = glm::min(bounds.min, vertex.Position);
+            bounds.max = glm::max(bounds.max, vertex.Position);
         }
 
         // Extract indices
@@ -123,6 +129,7 @@ namespace Osiris {
             .indexBuffer  = indexBuffer,
             .vertexCount  = static_cast<uint32_t>(vertices.size()),
             .indexCount   = static_cast<uint32_t>(indices.size()),
+            .bounds       = bounds,
         };
     }
 } // Osiris

@@ -4,6 +4,8 @@
 
 #include "Scene.h"
 
+#include "renderer/Frustum.h"
+#include "renderer/Camera.h"
 #include "rhi/RHI.h"
 
 namespace Osiris {
@@ -15,18 +17,30 @@ namespace Osiris {
         return entity;
     }
 
-    void Scene::Render(IRHI *rhi, const Camera &camera) {
-        auto view = m_Registry.view<TransformComponent, MeshComponent, MaterialComponent>();
+    void Scene::Render(IRHI* rhi, const Camera& camera) {
+        const Frustum frustum = Frustum::FromViewProjection(
+            camera.GetProjectionMatrix() * camera.GetViewMatrix()
+        );
+
+        uint32_t drawCalls = 0;
+        uint32_t culled = 0;
+
+        const auto view = m_Registry.view<TransformComponent, MeshComponent, MaterialComponent>();
         for (auto entity : view) {
             auto& transform = view.get<TransformComponent>(entity);
             auto& mesh      = view.get<MeshComponent>(entity);
             auto& material  = view.get<MaterialComponent>(entity);
 
-            rhi->SetModelMatrix(transform.GetModelMatrix());
+            glm::mat4 model = transform.GetModelMatrix();
+            if (!frustum.IsVisible(mesh.mesh.bounds, model)) {
+                culled++;
+                continue;
+            }
+            drawCalls++;
+            rhi->SetModelMatrix(model);
             rhi->SetMeshData(mesh.mesh);
             rhi->BindMaterial(material.material);
             rhi->DrawIndexed(mesh.mesh.indexCount);
         }
-    }
-    
+    //OSIRIS_INFO("Draw calls: {} Culled: {}", drawCalls, culled);    }
 } // Osiris

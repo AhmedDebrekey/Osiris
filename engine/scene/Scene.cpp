@@ -42,5 +42,7 @@ namespace Osiris {
             rhi->BindMaterial(material.material);
             rhi->DrawIndexed(mesh.mesh.indexCount);
         }
-    //OSIRIS_INFO("Draw calls: {} Culled: {}", drawCalls, culled);    }
+        //OSIRIS_INFO("Draw calls: {} Culled: {}", drawCalls, culled);
+    }
+
 } // Osiris

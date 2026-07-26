@@ -41,7 +41,6 @@ int main() {
         uint64_t currentTime = SDL_GetTicks64();
         deltaTime = (currentTime - lastTime) / 1000.0f; // convert ms to seconds
         lastTime = currentTime;
-        scene.PreRender(engine.GetRHI()); // bind textures BEFORE BeginFrame
         engine.BeginFrame();
         camera.Update(*engine.GetInput(), deltaTime);
         engine.GetRHI()->UpdateCamera(camera.GetViewMatrix(), camera.GetProjectionMatrix());

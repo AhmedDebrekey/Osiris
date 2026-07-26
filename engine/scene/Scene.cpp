@@ -24,16 +24,9 @@ namespace Osiris {
 
             rhi->SetModelMatrix(transform.GetModelMatrix());
             rhi->SetMeshData(mesh.mesh);
-            rhi->BindTexture(material.albedo);
+            rhi->BindMaterial(material.material);
             rhi->DrawIndexed(mesh.mesh.indexCount);
         }
     }
-
-    void Scene::PreRender(IRHI *rhi) {
-        auto view = m_Registry.view<MaterialComponent>();
-        for (auto entity : view) {
-            auto& material = view.get<MaterialComponent>(entity);
-            rhi->BindTexture(material.albedo);
-        }
-    }
+    
 } // Osiris

@@ -14,6 +14,19 @@
 
 
 namespace Osiris {
+
+    template<typename T>
+    uint32_t AllocateSlot(std::vector<T>& slots, const T& item, auto isNull) {
+        for (uint32_t i = 0; i < slots.size(); i++) {
+            if (isNull(slots[i])) {
+                slots[i] = item;
+                return i;
+            }
+        }
+        slots.push_back(item);
+        return static_cast<uint32_t>(slots.size() - 1);
+    }
+
     void VulkanRHI::Configure(const VulkanContextDesc &desc) {
         m_Desc = desc;
     }
@@ -307,7 +320,9 @@ namespace Osiris {
 
 
 
-        uint32_t bufferIndex = AllocateBufferSlot(vulkanBuffer);
+        uint32_t bufferIndex = AllocateSlot(m_Buffers, vulkanBuffer, [](const VulkanBuffer& b) {
+            return b.buffer == VK_NULL_HANDLE;
+        });
 
         return BufferHandle{ bufferIndex };
     }
@@ -483,12 +498,50 @@ namespace Osiris {
         VK_CHECK(vkCreateSampler(m_Device.logicalDevice, &samplerInfo, nullptr, &textureImage.sampler));
 
         // Store in slot map
-        m_Textures.push_back(textureImage);
-        return TextureHandle{ static_cast<uint32_t>(m_Textures.size() - 1) };
+        uint32_t index = AllocateSlot(m_Textures, textureImage,
+            [](const VulkanImage& t) { return t.image == VK_NULL_HANDLE; });
+        return TextureHandle{ index };
     }
 
-    ShaderHandle VulkanRHI::CreateShader(const ShaderDesc &) {
+    ShaderHandle VulkanRHI::CreateShader(const ShaderDesc& desc) {
         return ShaderHandle();
+    }
+
+    MaterialHandle VulkanRHI::CreateMaterial(const MaterialDesc& desc) {
+        // 1. Allocate a descriptor set from the pool using the material layout
+        VkDescriptorSet materialSet;
+        VkDescriptorSetAllocateInfo allocInfo = {
+            .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .descriptorPool     = m_DescriptorPool,
+            .descriptorSetCount = 1,
+            .pSetLayouts        = &m_MaterialDescriptorLayout,
+        };
+        VK_CHECK(vkAllocateDescriptorSets(m_Device.logicalDevice, &allocInfo, &materialSet));
+
+        // 2. Write the texture into it
+        VulkanImage& texture = m_Textures[desc.albedo.id];
+        VkDescriptorImageInfo imageInfo = {
+            .sampler     = texture.sampler,
+            .imageView   = texture.imageView,
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        };
+        VkWriteDescriptorSet write = {
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet          = materialSet,
+            .dstBinding      = 0,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo      = &imageInfo,
+        };
+        vkUpdateDescriptorSets(m_Device.logicalDevice, 1, &write, 0, nullptr);
+
+        // 3. Store and return handle
+        VulkanMaterial material;
+        material.descriptorSet = materialSet;
+        uint32_t index = AllocateSlot(m_Materials, material,
+        [](const VulkanMaterial& m) { return m.descriptorSet == VK_NULL_HANDLE; });
+        return MaterialHandle { index } ;
     }
 
     void VulkanRHI::DestroyBuffer(BufferHandle handle) {
@@ -506,31 +559,18 @@ namespace Osiris {
     void VulkanRHI::DestroyShader(ShaderHandle) {
     }
 
-    void VulkanRHI::BindTexture(TextureHandle handle) {
+    void VulkanRHI::BindMaterial(MaterialHandle handle) {
         if (!handle.IsValid()) return;
-        if (handle.id == m_BoundTexture.id) return; // already bound, skip
-        m_BoundTexture = handle;
-        vkQueueWaitIdle(m_Device.graphicsQueue); // wait for GPU to finish
-
-        VulkanImage& texture = m_Textures[handle.id];
-
-        VkDescriptorImageInfo imageInfo = {
-            .sampler     = texture.sampler,
-            .imageView   = texture.imageView,
-            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        };
-
-        VkWriteDescriptorSet write = {
-            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet          = m_DescriptorSet,
-            .dstBinding      = 1,
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo      = &imageInfo,
-        };
-
-        vkUpdateDescriptorSets(m_Device.logicalDevice, 1, &write, 0, nullptr);
+        VkDescriptorSet materialSet = m_Materials[handle.id].descriptorSet;
+        vkCmdBindDescriptorSets(
+            m_Frames[m_CurrentFrame].commandBuffer,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            m_PipelineLayout,
+            1,        // ← set index 1 (material set)
+            1,
+            &materialSet,
+            0, nullptr
+        );
     }
 
     void VulkanRHI::BindPipeline(PipelineHandle pipeline) {
@@ -1016,28 +1056,34 @@ namespace Osiris {
             .pDynamicStates = dynamicState,
         };
 
-        VkDescriptorSetLayoutBinding descriptorSetLayoutBinding = {
-            .binding = 0,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        VkDescriptorSetLayoutBinding cameraBinding = {
+            .binding         = 0,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
             .descriptorCount = 1,
-            .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+            .stageFlags      = VK_SHADER_STAGE_VERTEX_BIT,
         };
-        VkDescriptorSetLayoutBinding samplerBinding = {
-            .binding         = 1,
+        VkDescriptorSetLayoutCreateInfo frameLayoutInfo = {
+            .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .bindingCount = 1,
+            .pBindings    = &cameraBinding,
+        };
+        VK_CHECK(vkCreateDescriptorSetLayout(m_Device.logicalDevice, &frameLayoutInfo, nullptr, &m_FrameDescriptorLayout));
+
+        VkDescriptorSetLayoutBinding textureBinding = {
+            .binding         = 0,
             .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
             .descriptorCount = 1,
             .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
         };
-
-        VkDescriptorSetLayoutBinding bindings[] = { descriptorSetLayoutBinding, samplerBinding };
-
-
-        VkDescriptorSetLayoutCreateInfo descriptorSetLayoutInfo = {
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            .bindingCount = 2,
-            .pBindings = bindings
+        VkDescriptorSetLayoutCreateInfo materialLayoutInfo = {
+            .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .bindingCount = 1,
+            .pBindings    = &textureBinding,
         };
-        VK_CHECK(vkCreateDescriptorSetLayout(m_Device.logicalDevice, &descriptorSetLayoutInfo, nullptr, &m_DescriptorLayout));
+        VK_CHECK(vkCreateDescriptorSetLayout(m_Device.logicalDevice, &materialLayoutInfo, nullptr, &m_MaterialDescriptorLayout));
+
+        VkDescriptorSetLayout layouts[] = { m_FrameDescriptorLayout, m_MaterialDescriptorLayout };
+
 
         VkPushConstantRange pushConstantRange = {
             .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
@@ -1047,8 +1093,8 @@ namespace Osiris {
 
         VkPipelineLayoutCreateInfo pipelineLayoutInfo = {
             .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-            .setLayoutCount = 1,
-            .pSetLayouts = &m_DescriptorLayout,
+            .setLayoutCount = 2,
+            .pSetLayouts = layouts,
             .pushConstantRangeCount = 1,
             .pPushConstantRanges    = &pushConstantRange,
         };
@@ -1095,11 +1141,11 @@ namespace Osiris {
     bool VulkanRHI::CreateDescriptorPool() {
         VkDescriptorPoolSize poolSizes[] = {
             { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         1 },
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1 },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
         };
         const VkDescriptorPoolCreateInfo descriptorPoolInfo = {
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-            .maxSets = 1,
+            .maxSets = 1001,
             .poolSizeCount = 2,
             .pPoolSizes = poolSizes,
         };
@@ -1116,7 +1162,7 @@ namespace Osiris {
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
             .descriptorPool = m_DescriptorPool,
             .descriptorSetCount = 1,
-            .pSetLayouts = &m_DescriptorLayout,
+            .pSetLayouts = &m_FrameDescriptorLayout,
         };
 
         VkResult result = vkAllocateDescriptorSets(m_Device.logicalDevice, &descriptorSetAllocateInfo, &m_DescriptorSet);
@@ -1274,8 +1320,10 @@ namespace Osiris {
         vkCmdBeginRendering(commandBuffer, &renderingInfo);
 
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicsPipeline);
+        vkCmdBindDescriptorSets(m_Frames.at(m_CurrentFrame).commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+    m_PipelineLayout, 0, 1, &m_DescriptorSet, 0, nullptr);
         //vkCmdPushConstants(commandBuffer, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &m_ModelMatrix);
-        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0, 1, &m_DescriptorSet, 0, nullptr);
+        //vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0, 1, &m_DescriptorSet, 0, nullptr);
 
         VkViewport viewport = {
             .x        = 0.0f,
@@ -1330,14 +1378,4 @@ namespace Osiris {
         }
     }
 
-    uint32_t VulkanRHI::AllocateBufferSlot(const VulkanBuffer &buffer) {
-        for (uint32_t i = 0; i < m_Buffers.size(); i++) {
-            if (m_Buffers.at(i).buffer == VK_NULL_HANDLE) {
-                m_Buffers.at(i) = buffer;
-                return  i;
-            }
-        }
-        m_Buffers.push_back(buffer);
-        return m_Buffers.size() - 1;
-    }
 } // Osiris

@@ -23,7 +23,7 @@ namespace Osiris {
     };
 
     struct MaterialComponent {
-        TextureHandle albedo;
+        MaterialHandle material;
         // more later for PBR
     };
 

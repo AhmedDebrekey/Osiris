@@ -42,13 +42,15 @@ namespace Osiris {
 
         ShaderHandle CreateShader(const ShaderDesc &) override;
 
+        MaterialHandle CreateMaterial(const MaterialDesc &) override;
+
         void DestroyBuffer(BufferHandle) override;
 
         void DestroyTexture(TextureHandle) override;
 
         void DestroyShader(ShaderHandle) override;
 
-        void BindTexture(TextureHandle handle) override;
+        void BindMaterial(MaterialHandle handle) override;
 
         void BindPipeline(PipelineHandle pipeline) override;
 
@@ -84,8 +86,6 @@ namespace Osiris {
 
         void RecreateSwapChain();
 
-        uint32_t AllocateBufferSlot(const VulkanBuffer& buffer);
-
         VkShaderModule LoadShader(const std::string& shaderPath);
 
         void TransitionImageLayout(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout);
@@ -96,14 +96,15 @@ namespace Osiris {
     private:
         uint32_t m_ImageIndex = 0;
 
-        VkInstance              m_Instance          = VK_NULL_HANDLE;
-        VkSurfaceKHR            m_Surface           = VK_NULL_HANDLE;
-        VkPipelineLayout        m_PipelineLayout    = VK_NULL_HANDLE;
-        VkPipeline              m_GraphicsPipeline  = VK_NULL_HANDLE;
-        VkCommandPool           m_CommandPool       = VK_NULL_HANDLE;
-        VkDescriptorSetLayout   m_DescriptorLayout  = VK_NULL_HANDLE;
-        VkDescriptorPool        m_DescriptorPool    = VK_NULL_HANDLE;
-        VkDescriptorSet         m_DescriptorSet     = VK_NULL_HANDLE;
+        VkInstance              m_Instance                  = VK_NULL_HANDLE;
+        VkSurfaceKHR            m_Surface                   = VK_NULL_HANDLE;
+        VkPipelineLayout        m_PipelineLayout            = VK_NULL_HANDLE;
+        VkPipeline              m_GraphicsPipeline          = VK_NULL_HANDLE;
+        VkCommandPool           m_CommandPool               = VK_NULL_HANDLE;
+        VkDescriptorSetLayout   m_FrameDescriptorLayout     = VK_NULL_HANDLE;
+        VkDescriptorSetLayout   m_MaterialDescriptorLayout  = VK_NULL_HANDLE;
+        VkDescriptorPool        m_DescriptorPool            = VK_NULL_HANDLE;
+        VkDescriptorSet         m_DescriptorSet             = VK_NULL_HANDLE;
 
         std::array<VkSemaphore, MAX_FRAMES_IN_FLIGHT> m_ImageAvailableSemaphores;
         std::vector<VkSemaphore> m_RenderFinishedSemaphores;
@@ -120,6 +121,7 @@ namespace Osiris {
         VmaAllocator m_Allocator = VK_NULL_HANDLE;
         std::vector<VulkanBuffer> m_Buffers;
         std::vector<VulkanImage> m_Textures;
+        std::vector<VulkanMaterial> m_Materials;
 
         BufferHandle m_CameraUniformBuffer;
 

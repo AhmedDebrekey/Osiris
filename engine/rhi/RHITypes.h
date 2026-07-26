@@ -19,13 +19,14 @@ struct TextureTag  {};
 struct PipelineTag {};
 struct ShaderTag   {};
 struct SamplerTag  {};
+struct MaterialTag {};
 
 using BufferHandle   = Handle<BufferTag>;
 using TextureHandle  = Handle<TextureTag>;
 using PipelineHandle = Handle<PipelineTag>;
 using ShaderHandle   = Handle<ShaderTag>;
 using SamplerHandle  = Handle<SamplerTag>;
-
+using MaterialHandle = Handle<MaterialTag>;
 #include <string>
 
 enum class TextureFormat {
@@ -63,6 +64,10 @@ struct TextureDesc {
 struct ShaderDesc {
     const char* path       = nullptr;
     const char* entryPoint = "main";
+};
+
+struct MaterialDesc {
+    TextureHandle albedo;
 };
 
 #endif //OSIRIS_RHITYPES_H

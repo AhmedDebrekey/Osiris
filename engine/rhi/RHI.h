@@ -28,15 +28,16 @@ namespace Osiris {
 
         virtual void UpdateCamera(const glm::mat4& view, const glm::mat4& projection) = 0;
 
-        virtual BufferHandle    CreateBuffer(const BufferDesc&)     = 0;
-        virtual TextureHandle   CreateTexture(const TextureDesc&)   = 0;
-        virtual ShaderHandle    CreateShader(const ShaderDesc&)     = 0;
+        virtual BufferHandle    CreateBuffer(const BufferDesc&)          = 0;
+        virtual TextureHandle   CreateTexture(const TextureDesc&)        = 0;
+        virtual ShaderHandle    CreateShader(const ShaderDesc&)          = 0;
+        virtual MaterialHandle  CreateMaterial(const MaterialDesc& desc) = 0;
 
         virtual void DestroyBuffer (BufferHandle)  = 0;
         virtual void DestroyTexture(TextureHandle) = 0;
         virtual void DestroyShader (ShaderHandle)  = 0;
 
-        virtual void BindTexture        (TextureHandle handle)     = 0;
+        virtual void BindMaterial       (MaterialHandle handle)    = 0;
         virtual void BindPipeline       (PipelineHandle pipeline)  = 0;
         virtual void Draw               (uint32_t vertexCount)     = 0;
         virtual void DrawIndexed        (uint32_t indexCount)      = 0;

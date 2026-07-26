@@ -79,7 +79,8 @@ namespace Osiris {
                     tex = TextureLoader::LoadFromFile(AssetManager::GetPath(texturePath), rhi);
                     textureCache[texturePath] = tex;
                 }
-                e.AddComponent<MaterialComponent>(tex);
+                MaterialHandle mat = rhi->CreateMaterial({.albedo = tex});
+                e.AddComponent<MaterialComponent>(mat);
             }
         }
     }

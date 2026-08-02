@@ -8,6 +8,10 @@
 #include <fstream>
 #include <SDL_vulkan.h>
 
+#include "imgui.h"
+#include "backends/imgui_impl_sdl2.h"
+#include "backends/imgui_impl_vulkan.h"
+
 #include "VulkanUtils.h"
 #include "core/Log.h"
 #include "renderer/MeshType.h"
@@ -597,6 +601,82 @@ namespace Osiris {
         } else {
             vkCmdDraw(cmd, m_BoundMesh.vertexCount, 1, 0, 0);
         }
+    }
+
+    void VulkanRHI::InitImGui() {
+        const VkDescriptorPoolSize pool_sizes[] = { { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+        { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+        { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 } };
+
+        VkDescriptorPoolCreateInfo pool_info = {};
+        pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        pool_info.maxSets = 1000;
+        pool_info.poolSizeCount = static_cast<uint32_t>(std::size(pool_sizes));
+        pool_info.pPoolSizes = pool_sizes;
+
+
+        VK_CHECK(vkCreateDescriptorPool(m_Device.logicalDevice, &pool_info, nullptr, &m_ImGuiDescriptorPool));
+
+        ImGui::CreateContext();
+
+        // this initializes imgui for SDL
+        ImGui_ImplSDL2_InitForVulkan(m_Desc.windowHandle);
+
+        // this initializes imgui for Vulkan
+        ImGui_ImplVulkan_InitInfo init_info = {};
+        init_info.Instance = m_Instance;
+        init_info.PhysicalDevice = m_Device.physicalDevice;
+        init_info.Device = m_Device.logicalDevice;
+        init_info.Queue = m_Device.graphicsQueue;
+        init_info.DescriptorPool = m_ImGuiDescriptorPool;
+        init_info.MinImageCount = 3;
+        init_info.ImageCount = 3;
+        init_info.UseDynamicRendering = true;
+        init_info.ApiVersion   = VK_API_VERSION_1_4;
+        init_info.QueueFamily  = m_Device.graphicsQueueIndex;
+
+
+        //dynamic rendering parameters for imgui to use
+        init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+#ifdef IMGUI_IMPL_VULKAN_HAS_DYNAMIC_RENDERING
+        init_info.PipelineInfoMain.PipelineRenderingCreateInfo = {
+            .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
+            .colorAttachmentCount    = 1,
+            .pColorAttachmentFormats = &m_SwapChain.swapChainImageFormat,
+            .depthAttachmentFormat   = VK_FORMAT_D32_SFLOAT,
+        };
+#endif
+
+        ImGui_ImplVulkan_Init(&init_info);
+    }
+
+    void VulkanRHI::ShutdownImGui() {
+        ImGui_ImplVulkan_Shutdown();
+        ImGui_ImplSDL2_Shutdown();
+        ImGui::DestroyContext();
+        vkDestroyDescriptorPool(m_Device.logicalDevice, m_ImGuiDescriptorPool, nullptr);
+    }
+
+    void VulkanRHI::BeginImGuiFrame() {
+        ImGui_ImplVulkan_NewFrame();
+        ImGui_ImplSDL2_NewFrame();
+        ImGui::NewFrame();
+    }
+
+    void VulkanRHI::RenderImGui() {
+        ImGui::Render();
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(),
+                                        m_Frames[m_CurrentFrame].commandBuffer);
     }
 
     void VulkanRHI::Dispatch(uint32_t x, uint32_t y, uint32_t z) {

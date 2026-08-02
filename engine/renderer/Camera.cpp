@@ -63,4 +63,12 @@ namespace Osiris
         if (input.IsKeyHeld(SDL_SCANCODE_E))
             m_Position -= m_Up * m_Speed * deltaTime;
     }
+
+    glm::vec3 Camera::GetPosition() const {
+        return m_Position;
+    }
+
+    float& Camera::GetSpeed() {
+        return m_Speed;
+    }
 }

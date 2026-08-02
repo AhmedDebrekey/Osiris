@@ -17,13 +17,14 @@ namespace Osiris {
         return entity;
     }
 
+
     void Scene::Render(IRHI* rhi, const Camera& camera) {
         const Frustum frustum = Frustum::FromViewProjection(
             camera.GetProjectionMatrix() * camera.GetViewMatrix()
         );
 
-        uint32_t drawCalls = 0;
-        uint32_t culled = 0;
+        m_DrawCallCount = 0;
+        m_CulledCount = 0;
 
         const auto view = m_Registry.view<TransformComponent, MeshComponent, MaterialComponent>();
         for (auto entity : view) {
@@ -33,10 +34,10 @@ namespace Osiris {
 
             glm::mat4 model = transform.GetModelMatrix();
             if (!frustum.IsVisible(mesh.mesh.bounds, model)) {
-                culled++;
+                m_CulledCount++;
                 continue;
             }
-            drawCalls++;
+            m_DrawCallCount++;
             rhi->SetModelMatrix(model);
             rhi->SetMeshData(mesh.mesh);
             rhi->BindMaterial(material.material);
@@ -45,4 +46,15 @@ namespace Osiris {
         //OSIRIS_INFO("Draw calls: {} Culled: {}", drawCalls, culled);
     }
 
+    int Scene::GetEntityCount() {
+        return static_cast<int>(m_Registry.view<TagComponent>().size());
+    }
+
+    int Scene::GetDrawCallCount() {
+        return m_DrawCallCount;
+    }
+
+    int Scene::GetCulledCount() {
+        return m_CulledCount;
+    }
 } // Osiris

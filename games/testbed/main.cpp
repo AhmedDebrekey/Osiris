@@ -10,6 +10,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "imgui.h"
 #include "assets/SceneLoader.h"
 #include "assets/TextureLoader.h"
 #include "core/AssetManager.h"
@@ -32,21 +33,46 @@ int main() {
         glm::vec3(0.0f, 0.0f, 2.0f),  // position — 2 units back
         glm::vec3(0.0f, 0.0f, -1.0f)  // looking forward into the scene
     );
-    uint64_t lastTime = SDL_GetTicks64();
-    float deltaTime = 0.0f;
-
-    float rotation = 0.0f;
+    uint64_t lastCounter = SDL_GetPerformanceCounter();
+    const double frequency = static_cast<double>(SDL_GetPerformanceFrequency());
 
     while (engine.IsRunning()) {
-        uint64_t currentTime = SDL_GetTicks64();
-        deltaTime = (currentTime - lastTime) / 1000.0f; // convert ms to seconds
-        lastTime = currentTime;
+        const uint64_t currentCounter = SDL_GetPerformanceCounter();
+
+        float deltaTime = static_cast<float>(
+            (currentCounter - lastCounter) / frequency
+        );
+
+        lastCounter = currentCounter;
+
         engine.BeginFrame();
+
         camera.Update(*engine.GetInput(), deltaTime);
         engine.GetRHI()->UpdateCamera(camera.GetViewMatrix(), camera.GetProjectionMatrix());
 
         scene.Render(engine.GetRHI(), camera);
 
+        // Stats panel
+        ImGui::Begin("Osiris Engine");
+        ImGui::Text("FPS: %.1f", 1.0f / deltaTime);
+        ImGui::Text("Frame time: %.3f ms", deltaTime * 1000.0f);
+        ImGui::Separator();
+
+        // Camera
+        ImGui::Text("Camera Position: %.2f %.2f %.2f",
+            camera.GetPosition().x,
+            camera.GetPosition().y,
+            camera.GetPosition().z);
+        ImGui::SliderFloat("Camera Speed", &camera.GetSpeed(), 0.1f, 20.0f);
+        ImGui::Separator();
+
+        // Scene
+        ImGui::Text("Entities in scene: %d", scene.GetEntityCount());
+        ImGui::Text("Draw calls: %d", scene.GetDrawCallCount());
+        ImGui::Text("Culled: %d", scene.GetCulledCount());
+        ImGui::End();
+
+        engine.GetRHI()->RenderImGui();
         engine.EndFrame();
     }
     engine.Shutdown();

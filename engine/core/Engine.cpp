@@ -34,6 +34,8 @@ namespace Osiris {
 
         AssetManager::SetAssetRoot("assets");
 
+        m_RHI->InitImGui();
+
         return true;
     }
 
@@ -64,6 +66,7 @@ namespace Osiris {
     void Engine::PollEvents() {
         m_Window.PollEvents();
         m_Input.Update();
+        m_RHI->BeginImGuiFrame();
         m_IsRunning = !m_Window.ShouldClose();
     }
 

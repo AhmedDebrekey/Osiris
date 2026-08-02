@@ -22,9 +22,16 @@ namespace Osiris {
 
         void PreRender(IRHI * irhi);
 
+        int GetEntityCount();
+        int GetDrawCallCount();
+        int GetCulledCount();
+
     private:
         friend class Entity;
         entt::registry m_Registry;
+
+        uint32_t m_DrawCallCount;
+        uint32_t m_CulledCount;
     };
     template<typename T, typename... Args>
     T& Entity::AddComponent(Args&&... args) {

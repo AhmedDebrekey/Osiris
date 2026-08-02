@@ -7,6 +7,8 @@
 
 #include "core/Log.h"
 
+#include <backends/imgui_impl_sdl2.h>
+
 namespace Osiris {
 
     bool Window::Initialize(const WindowDesc &desc) {
@@ -41,6 +43,7 @@ namespace Osiris {
     void Window::PollEvents() {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
+            ImGui_ImplSDL2_ProcessEvent(&event);
             switch (event.type)
             {
                 case SDL_QUIT:

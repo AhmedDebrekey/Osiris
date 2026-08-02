@@ -58,6 +58,14 @@ namespace Osiris {
 
         void DrawIndexed(uint32_t indexCount) override;
 
+        void InitImGui() override;
+
+        void ShutdownImGui() override;
+
+        void BeginImGuiFrame() override;
+
+        void RenderImGui() override;
+
         void Dispatch(uint32_t x, uint32_t y, uint32_t z) override;
 
         void UpdateCamera(const glm::mat4 &view, const glm::mat4 &projection) override;
@@ -92,7 +100,6 @@ namespace Osiris {
         VkCommandBuffer BeginOneTimeCommands();
         void EndOneTimeCommands(VkCommandBuffer cmd);
 
-
     private:
         uint32_t m_ImageIndex = 0;
 
@@ -105,6 +112,7 @@ namespace Osiris {
         VkDescriptorSetLayout   m_MaterialDescriptorLayout  = VK_NULL_HANDLE;
         VkDescriptorPool        m_DescriptorPool            = VK_NULL_HANDLE;
         VkDescriptorSet         m_DescriptorSet             = VK_NULL_HANDLE;
+        VkDescriptorPool        m_ImGuiDescriptorPool       = VK_NULL_HANDLE;
 
         std::array<VkSemaphore, MAX_FRAMES_IN_FLIGHT> m_ImageAvailableSemaphores;
         std::vector<VkSemaphore> m_RenderFinishedSemaphores;

@@ -20,6 +20,8 @@ namespace Osiris
         glm::mat4 GetViewMatrix() const;
         glm::mat4 GetProjectionMatrix() const;
         void Update(const Input& input, float deltaTime);
+        glm::vec3 GetPosition() const;
+        float& GetSpeed();
 
     private:
         glm::vec3 m_Position;

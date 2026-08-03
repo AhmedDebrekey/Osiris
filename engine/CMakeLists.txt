@@ -27,6 +27,8 @@ add_library(OsirisEngine STATIC
         assets/SceneLoader.h
         renderer/Frustum.h
         renderer/Frustum.cpp
+        renderer/RenderGraph.cpp
+        renderer/RenderGraph.h
 )
 
 target_include_directories(OsirisEngine PUBLIC

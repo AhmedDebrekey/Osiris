@@ -61,11 +61,17 @@ namespace Osiris {
         void Compile();
         void Execute(VkCommandBuffer cmd);
 
+
         void Reset();
 
     private:
+        void ImportTexture(RGTexture texture, VkImage image, ResourceState initialState);
+
         std::vector<RenderPass> m_Passes;
-        std::vector<int> m_SortedPasses;
+        std::vector<int>        m_SortedPasses;
+
+        std::unordered_map<uint32_t, ResourceState> m_ResourceStates;   // resourceId → current state
+        std::unordered_map<uint32_t, VkImage>       m_Images;           // resourceId → VkImage
     };
 } // Osiris
 

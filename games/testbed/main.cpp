@@ -35,30 +35,6 @@ int main() {
         glm::vec3(0.0f, 0.0f, -1.0f)  // looking forward into the scene
     );
 
-    Osiris::RenderGraph graph;
-    graph.AddPass("ShadowPass", Osiris::PassType::Graphics)
-        .Write({Osiris::RGTexture{0}, Osiris::ResourceState::DepthWrite});
-
-    graph.AddPass("ForwardPass", Osiris::PassType::Graphics)
-        .Read({Osiris::RGTexture{0}, Osiris::ResourceState::ShaderRead})
-        .Write({Osiris::RGTexture{1}, Osiris::ResourceState::ColorWrite});
-
-    graph.AddPass("PresentPass", Osiris::PassType::Graphics)
-        .Read({Osiris::RGTexture{1}, Osiris::ResourceState::Present});
-
-    graph.Compile();
-
-    Osiris::RenderGraph circularGraph;
-    circularGraph.AddPass("PassA", Osiris::PassType::Graphics)
-        .Read({Osiris::RGTexture{0}, Osiris::ResourceState::ShaderRead})
-        .Write({Osiris::RGTexture{1}, Osiris::ResourceState::ColorWrite});
-
-    circularGraph.AddPass("PassB", Osiris::PassType::Graphics)
-        .Read({Osiris::RGTexture{1}, Osiris::ResourceState::ShaderRead})
-        .Write({Osiris::RGTexture{0}, Osiris::ResourceState::ColorWrite});
-
-    circularGraph.Compile();
-
 
     uint64_t lastCounter = SDL_GetPerformanceCounter();
     const double frequency = static_cast<double>(SDL_GetPerformanceFrequency());

@@ -11,6 +11,8 @@
 #include "core/EngineConfig.h"
 #include <vk_mem_alloc.h>
 
+#include "renderer/RenderGraph.h"
+
 namespace Osiris {
     constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 
@@ -122,6 +124,12 @@ namespace Osiris {
         VulkanImage        m_DepthImage;
 
         VulkanContextDesc m_Desc;
+
+        RenderGraph m_RenderGraph;
+        RGTexture m_ColorBufferRG;
+        RGTexture m_DepthBufferRG;
+
+        bool m_FrameStarted = false;
 
         std::array<VulkanFrameData, MAX_FRAMES_IN_FLIGHT> m_Frames;
         uint32_t m_CurrentFrame = 0;

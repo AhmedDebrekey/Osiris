@@ -133,6 +133,9 @@ namespace Osiris {
             return false;
         }
 
+        m_ColorBufferRG = RGTexture{0};
+        m_DepthBufferRG = RGTexture{1};
+
         return true;
     }
 
@@ -185,55 +188,124 @@ namespace Osiris {
 
     void VulkanRHI::BeginFrame() {
         vkWaitForFences(m_Device.logicalDevice, 1, &m_Frames[m_CurrentFrame].inFlightFence, VK_TRUE, UINT64_MAX);
-        vkResetFences(m_Device.logicalDevice, 1, &m_Frames[m_CurrentFrame].inFlightFence);
 
-        const VkResult result = vkAcquireNextImageKHR(m_Device.logicalDevice, m_SwapChain.swapChain, UINT64_MAX, m_ImageAvailableSemaphores[m_CurrentFrame], VK_NULL_HANDLE, &m_ImageIndex);
-        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+        const VkResult acquireResult = vkAcquireNextImageKHR(m_Device.logicalDevice, m_SwapChain.swapChain, UINT64_MAX,
+            m_ImageAvailableSemaphores[m_CurrentFrame], VK_NULL_HANDLE, &m_ImageIndex);
+
+        if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR) {
             RecreateSwapChain();
-        } else if (result != VK_SUCCESS) {
+            return;
+        } else if (acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR) {
             OSIRIS_ERROR("Failed to acquire swap chain image!");
+            return;
         }
 
-        vkResetCommandBuffer(m_Frames.at(m_CurrentFrame).commandBuffer, 0);
-        RecordCommandBuffer(m_Frames.at(m_CurrentFrame).commandBuffer, m_ImageIndex);
+        vkResetFences(m_Device.logicalDevice, 1, &m_Frames[m_CurrentFrame].inFlightFence);
+        vkResetCommandBuffer(m_Frames[m_CurrentFrame].commandBuffer, 0);
+
+        VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
+
+        constexpr VkCommandBufferBeginInfo beginInfo = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        };
+        vkBeginCommandBuffer(cmd, &beginInfo);
+
+        // Render graph handles barriers
+        m_RenderGraph.Reset();
+        m_RenderGraph.ImportTexture(m_ColorBufferRG,
+            m_SwapChain.swapChainImages[m_ImageIndex], ResourceState::Undefined);
+        m_RenderGraph.ImportTexture(m_DepthBufferRG,
+            m_DepthImage.image, ResourceState::Undefined);
+
+        m_RenderGraph.AddPass("ForwardPass", PassType::Graphics)
+            .Write({m_ColorBufferRG, ResourceState::ColorWrite})
+            .Write({m_DepthBufferRG, ResourceState::DepthWrite})
+            .SetExecute(nullptr); // barriers only, draw calls happen externally
+
+        m_RenderGraph.Compile();
+        m_RenderGraph.Execute(cmd);
+
+        // Begin rendering
+        VkRenderingAttachmentInfo colorAttachment = {
+            .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView   = m_SwapChain.swapChainImageViews[m_ImageIndex],
+            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
+            .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
+            .clearValue  = {.color = {0.0f, 0.0f, 0.0f, 1.0f}},
+        };
+
+        VkRenderingAttachmentInfo depthAttachment = {
+            .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView   = m_DepthImage.imageView,
+            .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+            .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
+            .storeOp     = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .clearValue  = {.depthStencil = {1.0f, 0}},
+        };
+
+        const VkRenderingInfo renderingInfo = {
+            .sType                = VK_STRUCTURE_TYPE_RENDERING_INFO,
+            .renderArea           = {.offset = {0, 0}, .extent = m_SwapChain.swapChainExtent},
+            .layerCount           = 1,
+            .colorAttachmentCount = 1,
+            .pColorAttachments    = &colorAttachment,
+            .pDepthAttachment     = &depthAttachment,
+        };
+
+        vkCmdBeginRendering(cmd, &renderingInfo);
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicsPipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+            m_PipelineLayout, 0, 1, &m_DescriptorSet, 0, nullptr);
+
+        VkViewport viewport = {
+            .x = 0.0f, .y = 0.0f,
+            .width    = static_cast<float>(m_SwapChain.swapChainExtent.width),
+            .height   = static_cast<float>(m_SwapChain.swapChainExtent.height),
+            .minDepth = 0.0f,
+            .maxDepth = 1.0f,
+        };
+        vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+        VkRect2D scissor = {
+            .offset = {0, 0},
+            .extent = m_SwapChain.swapChainExtent,
+        };
+        vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+        m_FrameStarted = true;
     }
 
     void VulkanRHI::EndFrame() {
-        const VkCommandBuffer commandBuffer = m_Frames.at(m_CurrentFrame).commandBuffer;
+        if (!m_FrameStarted) return;
+        m_FrameStarted = false;
 
-        vkCmdEndRendering(commandBuffer);
+        VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
 
-        VkImageMemoryBarrier presentBarrier = {
-            .sType         = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-            .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_NONE,
-            .oldLayout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            .newLayout     = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-            .image         = m_SwapChain.swapChainImages[m_ImageIndex],
-            .subresourceRange = {
-                .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel   = 0,
-                .levelCount     = 1,
-                .baseArrayLayer = 0,
-                .layerCount     = 1
-            },
-        };
+        vkCmdEndRendering(cmd);
 
-        vkCmdPipelineBarrier(commandBuffer,
-            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-            0, 0, nullptr, 0, nullptr, 1, &presentBarrier);
+        // Use render graph for present barrier
+        m_RenderGraph.Reset();
+        m_RenderGraph.ImportTexture(m_ColorBufferRG,
+            m_SwapChain.swapChainImages[m_ImageIndex], ResourceState::ColorWrite);
 
-        vkEndCommandBuffer(commandBuffer);
+        m_RenderGraph.AddPass("PresentPass", PassType::Graphics)
+            .Read({m_ColorBufferRG, ResourceState::Present})
+            .SetExecute(nullptr);
+
+        m_RenderGraph.Compile();
+        m_RenderGraph.Execute(cmd);
+
+        vkEndCommandBuffer(cmd);
 
         VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        VkSubmitInfo submitInfo{
+        VkSubmitInfo submitInfo = {
             .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
             .waitSemaphoreCount   = 1,
             .pWaitSemaphores      = &m_ImageAvailableSemaphores[m_CurrentFrame],
             .pWaitDstStageMask    = &waitStage,
             .commandBufferCount   = 1,
-            .pCommandBuffers      = &m_Frames[m_CurrentFrame].commandBuffer,
+            .pCommandBuffers      = &cmd,
             .signalSemaphoreCount = 1,
             .pSignalSemaphores    = &m_RenderFinishedSemaphores.at(m_ImageIndex),
         };
@@ -1325,103 +1397,6 @@ namespace Osiris {
         return true;
     }
 
-    void VulkanRHI::RecordCommandBuffer(const VkCommandBuffer commandBuffer, const uint32_t imageIndex) const {
-        constexpr VkCommandBufferBeginInfo beginInfo = {
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        };
-        vkBeginCommandBuffer(commandBuffer, &beginInfo);
-
-        VkImageMemoryBarrier imageMemoryBarrier = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-            .srcAccessMask = VK_ACCESS_NONE,
-            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-            .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            .image = m_SwapChain.swapChainImages[imageIndex],
-            .subresourceRange = {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1
-            },
-        };
-
-        VkImageMemoryBarrier depthBarrier = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-            .srcAccessMask = VK_ACCESS_NONE,
-            .dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-            .newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-            .image = m_DepthImage.image,
-            .subresourceRange = {
-                .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1
-            }
-        };
-
-        VkRenderingAttachmentInfo depthAttachmentInfo = {
-            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView = m_DepthImage.imageView,
-            .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-            .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp     = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-            .clearValue  = {.depthStencil = {1.0f, 0}},
-        };
-
-        VkImageMemoryBarrier barriers[] = { imageMemoryBarrier, depthBarrier };
-
-        vkCmdPipelineBarrier(commandBuffer,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-            0, 0, nullptr, 0, nullptr, 2, barriers);
-
-        VkRenderingAttachmentInfo colorAttachment = {
-            .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView   = m_SwapChain.swapChainImageViews[imageIndex],
-            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
-            .clearValue  = {.color = {0.0f, 0.0f, 0.0f, 1.0f}},
-        };
-
-        const VkRenderingInfo renderingInfo = {
-            .sType                = VK_STRUCTURE_TYPE_RENDERING_INFO,
-            .renderArea           = {.offset = {0, 0}, .extent = m_SwapChain.swapChainExtent},
-            .layerCount           = 1,
-            .colorAttachmentCount = 1,
-            .pColorAttachments    = &colorAttachment,
-            .pDepthAttachment     = &depthAttachmentInfo,
-        };
-
-        vkCmdBeginRendering(commandBuffer, &renderingInfo);
-
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicsPipeline);
-        vkCmdBindDescriptorSets(m_Frames.at(m_CurrentFrame).commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
-    m_PipelineLayout, 0, 1, &m_DescriptorSet, 0, nullptr);
-        //vkCmdPushConstants(commandBuffer, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &m_ModelMatrix);
-        //vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PipelineLayout, 0, 1, &m_DescriptorSet, 0, nullptr);
-
-        VkViewport viewport = {
-            .x        = 0.0f,
-            .y        = 0.0f,
-            .width    = static_cast<float>(m_SwapChain.swapChainExtent.width),
-            .height   = static_cast<float>(m_SwapChain.swapChainExtent.height),
-            .minDepth = 0.0f,
-            .maxDepth = 1.0f,
-        };
-        vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-        VkRect2D scissor = {
-            .offset = {0, 0},
-            .extent = m_SwapChain.swapChainExtent,
-        };
-        vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
-    }
 
     void VulkanRHI::RecreateSwapChain() {
         vkDeviceWaitIdle(m_Device.logicalDevice);

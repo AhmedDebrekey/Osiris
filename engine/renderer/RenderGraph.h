@@ -64,8 +64,8 @@ namespace Osiris {
 
         void Reset();
 
-    private:
         void ImportTexture(RGTexture texture, VkImage image, ResourceState initialState);
+    private:
 
         std::vector<RenderPass> m_Passes;
         std::vector<int>        m_SortedPasses;

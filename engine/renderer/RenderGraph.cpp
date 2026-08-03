@@ -147,112 +147,109 @@ namespace Osiris {
         }
     }
 
-void RenderGraph::Execute(VkCommandBuffer cmd) {
-    for (int passIndex : m_SortedPasses) {
-        RenderPass& pass = m_Passes[passIndex];
+    void RenderGraph::Execute(VkCommandBuffer cmd) {
+        for (int passIndex : m_SortedPasses) {
+            RenderPass& pass = m_Passes[passIndex];
 
-        std::vector<VkImageMemoryBarrier> barriers;
+            std::vector<VkImageMemoryBarrier> barriers;
+            VkPipelineStageFlags srcStage = 0;
+            VkPipelineStageFlags dstStage = 0;
 
-        // Collect barriers for all reads
-        for (auto& access : pass.reads) {
-            ResourceState currentState = m_ResourceStates[access.texture.id];
-            ResourceState requiredState = access.state;
+            // Collect barriers for reads
+            for (auto& access : pass.reads) {
+                auto stateIt = m_ResourceStates.find(access.texture.id);
+                ResourceState currentState = (stateIt != m_ResourceStates.end())
+                    ? stateIt->second : ResourceState::Undefined;
+                ResourceState requiredState = access.state;
 
-            VkImageAspectFlags aspect = (access.state == ResourceState::DepthWrite)
-            ? VK_IMAGE_ASPECT_DEPTH_BIT
-            : VK_IMAGE_ASPECT_COLOR_BIT;
+                if (currentState != requiredState) {
+                    VulkanResourceState src = GetVulkanState(currentState);
+                    VulkanResourceState dst = GetVulkanState(requiredState);
 
-            if (currentState != requiredState) {
-                VulkanResourceState src = GetVulkanState(currentState);
-                VulkanResourceState dst = GetVulkanState(requiredState);
-
-                VkImageMemoryBarrier barrier = {
-                    .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                    .srcAccessMask       = src.accessMask,
-                    .dstAccessMask       = dst.accessMask,
-                    .oldLayout           = src.layout,
-                    .newLayout           = dst.layout,
-                    .image               = m_Images[access.texture.id],
-                    .subresourceRange    = {
-                        .aspectMask      = aspect,
-                        .baseMipLevel    = 0,
-                        .levelCount      = 1,
-                        .baseArrayLayer  = 0,
-                        .layerCount      = 1,
-                    },
-                };
-                barriers.push_back(barrier);
-                m_ResourceStates[access.texture.id] = requiredState;
-            }
-        }
-
-        // Collect barriers for all writes
-        for (auto& access : pass.writes) {
-            ResourceState currentState = m_ResourceStates[access.texture.id];
-            ResourceState requiredState = access.state;
-
-            VkImageAspectFlags aspect = (access.state == ResourceState::DepthWrite)
-            ? VK_IMAGE_ASPECT_DEPTH_BIT
-            : VK_IMAGE_ASPECT_COLOR_BIT;
-
-            if (currentState != requiredState) {
-                VulkanResourceState src = GetVulkanState(currentState);
-                VulkanResourceState dst = GetVulkanState(requiredState);
-
-                VkImageMemoryBarrier barrier = {
-                    .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-                    .srcAccessMask       = src.accessMask,
-                    .dstAccessMask       = dst.accessMask,
-                    .oldLayout           = src.layout,
-                    .newLayout           = dst.layout,
-                    .image               = m_Images[access.texture.id],
-                    .subresourceRange    = {
-                        .aspectMask      = aspect,
-                        .baseMipLevel    = 0,
-                        .levelCount      = 1,
-                        .baseArrayLayer  = 0,
-                        .layerCount      = 1,
-                    },
-                };
-                barriers.push_back(barrier);
-                m_ResourceStates[access.texture.id] = requiredState;
-            }
-        }
-
-        // Submit all barriers for this pass in one call
-        if (!barriers.empty()) {
-            // Determine src and dst stage from all barriers
-            VkPipelineStageFlags srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-            VkPipelineStageFlags dstStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-
-            for (auto& barrier : barriers) {
-                // Find the widest stage needed
-                for (auto& access : pass.reads) {
-                    VulkanResourceState dst = GetVulkanState(access.state);
-                    dstStage |= dst.stageFlags;
-                }
-                for (auto& access : pass.writes) {
-                    VulkanResourceState dst = GetVulkanState(access.state);
-                    dstStage |= dst.stageFlags;
-                    VulkanResourceState src = GetVulkanState(m_ResourceStates[access.texture.id]);
                     srcStage |= src.stageFlags;
+                    dstStage |= dst.stageFlags;
+
+                    VkImageAspectFlags aspect = (requiredState == ResourceState::DepthWrite)
+                        ? VK_IMAGE_ASPECT_DEPTH_BIT
+                        : VK_IMAGE_ASPECT_COLOR_BIT;
+
+                    VkImageMemoryBarrier barrier = {
+                        .sType            = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                        .srcAccessMask    = src.accessMask,
+                        .dstAccessMask    = dst.accessMask,
+                        .oldLayout        = src.layout,
+                        .newLayout        = dst.layout,
+                        .image            = m_Images[access.texture.id],
+                        .subresourceRange = {
+                            .aspectMask     = aspect,
+                            .baseMipLevel   = 0,
+                            .levelCount     = 1,
+                            .baseArrayLayer = 0,
+                            .layerCount     = 1,
+                        },
+                    };
+                    barriers.push_back(barrier);
+                    m_ResourceStates[access.texture.id] = requiredState;
                 }
             }
 
-            vkCmdPipelineBarrier(cmd,
-                srcStage, dstStage,
-                0,
-                0, nullptr,
-                0, nullptr,
-                static_cast<uint32_t>(barriers.size()), barriers.data());
-        }
+            // Collect barriers for writes
+            for (auto& access : pass.writes) {
+                auto stateIt = m_ResourceStates.find(access.texture.id);
+                ResourceState currentState = (stateIt != m_ResourceStates.end())
+                    ? stateIt->second : ResourceState::Undefined;
+                ResourceState requiredState = access.state;
 
-        // Execute the pass
-        if (pass.execute) {
-            pass.execute(cmd);
+                if (currentState != requiredState) {
+                    VulkanResourceState src = GetVulkanState(currentState);
+                    VulkanResourceState dst = GetVulkanState(requiredState);
+
+                    srcStage |= src.stageFlags;
+                    dstStage |= dst.stageFlags;
+
+                    VkImageAspectFlags aspect = (requiredState == ResourceState::DepthWrite)
+                        ? VK_IMAGE_ASPECT_DEPTH_BIT
+                        : VK_IMAGE_ASPECT_COLOR_BIT;
+
+                    VkImageMemoryBarrier barrier = {
+                        .sType            = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                        .srcAccessMask    = src.accessMask,
+                        .dstAccessMask    = dst.accessMask,
+                        .oldLayout        = src.layout,
+                        .newLayout        = dst.layout,
+                        .image            = m_Images[access.texture.id],
+                        .subresourceRange = {
+                            .aspectMask     = aspect,
+                            .baseMipLevel   = 0,
+                            .levelCount     = 1,
+                            .baseArrayLayer = 0,
+                            .layerCount     = 1,
+                        },
+                    };
+                    barriers.push_back(barrier);
+                    m_ResourceStates[access.texture.id] = requiredState;
+                }
+            }
+
+            // Submit barriers
+            if (!barriers.empty()) {
+                if (srcStage == 0) srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+                if (dstStage == 0) dstStage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+
+                vkCmdPipelineBarrier(cmd,
+                    srcStage, dstStage,
+                    0,
+                    0, nullptr,
+                    0, nullptr,
+                    static_cast<uint32_t>(barriers.size()), barriers.data());
+            }
+
+            // Execute pass callback
+            if (pass.execute) {
+                pass.execute(cmd);
+            }
         }
     }
-}
 
     void RenderGraph::Reset() {
         m_Passes.clear();

@@ -12,6 +12,7 @@ namespace Osiris {
     class MeshLoader {
         public:
             static Mesh LoadFromGLTF(const std::string& path, IRHI* rhi);
+            static Mesh CreatePlane(float width, float height, IRHI* rhi);
 
     };
 } // Osiris

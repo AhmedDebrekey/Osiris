@@ -140,7 +140,9 @@ namespace Osiris {
     }
 
     void VulkanRHI::Shutdown() {
+        OSIRIS_INFO("VulkanRHI shutting down...");
         vkDeviceWaitIdle(m_Device.logicalDevice);
+        OSIRIS_INFO("Device idle, destroying resources...");
 
         for (const auto& semaphore : m_ImageAvailableSemaphores) {
             vkDestroySemaphore(m_Device.logicalDevice, semaphore, nullptr);
@@ -152,10 +154,14 @@ namespace Osiris {
             vkDestroyFence(m_Device.logicalDevice, frame.inFlightFence, nullptr);
         }
 
-        for (auto& texture : m_Textures) {
-            vkDestroySampler(m_Device.logicalDevice, texture.sampler, nullptr);
-            vkDestroyImageView(m_Device.logicalDevice, texture.imageView, nullptr);
-            vmaDestroyImage(m_Allocator, texture.image, texture.allocation);
+        for (uint32_t i = 0; i < m_Buffers.size(); i++) {
+            if (m_Buffers[i].buffer != VK_NULL_HANDLE)
+                DestroyBuffer(BufferHandle{i});
+        }
+
+        for (uint32_t i = 0; i < m_Textures.size(); i++) {
+            if (m_Textures[i].image != VK_NULL_HANDLE)
+                DestroyTexture(TextureHandle{i});
         }
 
         vkDestroyCommandPool(m_Device.logicalDevice, m_CommandPool, nullptr);
@@ -173,6 +179,14 @@ namespace Osiris {
         vkDestroySwapchainKHR(m_Device.logicalDevice, m_SwapChain.swapChain, nullptr);
 
         vkDestroySurfaceKHR(m_Instance, m_Surface, nullptr);
+
+        vkDestroyImageView(m_Device.logicalDevice, m_DepthImage.imageView, nullptr);
+        vmaDestroyImage(m_Allocator, m_DepthImage.image, m_DepthImage.allocation);
+
+        vkDestroyDescriptorSetLayout(m_Device.logicalDevice, m_FrameDescriptorLayout, nullptr);
+        vkDestroyDescriptorSetLayout(m_Device.logicalDevice, m_MaterialDescriptorLayout, nullptr);
+
+        vmaDestroyAllocator(m_Allocator);
 
         vkDestroyDevice(m_Device.logicalDevice, nullptr);
 #ifndef NDEBUG
@@ -629,7 +643,16 @@ namespace Osiris {
         buffer.size       = 0;
     }
 
-    void VulkanRHI::DestroyTexture(TextureHandle) {
+    void VulkanRHI::DestroyTexture(TextureHandle handle) {
+        if (!handle.IsValid()) return;
+        VulkanImage& texture = m_Textures[handle.id];
+        vkDestroySampler(m_Device.logicalDevice, texture.sampler, nullptr);
+        vkDestroyImageView(m_Device.logicalDevice, texture.imageView, nullptr);
+        vmaDestroyImage(m_Allocator, texture.image, texture.allocation);
+        texture.image      = VK_NULL_HANDLE;
+        texture.allocation = VK_NULL_HANDLE;
+        texture.imageView  = VK_NULL_HANDLE;
+        texture.sampler    = VK_NULL_HANDLE;
     }
 
     void VulkanRHI::DestroyShader(ShaderHandle) {
@@ -733,6 +756,7 @@ namespace Osiris {
     }
 
     void VulkanRHI::ShutdownImGui() {
+        vkDeviceWaitIdle(m_Device.logicalDevice);
         ImGui_ImplVulkan_Shutdown();
         ImGui_ImplSDL2_Shutdown();
         ImGui::DestroyContext();
@@ -1286,6 +1310,8 @@ namespace Osiris {
 
         result = vkCreateGraphicsPipelines(m_Device.logicalDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &m_GraphicsPipeline);
         VK_CHECK(result);
+        vkDestroyShaderModule(m_Device.logicalDevice, vertShaderModule, nullptr);
+        vkDestroyShaderModule(m_Device.logicalDevice, fragShaderModule, nullptr);
 
         return true;
     }
@@ -1414,8 +1440,9 @@ namespace Osiris {
 
         vkDestroyImageView(m_Device.logicalDevice, m_DepthImage.imageView, nullptr);
         m_DepthImage.imageView = VK_NULL_HANDLE;
-        vmaDestroyImage(m_Allocator, m_DepthImage.image, nullptr);
+        vmaDestroyImage(m_Allocator, m_DepthImage.image, m_DepthImage.allocation);
         m_DepthImage.image = VK_NULL_HANDLE;
+        m_DepthImage.allocation = VK_NULL_HANDLE;
 
         vkDestroySwapchainKHR(m_Device.logicalDevice, m_SwapChain.swapChain, nullptr);
 

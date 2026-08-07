@@ -132,4 +132,49 @@ namespace Osiris {
             .bounds       = bounds,
         };
     }
+
+    Mesh MeshLoader::CreatePlane(float width, float height, IRHI* rhi) {
+        float halfW = width  * 0.5f;
+        float halfH = height * 0.5f;
+
+        std::vector<Vertex> vertices = {
+            { .Position = {-halfW, 0.0f, -halfH}, .Normal = {0.0f, 1.0f, 0.0f}, .TexCoord = {0.0f, 0.0f} },
+            { .Position = { halfW, 0.0f, -halfH}, .Normal = {0.0f, 1.0f, 0.0f}, .TexCoord = {1.0f, 0.0f} },
+            { .Position = { halfW, 0.0f,  halfH}, .Normal = {0.0f, 1.0f, 0.0f}, .TexCoord = {1.0f, 1.0f} },
+            { .Position = {-halfW, 0.0f,  halfH}, .Normal = {0.0f, 1.0f, 0.0f}, .TexCoord = {0.0f, 1.0f} },
+        };
+
+        std::vector<uint32_t> indices = {0, 2, 1, 0, 3, 2};
+
+        AABB bounds;
+        for (const auto& v : vertices) {
+            bounds.min = glm::min(bounds.min, v.Position);
+            bounds.max = glm::max(bounds.max, v.Position);
+        }
+
+        BufferDesc vertexBufferDesc = {
+            .size       = sizeof(Vertex) * vertices.size(),
+            .usage      = BufferUsage::Vertex,
+            .cpuVisible = false,
+        };
+        BufferDesc indexBufferDesc = {
+            .size       = sizeof(uint32_t) * indices.size(),
+            .usage      = BufferUsage::Index,
+            .cpuVisible = false,
+        };
+
+        BufferHandle vertexBuffer = rhi->CreateBuffer(vertexBufferDesc);
+        rhi->UploadBufferData(vertexBuffer, vertices.data(), sizeof(Vertex) * vertices.size());
+
+        BufferHandle indexBuffer = rhi->CreateBuffer(indexBufferDesc);
+        rhi->UploadBufferData(indexBuffer, indices.data(), sizeof(uint32_t) * indices.size());
+
+        return Mesh {
+            .vertexBuffer = vertexBuffer,
+            .indexBuffer  = indexBuffer,
+            .vertexCount  = static_cast<uint32_t>(vertices.size()),
+            .indexCount   = static_cast<uint32_t>(indices.size()),
+            .bounds       = bounds,
+        };
+    }
 } // Osiris

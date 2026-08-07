@@ -51,6 +51,9 @@ namespace Osiris {
     }
 
     void Engine::Shutdown() {
+        m_RHI->ShutdownImGui();
+        m_RHI->Shutdown();
+        m_Window.Shutdown();
     }
 
     void Engine::BeginFrame() {

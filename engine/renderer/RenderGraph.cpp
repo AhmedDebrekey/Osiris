@@ -141,10 +141,10 @@ namespace Osiris {
             m_SortedPasses.clear();
         }
 
-        OSIRIS_INFO("RenderGraph compiled {} passes:", m_SortedPasses.size());
-        for (int i : m_SortedPasses) {
-            OSIRIS_INFO("  Pass {}: {}", i, m_Passes[i].name);
-        }
+        // OSIRIS_INFO("RenderGraph compiled {} passes:", m_SortedPasses.size());
+        // for (int i : m_SortedPasses) {
+        //     OSIRIS_INFO("  Pass {}: {}", i, m_Passes[i].name);
+        // }
     }
 
     void RenderGraph::Execute(VkCommandBuffer cmd) {

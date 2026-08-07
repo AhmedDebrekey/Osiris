@@ -133,6 +133,11 @@ namespace Osiris {
             return false;
         }
 
+        if (!CreateShadowMap()) {
+            OSIRIS_ERROR("Failed to create Shadow Map");
+            return false;
+        }
+
         m_ColorBufferRG = RGTexture{0};
         m_DepthBufferRG = RGTexture{1};
 
@@ -142,7 +147,6 @@ namespace Osiris {
     void VulkanRHI::Shutdown() {
         OSIRIS_INFO("VulkanRHI shutting down...");
         vkDeviceWaitIdle(m_Device.logicalDevice);
-        OSIRIS_INFO("Device idle, destroying resources...");
 
         for (const auto& semaphore : m_ImageAvailableSemaphores) {
             vkDestroySemaphore(m_Device.logicalDevice, semaphore, nullptr);
@@ -162,6 +166,14 @@ namespace Osiris {
         for (uint32_t i = 0; i < m_Textures.size(); i++) {
             if (m_Textures[i].image != VK_NULL_HANDLE)
                 DestroyTexture(TextureHandle{i});
+        }
+
+        for (auto& shadowMap : m_ShadowMaps) {
+            if (shadowMap.image != VK_NULL_HANDLE) {
+                vkDestroySampler(m_Device.logicalDevice, shadowMap.sampler, nullptr);
+                vkDestroyImageView(m_Device.logicalDevice, shadowMap.imageView, nullptr);
+                vmaDestroyImage(m_Allocator, shadowMap.image, shadowMap.allocation);
+            }
         }
 
         vkDestroyCommandPool(m_Device.logicalDevice, m_CommandPool, nullptr);
@@ -1376,6 +1388,65 @@ namespace Osiris {
 
         return true;
     }
+
+    bool VulkanRHI::CreateShadowMap() {
+        VkImageCreateInfo imageCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .imageType = VK_IMAGE_TYPE_2D,
+            .format = VK_FORMAT_D32_SFLOAT,
+            .extent = {SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 1},
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .samples = VK_SAMPLE_COUNT_1_BIT,
+            .usage     = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, // ← here
+        };
+
+        VmaAllocationCreateInfo allocationCreateInfo = {
+            .usage = VMA_MEMORY_USAGE_GPU_ONLY,
+        };
+
+        for (auto& map : m_ShadowMaps) {
+            map.format = VK_FORMAT_D32_SFLOAT;
+            VK_CHECK(vmaCreateImage(m_Allocator, &imageCreateInfo, &allocationCreateInfo, &map.image, &map.allocation, nullptr));
+
+            VkImageViewCreateInfo viewCreateInfo = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                .image = map.image,
+                .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                .format = VK_FORMAT_D32_SFLOAT,
+
+                .subresourceRange = {
+                    .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer= 0,
+                    .layerCount = 1
+                }
+            };
+            const VkResult result = vkCreateImageView(m_Device.logicalDevice, &viewCreateInfo, nullptr, &map.imageView);
+            if (result != VK_SUCCESS) {
+                OSIRIS_ERROR("Failed to create image view for depth buffer!");
+                return false;
+            }
+
+            VkSamplerCreateInfo samplerInfo = {
+                .sType        = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+                .magFilter    = VK_FILTER_LINEAR,
+                .minFilter    = VK_FILTER_LINEAR,
+                .mipmapMode   = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+                .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+                .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+                .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+                .compareEnable = VK_TRUE,
+                .compareOp     = VK_COMPARE_OP_LESS_OR_EQUAL,
+                .borderColor  = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
+            };
+            VK_CHECK(vkCreateSampler(m_Device.logicalDevice, &samplerInfo, nullptr, &map.sampler));
+        }
+
+        return true;
+    }
+
 
     bool VulkanRHI::CreateCommandBuffers() {
         VkCommandPoolCreateInfo poolInfo = {

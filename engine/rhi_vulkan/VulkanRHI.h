@@ -92,7 +92,7 @@ namespace Osiris {
         bool CreateDescriptorPool();
         bool CreateDescriptorSet();
         bool CreateCommandBuffers();
-        void RecordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) const;
+        bool CreateShadowMap();
 
         void RecreateSwapChain();
 
@@ -144,6 +144,10 @@ namespace Osiris {
         Mesh m_BoundMesh;
         TextureHandle m_BoundTexture;
         glm::mat4 m_ModelMatrix = glm::mat4(1.0f);
+
+        static constexpr uint32_t SHADOW_CASCADE_COUNT = 3;
+        static constexpr uint32_t SHADOW_MAP_SIZE      = 2048;
+        VulkanImage m_ShadowMaps[SHADOW_CASCADE_COUNT];
     };
 } // Osiris
 

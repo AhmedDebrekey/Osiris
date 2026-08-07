@@ -118,8 +118,10 @@ namespace Osiris {
         VkDescriptorPool        m_ImGuiDescriptorPool       = VK_NULL_HANDLE;
 
         std::unique_ptr<PipelineManager> m_PipelineManager;
-        VkPipeline       m_ForwardPipeline       = VK_NULL_HANDLE;
-        VkPipelineLayout m_ForwardPipelineLayout = VK_NULL_HANDLE;
+        VkPipeline          m_ForwardPipeline       = VK_NULL_HANDLE;
+        VkPipelineLayout    m_ForwardPipelineLayout = VK_NULL_HANDLE;
+        VkPipeline          m_ShadowPipeline        = VK_NULL_HANDLE;
+        VkPipelineLayout    m_ShadowPipelineLayout  = VK_NULL_HANDLE;
 
         std::array<VkSemaphore, MAX_FRAMES_IN_FLIGHT> m_ImageAvailableSemaphores;
         std::vector<VkSemaphore> m_RenderFinishedSemaphores;

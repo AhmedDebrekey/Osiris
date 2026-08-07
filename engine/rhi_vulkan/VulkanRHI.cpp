@@ -142,6 +142,31 @@ namespace Osiris {
 
         m_ForwardPipelineLayout = m_PipelineManager->GetLayout(m_ForwardPipeline);
 
+        VkDescriptorSetLayout shadowLayouts[] = { m_FrameDescriptorLayout };
+
+        m_ShadowPipeline = m_PipelineManager->GetOrCreate({
+            .vertexShader       = "assets/shaders/shadow.vert.spv",
+            .fragmentShader     = "",
+            .colorAttachment    = false,
+            .colorFormat        = VK_FORMAT_UNDEFINED,
+            .depthAttachment    = true,
+            .depthFormat        = VK_FORMAT_D32_SFLOAT,
+            .depthTest          = true,
+            .depthWrite         = true,
+            .depthBias          = true,
+            .depthBiasConstant  = 1.25f,
+            .depthBiasClamp     = 0.0f,
+            .depthBiasSlope     = 1.75f,
+            .cullMode           = VK_CULL_MODE_FRONT_BIT,
+            .frontFace          = VK_FRONT_FACE_CLOCKWISE,
+            .setLayoutCount     = 1,
+            .pSetLayouts        = shadowLayouts,
+            .pushConstantSize   = sizeof(glm::mat4) * 2,
+            .pushConstantStages = VK_SHADER_STAGE_VERTEX_BIT,
+        });
+
+        m_ShadowPipelineLayout = m_PipelineManager->GetLayout(m_ShadowPipeline);
+
         if (!CreateDescriptorPool()) {
             OSIRIS_ERROR("Failed to create descriptor pool!");
             return false;

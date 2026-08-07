@@ -1,0 +1,20 @@
+//
+// Created by Debreky on 07/08/2026.
+//
+
+#ifndef OSIRIS_LIGHT_H
+#define OSIRIS_LIGHT_H
+
+#include <glm/glm.hpp>
+
+namespace Osiris {
+
+    struct DirectionalLight {
+        glm::vec3 direction = glm::normalize(glm::vec3(-0.5f, -1.0f, -0.3f));
+        glm::vec3 color     = glm::vec3(1.0f, 1.0f, 1.0f);
+        float     intensity = 1.0f;
+    };
+
+}
+
+#endif //OSIRIS_LIGHT_H

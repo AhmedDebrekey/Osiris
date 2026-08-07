@@ -14,6 +14,7 @@
 #include "renderer/RenderGraph.h"
 
 #include "PipelineManager.h"
+#include "renderer/Light.h"
 
 namespace Osiris {
     constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
@@ -74,6 +75,16 @@ namespace Osiris {
 
         void UpdateCamera(const glm::mat4 &view, const glm::mat4 &projection) override;
 
+        void BeginForwardPass() override;
+
+        void BeginShadowPass(uint32_t cascadeIndex) override;
+
+        void EndShadowPass(uint32_t cascadeIndex) override;
+
+        void DrawShadowIndexed(uint32_t indexCount) override;
+
+        void UpdateShadowDescriptors();
+
     private:
         bool SetupDebugMessenger();
 
@@ -98,6 +109,9 @@ namespace Osiris {
         bool CreateShadowMap();
 
         void RecreateSwapChain();
+
+        void UpdateCascades(const glm::mat4& view, const glm::mat4& projection);
+
 
         VkShaderModule LoadShader(const std::string& shaderPath);
 
@@ -155,6 +169,11 @@ namespace Osiris {
         static constexpr uint32_t SHADOW_CASCADE_COUNT = 3;
         static constexpr uint32_t SHADOW_MAP_SIZE      = 2048;
         VulkanImage m_ShadowMaps[SHADOW_CASCADE_COUNT];
+
+        DirectionalLight m_DirectionalLight;
+        glm::mat4 m_LightSpaceMatrices[SHADOW_CASCADE_COUNT];
+        float m_CascadeSplits[SHADOW_CASCADE_COUNT];
+        uint32_t m_CurrentCascadeIndex = 0;
     };
 } // Osiris
 

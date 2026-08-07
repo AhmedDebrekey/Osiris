@@ -16,6 +16,8 @@
 #include "core/Log.h"
 #include "renderer/MeshType.h"
 
+#include <glm/gtc/matrix_transform.hpp>
+
 
 namespace Osiris {
 
@@ -187,6 +189,8 @@ namespace Osiris {
             return false;
         }
 
+        UpdateShadowDescriptors();
+
         m_ColorBufferRG = RGTexture{0};
         m_DepthBufferRG = RGTexture{1};
 
@@ -278,75 +282,10 @@ namespace Osiris {
         vkResetFences(m_Device.logicalDevice, 1, &m_Frames[m_CurrentFrame].inFlightFence);
         vkResetCommandBuffer(m_Frames[m_CurrentFrame].commandBuffer, 0);
 
-        VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
-
         constexpr VkCommandBufferBeginInfo beginInfo = {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         };
-        vkBeginCommandBuffer(cmd, &beginInfo);
-
-        // Render graph handles barriers
-        m_RenderGraph.Reset();
-        m_RenderGraph.ImportTexture(m_ColorBufferRG,
-            m_SwapChain.swapChainImages[m_ImageIndex], ResourceState::Undefined);
-        m_RenderGraph.ImportTexture(m_DepthBufferRG,
-            m_DepthImage.image, ResourceState::Undefined);
-
-        m_RenderGraph.AddPass("ForwardPass", PassType::Graphics)
-            .Write({m_ColorBufferRG, ResourceState::ColorWrite})
-            .Write({m_DepthBufferRG, ResourceState::DepthWrite})
-            .SetExecute(nullptr); // barriers only, draw calls happen externally
-
-        m_RenderGraph.Compile();
-        m_RenderGraph.Execute(cmd);
-
-        // Begin rendering
-        VkRenderingAttachmentInfo colorAttachment = {
-            .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView   = m_SwapChain.swapChainImageViews[m_ImageIndex],
-            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
-            .clearValue  = {.color = {0.0f, 0.0f, 0.0f, 1.0f}},
-        };
-
-        VkRenderingAttachmentInfo depthAttachment = {
-            .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView   = m_DepthImage.imageView,
-            .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-            .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp     = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-            .clearValue  = {.depthStencil = {1.0f, 0}},
-        };
-
-        const VkRenderingInfo renderingInfo = {
-            .sType                = VK_STRUCTURE_TYPE_RENDERING_INFO,
-            .renderArea           = {.offset = {0, 0}, .extent = m_SwapChain.swapChainExtent},
-            .layerCount           = 1,
-            .colorAttachmentCount = 1,
-            .pColorAttachments    = &colorAttachment,
-            .pDepthAttachment     = &depthAttachment,
-        };
-
-        vkCmdBeginRendering(cmd, &renderingInfo);
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_ForwardPipeline);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-            m_ForwardPipelineLayout, 0, 1, &m_DescriptorSet, 0, nullptr);
-
-        VkViewport viewport = {
-            .x = 0.0f, .y = 0.0f,
-            .width    = static_cast<float>(m_SwapChain.swapChainExtent.width),
-            .height   = static_cast<float>(m_SwapChain.swapChainExtent.height),
-            .minDepth = 0.0f,
-            .maxDepth = 1.0f,
-        };
-        vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-        VkRect2D scissor = {
-            .offset = {0, 0},
-            .extent = m_SwapChain.swapChainExtent,
-        };
-        vkCmdSetScissor(cmd, 0, 1, &scissor);
+        vkBeginCommandBuffer(m_Frames[m_CurrentFrame].commandBuffer, &beginInfo);
 
         m_FrameStarted = true;
     }
@@ -839,16 +778,216 @@ namespace Osiris {
     void VulkanRHI::Dispatch(uint32_t x, uint32_t y, uint32_t z) {
     }
 
-    void VulkanRHI::UpdateCamera(const glm::mat4 &view, const glm::mat4 &projection) {
-        struct CameraBuffer {
+    void VulkanRHI::UpdateCamera(const glm::mat4& view, const glm::mat4& projection) {
+        struct CameraBufferFull {
             glm::mat4 view;
             glm::mat4 projection;
+            glm::mat4 lightSpaceMatrices[3];
+            glm::vec4 cascadeSplits;
+            glm::vec4 lightDirection;
         };
-        const CameraBuffer camera_buffer = {.view = view, .projection = projection};
-        UploadDynamicBuffer(m_CameraUniformBuffer, &camera_buffer, sizeof(CameraBuffer));
+
+        CameraBufferFull cameraBuffer;
+        cameraBuffer.view       = view;
+        cameraBuffer.projection = projection;
+        for (uint32_t i = 0; i < SHADOW_CASCADE_COUNT; i++) {
+            cameraBuffer.lightSpaceMatrices[i] = m_LightSpaceMatrices[i];
+        }
+        cameraBuffer.cascadeSplits = glm::vec4(
+            m_CascadeSplits[0],
+            m_CascadeSplits[1],
+            m_CascadeSplits[2],
+            0.0f
+        );
+        cameraBuffer.lightDirection = glm::vec4(-m_DirectionalLight.direction, 0.0f);
+
+        UploadDynamicBuffer(m_CameraUniformBuffer, &cameraBuffer, sizeof(CameraBufferFull));
+        UpdateCascades(view, projection);
     }
 
-    bool VulkanRHI::SetupDebugMessenger() {
+    void VulkanRHI::BeginForwardPass() {
+        if (!m_FrameStarted) return;
+        VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
+
+        m_RenderGraph.Reset();
+        m_RenderGraph.ImportTexture(m_ColorBufferRG,
+            m_SwapChain.swapChainImages[m_ImageIndex], ResourceState::Undefined);
+        m_RenderGraph.ImportTexture(m_DepthBufferRG,
+            m_DepthImage.image, ResourceState::Undefined);
+
+        m_RenderGraph.AddPass("ForwardPass", PassType::Graphics)
+            .Write({m_ColorBufferRG, ResourceState::ColorWrite})
+            .Write({m_DepthBufferRG, ResourceState::DepthWrite})
+            .SetExecute(nullptr);
+
+        m_RenderGraph.Compile();
+        m_RenderGraph.Execute(cmd);
+
+        VkRenderingAttachmentInfo colorAttachment = {
+            .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView   = m_SwapChain.swapChainImageViews[m_ImageIndex],
+            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
+            .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
+            .clearValue  = {.color = {0.0f, 0.0f, 0.0f, 1.0f}},
+        };
+
+        VkRenderingAttachmentInfo depthAttachment = {
+            .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView   = m_DepthImage.imageView,
+            .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+            .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
+            .storeOp     = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .clearValue  = {.depthStencil = {1.0f, 0}},
+        };
+
+        const VkRenderingInfo renderingInfo = {
+            .sType                = VK_STRUCTURE_TYPE_RENDERING_INFO,
+            .renderArea           = {.offset = {0, 0}, .extent = m_SwapChain.swapChainExtent},
+            .layerCount           = 1,
+            .colorAttachmentCount = 1,
+            .pColorAttachments    = &colorAttachment,
+            .pDepthAttachment     = &depthAttachment,
+        };
+
+        vkCmdBeginRendering(cmd, &renderingInfo);
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_ForwardPipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+            m_ForwardPipelineLayout, 0, 1, &m_DescriptorSet, 0, nullptr);
+
+        VkViewport viewport = {
+            .x = 0.0f, .y = 0.0f,
+            .width    = static_cast<float>(m_SwapChain.swapChainExtent.width),
+            .height   = static_cast<float>(m_SwapChain.swapChainExtent.height),
+            .minDepth = 0.0f, .maxDepth = 1.0f,
+        };
+        vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+        VkRect2D scissor = { .offset = {0, 0}, .extent = m_SwapChain.swapChainExtent };
+        vkCmdSetScissor(cmd, 0, 1, &scissor);
+    }
+
+    void VulkanRHI::BeginShadowPass(uint32_t cascadeIndex) {
+    if (!m_FrameStarted) return;
+    m_CurrentCascadeIndex = cascadeIndex;
+    VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
+
+    // Transition shadow map UNDEFINED → DEPTH_ATTACHMENT
+    VkImageMemoryBarrier barrier = {
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        .oldLayout     = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout     = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        .image         = m_ShadowMaps[cascadeIndex].image,
+        .subresourceRange = {
+            .aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT,
+            .baseMipLevel   = 0,
+            .levelCount     = 1,
+            .baseArrayLayer = 0,
+            .layerCount     = 1,
+        },
+    };
+    vkCmdPipelineBarrier(cmd,
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+    VkRenderingAttachmentInfo depthAttachment = {
+        .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .imageView   = m_ShadowMaps[cascadeIndex].imageView,
+        .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue  = {.depthStencil = {1.0f, 0}},
+    };
+
+    VkRenderingInfo renderingInfo = {
+        .sType                = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .renderArea           = {.offset = {0, 0}, .extent = {SHADOW_MAP_SIZE, SHADOW_MAP_SIZE}},
+        .layerCount           = 1,
+        .colorAttachmentCount = 0,
+        .pDepthAttachment     = &depthAttachment,
+    };
+
+    vkCmdBeginRendering(cmd, &renderingInfo);
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_ShadowPipeline);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+        m_ShadowPipelineLayout, 0, 1, &m_DescriptorSet, 0, nullptr);
+
+    VkViewport viewport = {
+        .x = 0.0f, .y = 0.0f,
+        .width    = static_cast<float>(SHADOW_MAP_SIZE),
+        .height   = static_cast<float>(SHADOW_MAP_SIZE),
+        .minDepth = 0.0f, .maxDepth = 1.0f,
+    };
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor = {
+        .offset = {0, 0},
+        .extent = {SHADOW_MAP_SIZE, SHADOW_MAP_SIZE},
+    };
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+}
+
+void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
+    if (!m_FrameStarted) return;
+    VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
+    vkCmdEndRendering(cmd);
+
+    // Transition shadow map DEPTH_ATTACHMENT → SHADER_READ
+    VkImageMemoryBarrier barrier = {
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+        .oldLayout     = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        .newLayout     = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        .image         = m_ShadowMaps[cascadeIndex].image,
+        .subresourceRange = {
+            .aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT,
+            .baseMipLevel   = 0,
+            .levelCount     = 1,
+            .baseArrayLayer = 0,
+            .layerCount     = 1,
+        },
+    };
+    vkCmdPipelineBarrier(cmd,
+        VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &barrier);
+}
+
+    void VulkanRHI::DrawShadowIndexed(uint32_t indexCount) {
+        if (!m_FrameStarted) return;
+        VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
+
+        struct ShadowPushConstants {
+            glm::mat4 model;
+            glm::mat4 lightSpaceMatrix;
+        };
+
+        ShadowPushConstants push = {
+            .model            = m_ModelMatrix,
+            .lightSpaceMatrix = m_LightSpaceMatrices[m_CurrentCascadeIndex],
+        };
+
+        vkCmdPushConstants(cmd, m_ShadowPipelineLayout,
+            VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ShadowPushConstants), &push);
+
+        if (m_BoundMesh.vertexBuffer.IsValid()) {
+            VkBuffer vertexBuffers[] = { m_Buffers[m_BoundMesh.vertexBuffer.id].buffer };
+            VkDeviceSize offsets[]   = { 0 };
+            vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
+        }
+
+        if (m_BoundMesh.indexBuffer.IsValid()) {
+            vkCmdBindIndexBuffer(cmd, m_Buffers[m_BoundMesh.indexBuffer.id].buffer,
+                0, VK_INDEX_TYPE_UINT32);
+            vkCmdDrawIndexed(cmd, indexCount, 1, 0, 0, 0);
+        }
+    }
+
+bool VulkanRHI::SetupDebugMessenger() {
         VkDebugUtilsMessengerCreateInfoEXT createInfo = {
             .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
             .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
@@ -1378,21 +1517,40 @@ namespace Osiris {
     }
 
     bool VulkanRHI::CreateDescriptorSetLayouts() {
-        // Frame layout — binding 0 = camera uniform buffer (vertex stage)
-        VkDescriptorSetLayoutBinding cameraBinding = {
-            .binding         = 0,
-            .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 1,
-            .stageFlags      = VK_SHADER_STAGE_VERTEX_BIT,
+        VkDescriptorSetLayoutBinding frameBindings[] = {
+            {
+                .binding         = 0,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags      = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
+            {
+                .binding         = 1,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
+            {
+                .binding         = 2,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
+            {
+                .binding         = 3,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
         };
+
         VkDescriptorSetLayoutCreateInfo frameLayoutInfo = {
             .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            .bindingCount = 1,
-            .pBindings    = &cameraBinding,
+            .bindingCount = 4,
+            .pBindings    = frameBindings,
         };
         VK_CHECK(vkCreateDescriptorSetLayout(m_Device.logicalDevice, &frameLayoutInfo, nullptr, &m_FrameDescriptorLayout));
 
-        // Material layout — binding 0 = combined image sampler (fragment stage)
         VkDescriptorSetLayoutBinding textureBinding = {
             .binding         = 0,
             .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -1413,7 +1571,7 @@ namespace Osiris {
     bool VulkanRHI::CreateDescriptorPool() {
         VkDescriptorPoolSize poolSizes[] = {
             { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         1 },
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1003  },
         };
         const VkDescriptorPoolCreateInfo descriptorPoolInfo = {
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
@@ -1431,22 +1589,29 @@ namespace Osiris {
 
     bool VulkanRHI::CreateDescriptorSet() {
         VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .descriptorPool = m_DescriptorPool,
+            .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .descriptorPool     = m_DescriptorPool,
             .descriptorSetCount = 1,
-            .pSetLayouts = &m_FrameDescriptorLayout,
+            .pSetLayouts        = &m_FrameDescriptorLayout,
         };
 
         VkResult result = vkAllocateDescriptorSets(m_Device.logicalDevice, &descriptorSetAllocateInfo, &m_DescriptorSet);
-
         if (result != VK_SUCCESS) {
+            OSIRIS_ERROR("Failed to allocate descriptor set!");
             return false;
         }
 
+        struct CameraBufferFull {
+            glm::mat4 view;
+            glm::mat4 projection;
+            glm::mat4 lightSpaceMatrices[3];
+            glm::vec4 cascadeSplits;
+        };
+
         BufferDesc uniformBufferDesc = {
-            .size = sizeof(glm::mat4) * 2,
-            .usage = BufferUsage::Uniform,
-            .cpuVisible= true,
+            .size       = sizeof(CameraBufferFull),
+            .usage      = BufferUsage::Uniform,
+            .cpuVisible = true,
         };
 
         m_CameraUniformBuffer = CreateBuffer(uniformBufferDesc);
@@ -1454,16 +1619,17 @@ namespace Osiris {
         VkDescriptorBufferInfo bufferInfo = {
             .buffer = m_Buffers.at(m_CameraUniformBuffer.id).buffer,
             .offset = 0,
-            .range = sizeof(glm::mat4) * 2,
+            .range  = sizeof(CameraBufferFull),
         };
+
         const VkWriteDescriptorSet writeDescriptorSet = {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = m_DescriptorSet,
-            .dstBinding = 0,
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet          = m_DescriptorSet,
+            .dstBinding      = 0,
             .dstArrayElement = 0,
             .descriptorCount = 1,
-            .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .pBufferInfo = &bufferInfo,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .pBufferInfo     = &bufferInfo,
         };
 
         vkUpdateDescriptorSets(m_Device.logicalDevice, 1, &writeDescriptorSet, 0, nullptr);
@@ -1613,4 +1779,118 @@ namespace Osiris {
         }
     }
 
+void VulkanRHI::UpdateCascades(const glm::mat4& view, const glm::mat4& projection) {
+    // Cascade split distances in view space
+    float nearClip  = 0.1f;
+    float farClip   = 100.0f;
+    float clipRange = farClip - nearClip;
+
+    float cascadeSplitLambda = 0.95f;
+
+    float cascadeSplits[SHADOW_CASCADE_COUNT];
+
+    // Calculate split depths based on view camera frustum
+    for (uint32_t i = 0; i < SHADOW_CASCADE_COUNT; i++) {
+        float p       = (i + 1) / static_cast<float>(SHADOW_CASCADE_COUNT);
+        float log     = nearClip * std::pow(farClip / nearClip, p);
+        float uniform = nearClip + clipRange * p;
+        float d       = cascadeSplitLambda * (log - uniform) + uniform;
+        cascadeSplits[i] = (d - nearClip) / clipRange;
+    }
+
+    // Calculate orthographic projection matrix for each cascade
+    float lastSplitDist = 0.0f;
+
+    for (uint32_t cascadeIndex = 0; cascadeIndex < SHADOW_CASCADE_COUNT; cascadeIndex++) {
+        float splitDist = cascadeSplits[cascadeIndex];
+
+        // Get frustum corners in NDC space
+        glm::vec3 frustumCorners[8] = {
+            glm::vec3(-1.0f,  1.0f, 0.0f),
+            glm::vec3( 1.0f,  1.0f, 0.0f),
+            glm::vec3( 1.0f, -1.0f, 0.0f),
+            glm::vec3(-1.0f, -1.0f, 0.0f),
+            glm::vec3(-1.0f,  1.0f, 1.0f),
+            glm::vec3( 1.0f,  1.0f, 1.0f),
+            glm::vec3( 1.0f, -1.0f, 1.0f),
+            glm::vec3(-1.0f, -1.0f, 1.0f),
+        };
+
+        // Transform frustum corners to world space
+        glm::mat4 invViewProj = glm::inverse(projection * view);
+        for (auto& corner : frustumCorners) {
+            glm::vec4 invCorner = invViewProj * glm::vec4(corner, 1.0f);
+            corner = glm::vec3(invCorner / invCorner.w);
+        }
+
+        // Adjust corners to this cascade's near/far split
+        for (uint32_t i = 0; i < 4; i++) {
+            glm::vec3 dist        = frustumCorners[i + 4] - frustumCorners[i];
+            frustumCorners[i + 4] = frustumCorners[i] + (dist * splitDist);
+            frustumCorners[i]     = frustumCorners[i] + (dist * lastSplitDist);
+        }
+
+        // Find frustum center
+        glm::vec3 frustumCenter = glm::vec3(0.0f);
+        for (auto& corner : frustumCorners) {
+            frustumCenter += corner;
+        }
+        frustumCenter /= 8.0f;
+
+        // Find the radius of the cascade sphere
+        float radius = 0.0f;
+        for (auto& corner : frustumCorners) {
+            float distance = glm::length(corner - frustumCenter);
+            radius = glm::max(radius, distance);
+        }
+        radius = std::ceil(radius * 16.0f) / 16.0f;
+
+        glm::vec3 maxExtents = glm::vec3(radius);
+        glm::vec3 minExtents = -maxExtents;
+
+        // Build light view matrix
+        glm::vec3 lightDir = glm::normalize(-m_DirectionalLight.direction);
+        glm::vec3 up       = glm::abs(glm::dot(lightDir, glm::vec3(0,1,0))) < 0.99f
+                             ? glm::vec3(0,1,0) : glm::vec3(1,0,0);
+
+        glm::mat4 lightView = glm::lookAt(
+            frustumCenter - lightDir * -minExtents.z,
+            frustumCenter,
+            up
+        );
+
+        // Build orthographic projection matrix
+        glm::mat4 lightProj = glm::ortho(
+            minExtents.x, maxExtents.x,
+            minExtents.y, maxExtents.y,
+            0.0f, maxExtents.z - minExtents.z
+        );
+
+        m_CascadeSplits[cascadeIndex]       = (nearClip + splitDist * clipRange) * -1.0f;
+        m_LightSpaceMatrices[cascadeIndex]  = lightProj * lightView;
+
+        lastSplitDist = cascadeSplits[cascadeIndex];
+    }
+}
+
+    void VulkanRHI::UpdateShadowDescriptors() {
+        for (uint32_t i = 0; i < SHADOW_CASCADE_COUNT; i++) {
+            VkDescriptorImageInfo imageInfo = {
+                .sampler     = m_ShadowMaps[i].sampler,
+                .imageView   = m_ShadowMaps[i].imageView,
+                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            };
+            VkWriteDescriptorSet write = {
+                .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet          = m_DescriptorSet,
+                .dstBinding      = i + 1,  // bindings 1, 2, 3
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo      = &imageInfo,
+            };
+            vkUpdateDescriptorSets(m_Device.logicalDevice, 1, &write, 0, nullptr);
+        }
+        OSIRIS_INFO("Shadow descriptors updated!");
+    }
 } // Osiris

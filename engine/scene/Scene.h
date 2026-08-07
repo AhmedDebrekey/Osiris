@@ -19,6 +19,7 @@ namespace Osiris {
         Entity CreateEntity(const std::string& name);
         void Update(float deltaTime);
         void Render(IRHI* rhi, const Camera& camera);
+        void RenderShadows(IRHI* rhi);
 
         void PreRender(IRHI * irhi);
 

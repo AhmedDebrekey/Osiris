@@ -13,7 +13,7 @@ namespace Osiris
 
     class Camera {
     public:
-        Camera(const glm::vec3 &position, const glm::vec3 &front, float speed = 1.0f, float sensitivity = 0.1f,
+        Camera(const glm::vec3 &position, const glm::vec3 &front, float speed = 10.0f, float sensitivity = 0.1f,
             float aspect_ratio = 16.0f/9.0f, float fov = 60.0f, float z_near = 0.1f, float z_far = 100.0f);
         ~Camera();
 

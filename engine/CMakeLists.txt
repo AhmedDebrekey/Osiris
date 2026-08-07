@@ -31,6 +31,7 @@ add_library(OsirisEngine STATIC
         renderer/RenderGraph.h
         rhi_vulkan/PipelineManager.cpp
         rhi_vulkan/PipelineManager.h
+        renderer/Light.h
 )
 
 target_include_directories(OsirisEngine PUBLIC

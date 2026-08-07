@@ -43,10 +43,6 @@ int main() {
     Osiris::Scene scene;
 
     // Floor
-    Osiris::Entity floor = scene.CreateEntity("Floor");
-    floor.GetComponent<Osiris::TransformComponent>().position = glm::vec3(0.0f, 0.0f, 0.0f);
-    floor.AddComponent<Osiris::MeshComponent>(floorPlane);
-    floor.AddComponent<Osiris::MaterialComponent>(greyMaterial);
 
     // Ceiling
     Osiris::Entity ceiling = scene.CreateEntity("Ceiling");
@@ -85,12 +81,12 @@ int main() {
 
     // Crates
     Osiris::Entity crate1 = scene.CreateEntity("Crate_01");
-    crate1.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-1.0f, 0.5f, -1.0f);
+    crate1.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-1.0f, 1.0f, -1.0f);
     crate1.AddComponent<Osiris::MeshComponent>(box);
     crate1.AddComponent<Osiris::MaterialComponent>(boxMaterial);
 
     Osiris::Entity crate2 = scene.CreateEntity("Crate_02");
-    crate2.GetComponent<Osiris::TransformComponent>().position = glm::vec3(1.5f, 0.5f, 0.5f);
+    crate2.GetComponent<Osiris::TransformComponent>().position = glm::vec3(1.5f, -0.5f, 0.5f);
     crate2.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(0.0f, 45.0f, 0.0f);
     crate2.AddComponent<Osiris::MeshComponent>(box);
     crate2.AddComponent<Osiris::MaterialComponent>(boxMaterial);
@@ -102,23 +98,38 @@ int main() {
 
     uint64_t lastCounter = SDL_GetPerformanceCounter();
     const double frequency = static_cast<double>(SDL_GetPerformanceFrequency());
+    float rotation = 0.0f;
 
     while (engine.IsRunning()) {
         const uint64_t currentCounter = SDL_GetPerformanceCounter();
         float deltaTime = static_cast<float>((currentCounter - lastCounter) / frequency);
         lastCounter = currentCounter;
 
+        rotation += 45.0f * deltaTime;
+        crate1.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(rotation, rotation, rotation);
+
         engine.BeginFrame();
+
         camera.Update(*engine.GetInput(), deltaTime);
         engine.GetRHI()->UpdateCamera(camera.GetViewMatrix(), camera.GetProjectionMatrix());
 
+        // Shadow passes — render scene from light's perspective for each cascade
+        for (uint32_t i = 0; i < 3; i++) {
+            engine.GetRHI()->BeginShadowPass(i);
+            scene.RenderShadows(engine.GetRHI());
+            engine.GetRHI()->EndShadowPass(i);
+        }
+
+        // Forward pass
+        engine.GetRHI()->BeginForwardPass();
         scene.Render(engine.GetRHI(), camera);
 
+        // ImGui
         ImGui::Begin("Osiris Engine");
-        ImGui::Text("FPS: %.1f", 1.0f / deltaTime);
+        ImGui::Text("FPS: %.1f", deltaTime > 0.0f ? 1.0f / deltaTime : 0.0f);
         ImGui::Text("Frame time: %.3f ms", deltaTime * 1000.0f);
         ImGui::Separator();
-        ImGui::Text("Camera Position: %.2f %.2f %.2f",
+        ImGui::Text("Camera: %.2f %.2f %.2f",
             camera.GetPosition().x, camera.GetPosition().y, camera.GetPosition().z);
         ImGui::SliderFloat("Camera Speed", &camera.GetSpeed(), 0.1f, 20.0f);
         ImGui::Separator();

@@ -46,6 +46,17 @@ namespace Osiris {
         //OSIRIS_INFO("Draw calls: {} Culled: {}", drawCalls, culled);
     }
 
+    void Scene::RenderShadows(IRHI* rhi) {
+        auto view = m_Registry.view<TransformComponent, MeshComponent>();
+        for (auto entity : view) {
+            auto& transform = view.get<TransformComponent>(entity);
+            auto& mesh      = view.get<MeshComponent>(entity);
+
+            rhi->SetModelMatrix(transform.GetModelMatrix());
+            rhi->SetMeshData(mesh.mesh);
+            rhi->DrawShadowIndexed(mesh.mesh.indexCount);
+        }
+    }
     int Scene::GetEntityCount() {
         return static_cast<int>(m_Registry.view<TagComponent>().size());
     }

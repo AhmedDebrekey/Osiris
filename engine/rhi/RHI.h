@@ -42,6 +42,11 @@ namespace Osiris {
         virtual void Draw               (uint32_t vertexCount)     = 0;
         virtual void DrawIndexed        (uint32_t indexCount)      = 0;
 
+        virtual void BeginShadowPass    (uint32_t cascadeIndex) = 0;
+        virtual void EndShadowPass      (uint32_t cascadeIndex) = 0;
+        virtual void DrawShadowIndexed  (uint32_t indexCount)   = 0;
+        virtual void BeginForwardPass   ()                      = 0;
+
         virtual void InitImGui()        = 0;
         virtual void ShutdownImGui()    = 0;
         virtual void BeginImGuiFrame()  = 0;

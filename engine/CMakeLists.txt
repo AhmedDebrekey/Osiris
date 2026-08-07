@@ -29,6 +29,8 @@ add_library(OsirisEngine STATIC
         renderer/Frustum.cpp
         renderer/RenderGraph.cpp
         renderer/RenderGraph.h
+        rhi_vulkan/PipelineManager.cpp
+        rhi_vulkan/PipelineManager.h
 )
 
 target_include_directories(OsirisEngine PUBLIC

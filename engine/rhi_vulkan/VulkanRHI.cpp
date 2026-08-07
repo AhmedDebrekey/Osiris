@@ -1,5 +1,5 @@
 //
-// Created by ahtal on 01/06/2026.
+// Created by Debreky on 01/06/2026.
 //
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
@@ -113,10 +113,34 @@ namespace Osiris {
             return false;
         }
 
-        if (!CreatePipeline()) {
-            OSIRIS_ERROR("Failed to create pipeline!");
+        if (!CreateDescriptorSetLayouts()) {
+            OSIRIS_ERROR("Failed to create descriptor set layouts!");
             return false;
         }
+
+        m_PipelineManager = std::make_unique<PipelineManager>(m_Device.logicalDevice);
+
+        VkDescriptorSetLayout forwardLayouts[] = { m_FrameDescriptorLayout, m_MaterialDescriptorLayout };
+
+        m_ForwardPipeline = m_PipelineManager->GetOrCreate({
+            .vertexShader     = "assets/shaders/triangle.vert.spv",
+            .fragmentShader   = "assets/shaders/triangle.frag.spv",
+            .colorAttachment  = true,
+            .colorFormat      = m_SwapChain.swapChainImageFormat,
+            .depthAttachment  = true,
+            .depthFormat      = VK_FORMAT_D32_SFLOAT,
+            .depthTest        = true,
+            .depthWrite       = true,
+            .depthBias        = false,
+            .cullMode         = VK_CULL_MODE_BACK_BIT,
+            .frontFace        = VK_FRONT_FACE_CLOCKWISE,
+            .setLayoutCount   = 2,
+            .pSetLayouts      = forwardLayouts,
+            .pushConstantSize = sizeof(glm::mat4),
+            .pushConstantStages = VK_SHADER_STAGE_VERTEX_BIT,
+        });
+
+        m_ForwardPipelineLayout = m_PipelineManager->GetLayout(m_ForwardPipeline);
 
         if (!CreateDescriptorPool()) {
             OSIRIS_ERROR("Failed to create descriptor pool!");
@@ -178,11 +202,11 @@ namespace Osiris {
 
         vkDestroyCommandPool(m_Device.logicalDevice, m_CommandPool, nullptr);
 
-        vkDestroyPipeline(m_Device.logicalDevice, m_GraphicsPipeline, nullptr);
-
         vkDestroyDescriptorPool(m_Device.logicalDevice, m_DescriptorPool, nullptr);
 
-        vkDestroyPipelineLayout(m_Device.logicalDevice, m_PipelineLayout, nullptr);
+
+        m_PipelineManager->Shutdown();
+        m_PipelineManager.reset();
 
         for (const auto& imageView: m_SwapChain.swapChainImageViews) {
             vkDestroyImageView(m_Device.logicalDevice, imageView, nullptr);
@@ -280,9 +304,9 @@ namespace Osiris {
         };
 
         vkCmdBeginRendering(cmd, &renderingInfo);
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicsPipeline);
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_ForwardPipeline);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
-            m_PipelineLayout, 0, 1, &m_DescriptorSet, 0, nullptr);
+            m_ForwardPipelineLayout, 0, 1, &m_DescriptorSet, 0, nullptr);
 
         VkViewport viewport = {
             .x = 0.0f, .y = 0.0f,
@@ -676,7 +700,7 @@ namespace Osiris {
         vkCmdBindDescriptorSets(
             m_Frames[m_CurrentFrame].commandBuffer,
             VK_PIPELINE_BIND_POINT_GRAPHICS,
-            m_PipelineLayout,
+            m_ForwardPipelineLayout,
             1,        // ← set index 1 (material set)
             1,
             &materialSet,
@@ -693,7 +717,7 @@ namespace Osiris {
     void VulkanRHI::DrawIndexed(uint32_t indexCount) {
         VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
 
-        vkCmdPushConstants(cmd, m_PipelineLayout, VK_SHADER_STAGE_VERTEX_BIT,
+        vkCmdPushConstants(cmd, m_ForwardPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT,
             0, sizeof(glm::mat4), &m_ModelMatrix);
 
         if (m_BoundMesh.vertexBuffer.IsValid()) {
@@ -1287,7 +1311,7 @@ namespace Osiris {
             .pPushConstantRanges    = &pushConstantRange,
         };
 
-        VkResult result = vkCreatePipelineLayout(m_Device.logicalDevice, &pipelineLayoutInfo, nullptr, &m_PipelineLayout);
+        VkResult result = vkCreatePipelineLayout(m_Device.logicalDevice, &pipelineLayoutInfo, nullptr, &m_ForwardPipelineLayout);
         VK_CHECK(result);
 
         VkPipelineDepthStencilStateCreateInfo depthStencilInfo = {
@@ -1317,14 +1341,47 @@ namespace Osiris {
             .pDepthStencilState = &depthStencilInfo,
             .pColorBlendState = &colorBlendInfo,
             .pDynamicState = &dynamicStateInfo,
-            .layout = m_PipelineLayout,
+            .layout = m_ForwardPipelineLayout,
         };
 
-        result = vkCreateGraphicsPipelines(m_Device.logicalDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &m_GraphicsPipeline);
+        result = vkCreateGraphicsPipelines(m_Device.logicalDevice, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &m_ForwardPipeline);
         VK_CHECK(result);
         vkDestroyShaderModule(m_Device.logicalDevice, vertShaderModule, nullptr);
         vkDestroyShaderModule(m_Device.logicalDevice, fragShaderModule, nullptr);
 
+        return true;
+    }
+
+    bool VulkanRHI::CreateDescriptorSetLayouts() {
+        // Frame layout — binding 0 = camera uniform buffer (vertex stage)
+        VkDescriptorSetLayoutBinding cameraBinding = {
+            .binding         = 0,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 1,
+            .stageFlags      = VK_SHADER_STAGE_VERTEX_BIT,
+        };
+        VkDescriptorSetLayoutCreateInfo frameLayoutInfo = {
+            .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .bindingCount = 1,
+            .pBindings    = &cameraBinding,
+        };
+        VK_CHECK(vkCreateDescriptorSetLayout(m_Device.logicalDevice, &frameLayoutInfo, nullptr, &m_FrameDescriptorLayout));
+
+        // Material layout — binding 0 = combined image sampler (fragment stage)
+        VkDescriptorSetLayoutBinding textureBinding = {
+            .binding         = 0,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = 1,
+            .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+        };
+        VkDescriptorSetLayoutCreateInfo materialLayoutInfo = {
+            .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .bindingCount = 1,
+            .pBindings    = &textureBinding,
+        };
+        VK_CHECK(vkCreateDescriptorSetLayout(m_Device.logicalDevice, &materialLayoutInfo, nullptr, &m_MaterialDescriptorLayout));
+
+        OSIRIS_INFO("Descriptor set layouts created!");
         return true;
     }
 

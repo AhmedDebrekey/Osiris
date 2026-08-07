@@ -13,6 +13,8 @@
 
 #include "renderer/RenderGraph.h"
 
+#include "PipelineManager.h"
+
 namespace Osiris {
     constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 
@@ -89,6 +91,7 @@ namespace Osiris {
         bool CreateSwapChainImages();
         bool CreateDepthResources();
         bool CreatePipeline();
+        bool CreateDescriptorSetLayouts();
         bool CreateDescriptorPool();
         bool CreateDescriptorSet();
         bool CreateCommandBuffers();
@@ -107,14 +110,16 @@ namespace Osiris {
 
         VkInstance              m_Instance                  = VK_NULL_HANDLE;
         VkSurfaceKHR            m_Surface                   = VK_NULL_HANDLE;
-        VkPipelineLayout        m_PipelineLayout            = VK_NULL_HANDLE;
-        VkPipeline              m_GraphicsPipeline          = VK_NULL_HANDLE;
         VkCommandPool           m_CommandPool               = VK_NULL_HANDLE;
         VkDescriptorSetLayout   m_FrameDescriptorLayout     = VK_NULL_HANDLE;
         VkDescriptorSetLayout   m_MaterialDescriptorLayout  = VK_NULL_HANDLE;
         VkDescriptorPool        m_DescriptorPool            = VK_NULL_HANDLE;
         VkDescriptorSet         m_DescriptorSet             = VK_NULL_HANDLE;
         VkDescriptorPool        m_ImGuiDescriptorPool       = VK_NULL_HANDLE;
+
+        std::unique_ptr<PipelineManager> m_PipelineManager;
+        VkPipeline       m_ForwardPipeline       = VK_NULL_HANDLE;
+        VkPipelineLayout m_ForwardPipelineLayout = VK_NULL_HANDLE;
 
         std::array<VkSemaphore, MAX_FRAMES_IN_FLIGHT> m_ImageAvailableSemaphores;
         std::vector<VkSemaphore> m_RenderFinishedSemaphores;

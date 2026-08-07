@@ -156,9 +156,9 @@ namespace Osiris {
             .depthTest          = true,
             .depthWrite         = true,
             .depthBias          = true,
-            .depthBiasConstant  = 1.25f,
+            .depthBiasConstant  = 0.0f,
             .depthBiasClamp     = 0.0f,
-            .depthBiasSlope     = 1.75f,
+            .depthBiasSlope     = 0.1f,
             .cullMode           = VK_CULL_MODE_FRONT_BIT,
             .frontFace          = VK_FRONT_FACE_CLOCKWISE,
             .setLayoutCount     = 1,
@@ -800,6 +800,7 @@ namespace Osiris {
             0.0f
         );
         cameraBuffer.lightDirection = glm::vec4(-m_DirectionalLight.direction, 0.0f);
+
 
         UploadDynamicBuffer(m_CameraUniformBuffer, &cameraBuffer, sizeof(CameraBufferFull));
         UpdateCascades(view, projection);
@@ -1606,6 +1607,7 @@ bool VulkanRHI::SetupDebugMessenger() {
             glm::mat4 projection;
             glm::mat4 lightSpaceMatrices[3];
             glm::vec4 cascadeSplits;
+            glm::vec4 lightDirection;
         };
 
         BufferDesc uniformBufferDesc = {
@@ -1781,8 +1783,8 @@ bool VulkanRHI::SetupDebugMessenger() {
 
 void VulkanRHI::UpdateCascades(const glm::mat4& view, const glm::mat4& projection) {
     // Cascade split distances in view space
-    float nearClip  = 0.1f;
-    float farClip   = 100.0f;
+    float nearClip  = 1.0f;
+    float farClip   = 50.0f;
     float clipRange = farClip - nearClip;
 
     float cascadeSplitLambda = 0.95f;

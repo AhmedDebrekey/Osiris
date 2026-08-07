@@ -12,6 +12,7 @@ layout(set = 0, binding = 0) uniform CameraUBO {
     mat4 projection;
     mat4 lightSpaceMatrices[3];
     vec4 cascadeSplits;
+    vec4 lightDirection;
 } camera;
 
 layout(set = 0, binding = 1) uniform sampler2DShadow shadowMap0;
@@ -38,14 +39,14 @@ float SampleShadowPCF(sampler2DShadow shadowMap, vec4 shadowCoord) {
     for (int x = -1; x <= 1; x++) {
         for (int y = -1; y <= 1; y++) {
             shadow += texture(shadowMap,
-                              vec3(proj.xy + vec2(x, y) * texelSize, proj.z - bias));
+                              vec3(proj.xy + vec2(x, y) * texelSize, proj.z));
         }
     }
     return shadow / 9.0;
 }
 
 void main() {
-    vec3 lightDir = normalize(vec3(0.5, 1.0, 0.3));
+    vec3 lightDir = normalize(camera.lightDirection.xyz);
     vec3 normal   = normalize(inNormal);
     float diff = max(dot(normal, -lightDir), 0.0);
 
@@ -63,7 +64,7 @@ void main() {
 
     vec4 texColor    = texture(texSampler, inTexCoord);
     vec3 linearColor = pow(texColor.rgb, vec3(2.2));
-    vec3 lit         = linearColor * (diff * shadow) + linearColor * 0.15;
+    vec3 lit = linearColor * (diff * shadow) + linearColor * 0.05; // very dark ambient
     vec3 gamma       = pow(lit, vec3(1.0 / 2.2));
     outColor         = vec4(gamma, texColor.a);
 }

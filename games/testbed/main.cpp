@@ -86,7 +86,7 @@ int main() {
     crate1.AddComponent<Osiris::MaterialComponent>(boxMaterial);
 
     Osiris::Entity crate2 = scene.CreateEntity("Crate_02");
-    crate2.GetComponent<Osiris::TransformComponent>().position = glm::vec3(1.5f, -0.5f, 0.5f);
+    crate2.GetComponent<Osiris::TransformComponent>().position = glm::vec3(1.5f, 2.5f, 0.5f);
     crate2.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(0.0f, 45.0f, 0.0f);
     crate2.AddComponent<Osiris::MeshComponent>(box);
     crate2.AddComponent<Osiris::MaterialComponent>(boxMaterial);

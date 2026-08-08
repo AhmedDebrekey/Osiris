@@ -73,7 +73,7 @@ namespace Osiris {
 
         void Dispatch(uint32_t x, uint32_t y, uint32_t z) override;
 
-        void UpdateCamera(const glm::mat4 &view, const glm::mat4 &projection) override;
+        void UpdateCamera(const glm::mat4 &view, const glm::mat4 &projection, const glm::vec4& position) override;
 
         void BeginForwardPass() override;
 

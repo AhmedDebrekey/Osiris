@@ -825,13 +825,14 @@ namespace Osiris {
     void VulkanRHI::Dispatch(uint32_t x, uint32_t y, uint32_t z) {
     }
 
-    void VulkanRHI::UpdateCamera(const glm::mat4& view, const glm::mat4& projection) {
+    void VulkanRHI::UpdateCamera(const glm::mat4& view, const glm::mat4& projection, const glm::vec4& position) {
         struct CameraBufferFull {
             glm::mat4 view;
             glm::mat4 projection;
             glm::mat4 lightSpaceMatrices[3];
             glm::vec4 cascadeSplits;
             glm::vec4 lightDirection;
+            glm::vec4 cameraPosition;
         };
 
         CameraBufferFull cameraBuffer;
@@ -847,6 +848,7 @@ namespace Osiris {
             0.0f
         );
         cameraBuffer.lightDirection = glm::vec4(-m_DirectionalLight.direction, 0.0f);
+        cameraBuffer.cameraPosition = position;
 
 
         UploadDynamicBuffer(m_CameraUniformBuffer, &cameraBuffer, sizeof(CameraBufferFull));

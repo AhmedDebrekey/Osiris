@@ -36,12 +36,39 @@ int main() {
     TextureHandle greyTexture = Osiris::TextureLoader::LoadFromFile(
         Osiris::AssetManager::GetPath("textures/grey.png"), engine.GetRHI());
 
+    Osiris::Mesh helmet = Osiris::MeshLoader::LoadFromGLTF(
+    Osiris::AssetManager::GetPath("models/DamagedHelmet/DamagedHelmet.gltf"),
+    engine.GetRHI());
+
+    TextureHandle helmetAlbedo    = Osiris::TextureLoader::LoadFromFile(
+        Osiris::AssetManager::GetPath("models/DamagedHelmet/Default_albedo.jpg"), engine.GetRHI());
+    TextureHandle helmetNormal    = Osiris::TextureLoader::LoadFromFile(
+        Osiris::AssetManager::GetPath("models/DamagedHelmet/Default_normal.jpg"), engine.GetRHI());
+    TextureHandle helmetMetalRough = Osiris::TextureLoader::LoadFromFile(
+        Osiris::AssetManager::GetPath("models/DamagedHelmet/Default_metalRoughness.jpg"), engine.GetRHI());
+    TextureHandle helmetAO        = Osiris::TextureLoader::LoadFromFile(
+        Osiris::AssetManager::GetPath("models/DamagedHelmet/Default_AO.jpg"), engine.GetRHI());
+
+    MaterialHandle helmetMaterial = engine.GetRHI()->CreateMaterial({
+        .albedo    = helmetAlbedo,
+        .normal    = helmetNormal,
+        .metallic  = helmetMetalRough,
+        .roughness = helmetMetalRough,
+        .ao        = helmetAO,
+    });
+
+
     // Create materials
     MaterialHandle boxMaterial  = engine.GetRHI()->CreateMaterial({.albedo = boxTexture});
     MaterialHandle greyMaterial = engine.GetRHI()->CreateMaterial({.albedo = greyTexture});
 
     Osiris::Scene scene;
 
+    Osiris::Entity e_Helmet = scene.CreateEntity("helmet");
+    e_Helmet.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-2.0f, 0.0f, 1.0f);
+    e_Helmet.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(90.0f, 180.0f, 0.0f);
+    e_Helmet.AddComponent<Osiris::MeshComponent>(helmet);
+    e_Helmet.AddComponent<Osiris::MaterialComponent>(helmetMaterial);
     // Floor
 
     // Ceiling
@@ -111,7 +138,7 @@ int main() {
         engine.BeginFrame();
 
         camera.Update(*engine.GetInput(), deltaTime);
-        engine.GetRHI()->UpdateCamera(camera.GetViewMatrix(), camera.GetProjectionMatrix());
+        engine.GetRHI()->UpdateCamera(camera.GetViewMatrix(), camera.GetProjectionMatrix(), glm::vec4(camera.GetPosition(), 0.0f));
 
         // Shadow passes — render scene from light's perspective for each cascade
         for (uint32_t i = 0; i < 3; i++) {

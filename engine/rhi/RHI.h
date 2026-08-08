@@ -26,7 +26,7 @@ namespace Osiris {
         virtual void SetMeshData(const Mesh& mesh) = 0;
         virtual void SetModelMatrix(const glm::mat4& model) = 0;
 
-        virtual void UpdateCamera(const glm::mat4& view, const glm::mat4& projection) = 0;
+        virtual void UpdateCamera(const glm::mat4& view, const glm::mat4& projection, const glm::vec4& position) = 0;
 
         virtual BufferHandle    CreateBuffer(const BufferDesc&)          = 0;
         virtual TextureHandle   CreateTexture(const TextureDesc&)        = 0;

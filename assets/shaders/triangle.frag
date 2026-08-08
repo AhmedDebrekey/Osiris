@@ -1,11 +1,15 @@
 #version 450
 
+const float PI = 3.14159265359;
+
 layout(location = 0) in vec3 inNormal;
 layout(location = 1) in vec2 inTexCoord;
 layout(location = 2) in vec3 inWorldPos;
 layout(location = 3) in vec4 inShadowCoord0;
 layout(location = 4) in vec4 inShadowCoord1;
 layout(location = 5) in vec4 inShadowCoord2;
+layout(location = 6) in vec3 inTangent;
+layout(location = 7) in vec3 inBitangent;
 
 layout(set = 0, binding = 0) uniform CameraUBO {
     mat4 view;
@@ -13,16 +17,22 @@ layout(set = 0, binding = 0) uniform CameraUBO {
     mat4 lightSpaceMatrices[3];
     vec4 cascadeSplits;
     vec4 lightDirection;
+    vec4 cameraPosition;
 } camera;
 
 layout(set = 0, binding = 1) uniform sampler2DShadow shadowMap0;
 layout(set = 0, binding = 2) uniform sampler2DShadow shadowMap1;
 layout(set = 0, binding = 3) uniform sampler2DShadow shadowMap2;
 
-layout(set = 1, binding = 0) uniform sampler2D texSampler;
+layout(set = 1, binding = 0) uniform sampler2D albedoMap;
+layout(set = 1, binding = 1) uniform sampler2D normalMap;
+layout(set = 1, binding = 2) uniform sampler2D metallicMap;
+layout(set = 1, binding = 3) uniform sampler2D roughnessMap;
+layout(set = 1, binding = 4) uniform sampler2D aoMap;
 
 layout(location = 0) out vec4 outColor;
 
+// ── Shadow PCF ──────────────────────────────────────────────
 float SampleShadowPCF(sampler2DShadow shadowMap, vec4 shadowCoord) {
     vec3 proj = shadowCoord.xyz / shadowCoord.w;
     proj.xy   = proj.xy * 0.5 + 0.5;
@@ -33,7 +43,6 @@ float SampleShadowPCF(sampler2DShadow shadowMap, vec4 shadowCoord) {
     }
 
     float shadow   = 0.0;
-    float bias     = 0.005;
     vec2 texelSize = 1.0 / vec2(textureSize(shadowMap, 0));
 
     for (int x = -1; x <= 1; x++) {
@@ -45,12 +54,69 @@ float SampleShadowPCF(sampler2DShadow shadowMap, vec4 shadowCoord) {
     return shadow / 9.0;
 }
 
-void main() {
-    vec3 lightDir = normalize(camera.lightDirection.xyz);
-    vec3 normal   = normalize(inNormal);
-    float diff = max(dot(normal, -lightDir), 0.0);
+// ── Cook-Torrance BRDF helpers ───────────────────────────────
+float D_GGX(float NdotH, float roughness) {
+    float a  = roughness * roughness;
+    float a2 = a * a;
+    float d  = (NdotH * NdotH) * (a2 - 1.0) + 1.0;
+    return a2 / (PI * d * d);
+}
 
-    // Cascade selection based on view-space depth
+float G_SchlickGGX(float NdotV, float roughness) {
+    float r = roughness + 1.0;
+    float k = (r * r) / 8.0;
+    return NdotV / (NdotV * (1.0 - k) + k);
+}
+
+float G_Smith(float NdotV, float NdotL, float roughness) {
+    return G_SchlickGGX(NdotV, roughness) * G_SchlickGGX(NdotL, roughness);
+}
+
+vec3 F_Schlick(float cosTheta, vec3 F0) {
+    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+void main() {
+    // ── Sample textures ──────────────────────────────────────
+    vec4 albedoSample   = texture(albedoMap,    inTexCoord);
+    vec3 albedo         = pow(albedoSample.rgb, vec3(2.2)); // sRGB to linear
+    float metallic  = texture(metallicMap,  inTexCoord).b;
+    float roughness = texture(roughnessMap, inTexCoord).g;
+    float ao            = texture(aoMap,        inTexCoord).r;
+
+    // ── Normal mapping ────────────────────────────────────────
+    vec3 normalSample = texture(normalMap, inTexCoord).rgb;
+    normalSample      = normalSample * 2.0 - 1.0;
+    mat3 TBN          = mat3(normalize(inTangent), normalize(inBitangent), normalize(inNormal));
+    vec3 N            = normalize(TBN * normalSample);
+
+    // ── Vectors ───────────────────────────────────────────────
+    vec3 V = normalize(camera.cameraPosition.xyz - inWorldPos);
+    vec3 L        = normalize(camera.lightDirection.xyz);
+    vec3 H        = normalize(V + L);
+
+    float NdotL   = max(dot(N, L), 0.0);
+    float NdotV   = max(dot(N, V), 0.0001);
+    float NdotH   = max(dot(N, H), 0.0);
+    float HdotV   = max(dot(H, V), 0.0);
+
+    // ── F0 — base reflectivity ────────────────────────────────
+    vec3 F0 = mix(vec3(0.04), albedo, metallic);
+
+    // ── Cook-Torrance BRDF ────────────────────────────────────
+    float D   = D_GGX(NdotH, roughness);
+    float G   = G_Smith(NdotV, NdotL, roughness);
+    vec3  F   = F_Schlick(HdotV, F0);
+
+    vec3 specular = (D * G * F) / max(4.0 * NdotV * NdotL, 0.001);
+
+    vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
+    vec3 diffuse = kD * albedo / PI;
+
+    vec3 lightColor = vec3(3.0);
+    vec3 Lo = (diffuse + specular) * lightColor * NdotL;
+
+    // ── Shadow ────────────────────────────────────────────────
     float depth = abs((camera.view * vec4(inWorldPos, 1.0)).z);
 
     float shadow;
@@ -62,9 +128,19 @@ void main() {
         shadow = SampleShadowPCF(shadowMap2, inShadowCoord2);
     }
 
-    vec4 texColor    = texture(texSampler, inTexCoord);
-    vec3 linearColor = pow(texColor.rgb, vec3(2.2));
-    vec3 lit = linearColor * (diff * shadow) + linearColor * 0.05; // very dark ambient
-    vec3 gamma       = pow(lit, vec3(1.0 / 2.2));
-    outColor         = vec4(gamma, texColor.a);
+    Lo *= shadow;
+
+    // ── Ambient ───────────────────────────────────────────────
+    vec3 ambient = vec3(0.1) * albedo * ao;
+
+    // ── Final color ───────────────────────────────────────────
+    vec3 color = ambient + Lo;
+
+    // Tone mapping (Reinhard)
+    color = color / (color + vec3(1.0));
+
+    // Gamma correction
+    color = pow(color, vec3(1.0 / 2.2));
+
+    outColor = vec4(color, albedoSample.a);
 }

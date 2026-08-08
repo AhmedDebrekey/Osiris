@@ -28,6 +28,11 @@ namespace Osiris
         AABB bounds;
     };
 
+    struct MeshPrimitive {
+        Mesh           mesh;
+        MaterialHandle material;
+    };
+
 }
 
 #endif //OSIRIS_MESHTYPE_H

@@ -3,150 +3,210 @@
 //
 
 #include "MeshLoader.h"
+
+#include "TextureLoader.h"
 #include "fastgltf/core.hpp"
 #include "fastgltf/types.hpp"
 #include "fastgltf/tools.hpp"
 #include "core/Log.h"
 #include "fastgltf/glm_element_traits.hpp"
+#include <vector>
 
 namespace Osiris {
-    Mesh MeshLoader::LoadFromGLTF(const std::string &path, IRHI *rhi) {
-        fastgltf::Parser parser;
-        fastgltf::GltfDataBuffer data;
+    std::vector<MeshPrimitive> MeshLoader::LoadFromGLTF(const std::string& path, IRHI* rhi) {
+    std::vector<MeshPrimitive> result;
 
-        if (!data.loadFromFile(path)) {
-            OSIRIS_ERROR("Failed to load glTF file: {}", path);
-            return Mesh{};
-        }
+    fastgltf::Parser parser;
+    fastgltf::GltfDataBuffer data;
 
-        auto asset = parser.loadGltf(&data,
-            std::filesystem::path(path).parent_path(),
-            fastgltf::Options::LoadExternalBuffers);
-
-        if (asset.error() != fastgltf::Error::None) {
-            OSIRIS_ERROR("Failed to parse glTF file: {}", path);
-            return Mesh{};
-        }
-
-        std::vector<Vertex> vertices;
-        std::vector<uint32_t> indices;
-        AABB bounds;
-
-        // Get the first mesh's first primitive
-        auto& mesh = asset->meshes[0];
-        auto& primitive = mesh.primitives[0];
-
-        OSIRIS_INFO("Has indices: {}", primitive.indicesAccessor.has_value());
-        if (primitive.indicesAccessor.has_value()) {
-            OSIRIS_INFO("Indices accessor index: {}", primitive.indicesAccessor.value());
-        }
-
-
-        // Extract positions
-        auto posIt = std::find_if(primitive.attributes.begin(), primitive.attributes.end(),
-            [](const auto& attr) { return attr.first == "POSITION"; });
-        if (posIt != primitive.attributes.end()) {
-            auto& accessor = asset->accessors[posIt->second];
-            vertices.resize(accessor.count);
-            std::size_t i = 0;
-            fastgltf::iterateAccessor<glm::vec3>(asset.get(), accessor, [&](glm::vec3 pos) {
-                vertices[i++].Position = pos;
-            });
-        }
-
-        for (const auto& vertex : vertices) {
-            bounds.min = glm::min(bounds.min, vertex.Position);
-            bounds.max = glm::max(bounds.max, vertex.Position);
-        }
-
-        // Extract indices
-        if (primitive.indicesAccessor.has_value()) {
-            auto& accessor = asset->accessors[primitive.indicesAccessor.value()];
-            indices.resize(accessor.count);
-            std::size_t i = 0;
-            fastgltf::iterateAccessor<std::uint32_t>(asset.get(), accessor, [&](std::uint32_t index) {
-                indices[i++] = index;
-            });
-        } else {
-            // No index buffer — generate sequential indices
-            indices.resize(vertices.size());
-            for (uint32_t i = 0; i < vertices.size(); i++) {
-                indices[i] = i;
-            }
-        }
-
-        // Extract normals
-        auto normIt = std::find_if(primitive.attributes.begin(), primitive.attributes.end(),
-            [](const auto& attr) { return attr.first == "NORMAL"; });
-        if (normIt != primitive.attributes.end()) {
-            auto& accessor = asset->accessors[normIt->second];
-            std::size_t i = 0;
-            fastgltf::iterateAccessor<glm::vec3>(asset.get(), accessor, [&](glm::vec3 norm) {
-                vertices[i++].Normal = norm;
-            });
-        }
-
-        // Extract UVs
-        auto uvIt = std::find_if(primitive.attributes.begin(), primitive.attributes.end(),
-            [](const auto& attr) { return attr.first == "TEXCOORD_0"; });
-        if (uvIt != primitive.attributes.end()) {
-            auto& accessor = asset->accessors[uvIt->second];
-            std::size_t i = 0;
-            fastgltf::iterateAccessor<glm::vec2>(asset.get(), accessor, [&](glm::vec2 uv) {
-                vertices[i++].TexCoord = uv;
-            });
-        }
-
-        // Extract Tangents
-        auto tangentIt = std::find_if(primitive.attributes.begin(), primitive.attributes.end(),
-            [](const auto& attr) { return attr.first == "TANGENT"; });
-        bool hasTangets = (tangentIt != primitive.attributes.end());
-        if (!hasTangets) {
-            GenerateTangents(vertices, indices);
-        } else {
-            OSIRIS_INFO("Found Tangent: {}", tangentIt->second);
-            auto& accessor = asset->accessors[tangentIt->second];
-            std::size_t i = 0;
-            fastgltf::iterateAccessor<glm::vec4>(asset.get(), accessor, [&](glm::vec4 tangent) {
-                vertices[i++].Tangent = tangent;
-            });
-        }
-
-        OSIRIS_INFO("Vertices: {}", vertices.size());
-        OSIRIS_INFO("Indices: {}", indices.size());
-
-        if (vertices.empty() || indices.empty()) {
-            OSIRIS_ERROR("Failed to extract mesh data from glTF");
-            return Mesh{};
-        }
-
-        // Upload to GPU
-        BufferDesc vertexBufferDesc = {
-            .size       = sizeof(Vertex) * vertices.size(),
-            .usage      = BufferUsage::Vertex,
-            .cpuVisible = false,
-        };
-
-        BufferDesc indexBufferDesc = {
-            .size       = sizeof(uint32_t) * indices.size(),
-            .usage      = BufferUsage::Index,
-            .cpuVisible = false,
-        };
-
-        BufferHandle vertexBuffer = rhi->CreateBuffer(vertexBufferDesc);
-        rhi->UploadBufferData(vertexBuffer, vertices.data(), sizeof(Vertex) * vertices.size());
-
-        BufferHandle indexBuffer = rhi->CreateBuffer(indexBufferDesc);
-        rhi->UploadBufferData(indexBuffer, indices.data(), sizeof(uint32_t) * indices.size());
-
-        return Mesh {
-            .vertexBuffer = vertexBuffer,
-            .indexBuffer  = indexBuffer,
-            .vertexCount  = static_cast<uint32_t>(vertices.size()),
-            .indexCount   = static_cast<uint32_t>(indices.size()),
-            .bounds       = bounds,
-        };
+    if (!data.loadFromFile(path)) {
+        OSIRIS_ERROR("Failed to load glTF file: {}", path);
+        return result;
     }
+
+    auto asset = parser.loadGltf(&data,
+        std::filesystem::path(path).parent_path(),
+        fastgltf::Options::LoadExternalBuffers);
+
+    if (asset.error() != fastgltf::Error::None) {
+        OSIRIS_ERROR("Failed to parse glTF file: {}", path);
+        return result;
+    }
+
+    // Texture cache — avoid loading the same texture twice
+    std::unordered_map<size_t, TextureHandle> textureCache;
+
+    // Helper to load a texture by image index
+    auto loadTexture = [&](size_t imageIndex) -> TextureHandle {
+        auto it = textureCache.find(imageIndex);
+        if (it != textureCache.end()) return it->second;
+
+        auto& image = asset->images[imageIndex];
+        std::string texturePath;
+
+        if (auto* uri = std::get_if<fastgltf::sources::URI>(&image.data)) {
+            texturePath = (std::filesystem::path(path).parent_path() / uri->uri.path()).string();
+        } else {
+            OSIRIS_ERROR("MeshLoader: unsupported image source type");
+            return TextureHandle{};
+        }
+
+        TextureHandle handle = TextureLoader::LoadFromFile(texturePath, rhi);
+        textureCache[imageIndex] = handle;
+        return handle;
+    };
+
+    // Helper to get image index from a texture index
+    auto getImageIndex = [&](size_t textureIndex) -> size_t {
+        return asset->textures[textureIndex].imageIndex.value_or(0);
+    };
+
+    // Loop over all meshes and primitives
+    for (auto& mesh : asset->meshes) {
+        for (auto& primitive : mesh.primitives) {
+            std::vector<Vertex>   vertices;
+            std::vector<uint32_t> indices;
+
+            // Extract indices
+            if (primitive.indicesAccessor.has_value()) {
+                auto& accessor = asset->accessors[primitive.indicesAccessor.value()];
+                indices.resize(accessor.count);
+                std::size_t i = 0;
+                fastgltf::iterateAccessor<std::uint32_t>(asset.get(), accessor,
+                    [&](std::uint32_t index) { indices[i++] = index; });
+            } else {
+                // No index buffer — generate sequential indices after positions are loaded
+            }
+
+            // Extract positions
+            auto posIt = std::find_if(primitive.attributes.begin(), primitive.attributes.end(),
+                [](const auto& attr) { return attr.first == "POSITION"; });
+            if (posIt != primitive.attributes.end()) {
+                auto& accessor = asset->accessors[posIt->second];
+                vertices.resize(accessor.count);
+                std::size_t i = 0;
+                fastgltf::iterateAccessor<glm::vec3>(asset.get(), accessor,
+                    [&](glm::vec3 pos) { vertices[i++].Position = pos; });
+            }
+
+            // Generate sequential indices if none exist
+            if (indices.empty() && !vertices.empty()) {
+                indices.resize(vertices.size());
+                for (uint32_t i = 0; i < vertices.size(); i++) indices[i] = i;
+            }
+
+            // Extract normals
+            auto normIt = std::find_if(primitive.attributes.begin(), primitive.attributes.end(),
+                [](const auto& attr) { return attr.first == "NORMAL"; });
+            if (normIt != primitive.attributes.end()) {
+                auto& accessor = asset->accessors[normIt->second];
+                std::size_t i = 0;
+                fastgltf::iterateAccessor<glm::vec3>(asset.get(), accessor,
+                    [&](glm::vec3 norm) { vertices[i++].Normal = norm; });
+            }
+
+            // Extract UVs
+            auto uvIt = std::find_if(primitive.attributes.begin(), primitive.attributes.end(),
+                [](const auto& attr) { return attr.first == "TEXCOORD_0"; });
+            if (uvIt != primitive.attributes.end()) {
+                auto& accessor = asset->accessors[uvIt->second];
+                std::size_t i = 0;
+                fastgltf::iterateAccessor<glm::vec2>(asset.get(), accessor,
+                    [&](glm::vec2 uv) { vertices[i++].TexCoord = uv; });
+            }
+
+            // Extract tangents or generate them
+            auto tangentIt = std::find_if(primitive.attributes.begin(), primitive.attributes.end(),
+                [](const auto& attr) { return attr.first == "TANGENT"; });
+            if (tangentIt != primitive.attributes.end()) {
+                auto& accessor = asset->accessors[tangentIt->second];
+                std::size_t i = 0;
+                fastgltf::iterateAccessor<glm::vec4>(asset.get(), accessor,
+                    [&](glm::vec4 tangent) { vertices[i++].Tangent = tangent; });
+            } else {
+                GenerateTangents(vertices, indices);
+            }
+
+            if (vertices.empty() || indices.empty()) {
+                OSIRIS_ERROR("MeshLoader: empty primitive skipped");
+                continue;
+            }
+
+            // Compute AABB
+            AABB bounds;
+            for (const auto& v : vertices) {
+                bounds.min = glm::min(bounds.min, v.Position);
+                bounds.max = glm::max(bounds.max, v.Position);
+            }
+
+            // Upload to GPU
+            BufferDesc vertexBufferDesc = {
+                .size       = sizeof(Vertex) * vertices.size(),
+                .usage      = BufferUsage::Vertex,
+                .cpuVisible = false,
+            };
+            BufferDesc indexBufferDesc = {
+                .size       = sizeof(uint32_t) * indices.size(),
+                .usage      = BufferUsage::Index,
+                .cpuVisible = false,
+            };
+
+            BufferHandle vertexBuffer = rhi->CreateBuffer(vertexBufferDesc);
+            rhi->UploadBufferData(vertexBuffer, vertices.data(), sizeof(Vertex) * vertices.size());
+
+            BufferHandle indexBuffer = rhi->CreateBuffer(indexBufferDesc);
+            rhi->UploadBufferData(indexBuffer, indices.data(), sizeof(uint32_t) * indices.size());
+
+            Mesh mesh = {
+                .vertexBuffer = vertexBuffer,
+                .indexBuffer  = indexBuffer,
+                .vertexCount  = static_cast<uint32_t>(vertices.size()),
+                .indexCount   = static_cast<uint32_t>(indices.size()),
+                .bounds       = bounds,
+            };
+
+            // Load material
+            MaterialDesc matDesc;
+
+            if (primitive.materialIndex.has_value()) {
+                auto& mat = asset->materials[primitive.materialIndex.value()];
+
+                // Albedo
+                if (mat.pbrData.baseColorTexture.has_value()) {
+                    size_t texIndex = mat.pbrData.baseColorTexture->textureIndex;
+                    matDesc.albedo = loadTexture(getImageIndex(texIndex));
+                }
+
+                // Metallic + Roughness (combined texture)
+                if (mat.pbrData.metallicRoughnessTexture.has_value()) {
+                    size_t texIndex = mat.pbrData.metallicRoughnessTexture->textureIndex;
+                    TextureHandle handle = loadTexture(getImageIndex(texIndex));
+                    matDesc.metallic  = handle;
+                    matDesc.roughness = handle;
+                }
+
+                // Normal
+                if (mat.normalTexture.has_value()) {
+                    size_t texIndex = mat.normalTexture->textureIndex;
+                    matDesc.normal = loadTexture(getImageIndex(texIndex));
+                }
+
+                // AO
+                if (mat.occlusionTexture.has_value()) {
+                    size_t texIndex = mat.occlusionTexture->textureIndex;
+                    matDesc.ao = loadTexture(getImageIndex(texIndex));
+                }
+            }
+
+            MaterialHandle material = rhi->CreateMaterial(matDesc);
+
+            result.push_back({ mesh, material });
+        }
+    }
+
+    OSIRIS_INFO("MeshLoader: loaded {} primitives from {}", result.size(), path);
+    return result;
+}
 
     Mesh MeshLoader::CreatePlane(float width, float height, IRHI* rhi) {
         float halfW = width  * 0.5f;

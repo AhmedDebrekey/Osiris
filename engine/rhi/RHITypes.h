@@ -6,6 +6,7 @@
 #define OSIRIS_RHITYPES_H
 #include <cstdint>
 
+
 constexpr uint32_t INVALID_HANDLE_ID = UINT32_MAX;
 
 template<typename Tag>
@@ -73,5 +74,6 @@ struct MaterialDesc {
     TextureHandle roughness;
     TextureHandle ao;
 };
+
 
 #endif //OSIRIS_RHITYPES_H

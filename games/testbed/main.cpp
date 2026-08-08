@@ -26,49 +26,27 @@ int main() {
     Osiris::Mesh wallPlane  = Osiris::MeshLoader::CreatePlane(10.0f, 3.0f, engine.GetRHI());
     Osiris::Mesh floorPlane = Osiris::MeshLoader::CreatePlane(10.0f, 10.0f, engine.GetRHI());
 
-    // Load box mesh and texture
-    Osiris::Mesh box = Osiris::MeshLoader::LoadFromGLTF(
-        Osiris::AssetManager::GetPath("models/BoxTexturedGLTF/BoxTextured.gltf"), engine.GetRHI());
-    TextureHandle boxTexture = Osiris::TextureLoader::LoadFromFile(
-        Osiris::AssetManager::GetPath("textures/box.png"), engine.GetRHI());
 
     // Create a grey texture for walls/floor/ceiling
     TextureHandle greyTexture = Osiris::TextureLoader::LoadFromFile(
         Osiris::AssetManager::GetPath("textures/grey.png"), engine.GetRHI());
 
-    Osiris::Mesh helmet = Osiris::MeshLoader::LoadFromGLTF(
-    Osiris::AssetManager::GetPath("models/DamagedHelmet/DamagedHelmet.gltf"),
-    engine.GetRHI());
-
-    TextureHandle helmetAlbedo    = Osiris::TextureLoader::LoadFromFile(
-        Osiris::AssetManager::GetPath("models/DamagedHelmet/Default_albedo.jpg"), engine.GetRHI());
-    TextureHandle helmetNormal    = Osiris::TextureLoader::LoadFromFile(
-        Osiris::AssetManager::GetPath("models/DamagedHelmet/Default_normal.jpg"), engine.GetRHI());
-    TextureHandle helmetMetalRough = Osiris::TextureLoader::LoadFromFile(
-        Osiris::AssetManager::GetPath("models/DamagedHelmet/Default_metalRoughness.jpg"), engine.GetRHI());
-    TextureHandle helmetAO        = Osiris::TextureLoader::LoadFromFile(
-        Osiris::AssetManager::GetPath("models/DamagedHelmet/Default_AO.jpg"), engine.GetRHI());
-
-    MaterialHandle helmetMaterial = engine.GetRHI()->CreateMaterial({
-        .albedo    = helmetAlbedo,
-        .normal    = helmetNormal,
-        .metallic  = helmetMetalRough,
-        .roughness = helmetMetalRough,
-        .ao        = helmetAO,
-    });
+    auto helmetPrimitives = Osiris::MeshLoader::LoadFromGLTF(
+    Osiris::AssetManager::GetPath("models/DamagedHelmet/DamagedHelmet.gltf"), engine.GetRHI());
 
 
     // Create materials
-    MaterialHandle boxMaterial  = engine.GetRHI()->CreateMaterial({.albedo = boxTexture});
     MaterialHandle greyMaterial = engine.GetRHI()->CreateMaterial({.albedo = greyTexture});
 
     Osiris::Scene scene;
 
-    Osiris::Entity e_Helmet = scene.CreateEntity("helmet");
-    e_Helmet.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-2.0f, 0.0f, 1.0f);
-    e_Helmet.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(90.0f, 180.0f, 0.0f);
-    e_Helmet.AddComponent<Osiris::MeshComponent>(helmet);
-    e_Helmet.AddComponent<Osiris::MaterialComponent>(helmetMaterial);
+    for (auto& primitive : helmetPrimitives) {
+        Osiris::Entity e = scene.CreateEntity("helmet_part");
+        e.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-2.0f, 0.5f, 0.0f);
+        e.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(90.0f, 180.0f, 0.0f);
+        e.AddComponent<Osiris::MeshComponent>(primitive.mesh);
+        e.AddComponent<Osiris::MaterialComponent>(primitive.material);
+    }
     // Floor
 
     // Ceiling
@@ -106,18 +84,6 @@ int main() {
     wallWest.AddComponent<Osiris::MeshComponent>(wallPlane);
     wallWest.AddComponent<Osiris::MaterialComponent>(greyMaterial);
 
-    // Crates
-    Osiris::Entity crate1 = scene.CreateEntity("Crate_01");
-    crate1.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-1.0f, 1.0f, -1.0f);
-    crate1.AddComponent<Osiris::MeshComponent>(box);
-    crate1.AddComponent<Osiris::MaterialComponent>(boxMaterial);
-
-    Osiris::Entity crate2 = scene.CreateEntity("Crate_02");
-    crate2.GetComponent<Osiris::TransformComponent>().position = glm::vec3(1.5f, 2.5f, 0.5f);
-    crate2.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(0.0f, 45.0f, 0.0f);
-    crate2.AddComponent<Osiris::MeshComponent>(box);
-    crate2.AddComponent<Osiris::MaterialComponent>(boxMaterial);
-
     Osiris::Camera camera(
         glm::vec3(0.0f, 1.5f, 10.0f),
         glm::vec3(0.0f, 0.0f, -1.0f)   // looking north
@@ -133,7 +99,6 @@ int main() {
         lastCounter = currentCounter;
 
         rotation += 45.0f * deltaTime;
-        crate1.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(rotation, rotation, rotation);
 
         engine.BeginFrame();
 

@@ -45,11 +45,11 @@ int main() {
     // Floor
 
     // Ceiling
-    Osiris::Entity ceiling = scene.CreateEntity("Ceiling");
-    ceiling.GetComponent<Osiris::TransformComponent>().position = glm::vec3(0.0f, 3.0f, 0.0f);
-    ceiling.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(180.0f, 0.0f, 0.0f);
-    ceiling.AddComponent<Osiris::MeshComponent>(floorPlane);
-    ceiling.AddComponent<Osiris::MaterialComponent>(greyMaterial);
+    Osiris::Entity floor = scene.CreateEntity("floor");
+    floor.GetComponent<Osiris::TransformComponent>().position = glm::vec3(0.0f, 3.0f, 0.0f);
+    floor.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(180.0f, 0.0f, 0.0f);
+    floor.AddComponent<Osiris::MeshComponent>(floorPlane);
+    floor.AddComponent<Osiris::MaterialComponent>(greyMaterial);
 
     // Wall North (Z-)
     Osiris::Entity wallNorth = scene.CreateEntity("Wall_North");

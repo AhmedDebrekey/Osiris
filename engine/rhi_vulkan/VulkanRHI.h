@@ -95,6 +95,7 @@ namespace Osiris {
                                                             const VkDebugUtilsMessengerCallbackDataEXT* callbackData,
                                                             void* userData);
 
+
         bool SelectPhysicalDevice();
         bool CreateLogicalDevice();
         bool CreateSurface();
@@ -111,6 +112,10 @@ namespace Osiris {
         void RecreateSwapChain();
 
         void UpdateCascades(const glm::mat4& view, const glm::mat4& projection);
+
+        TextureHandle CreateSolidColorTexture(uint32_t r, uint32_t g, uint32_t b, uint32_t a);
+
+        void WriteToDescriptorSet(TextureHandle textureHandle, uint32_t dstBinding, VkDescriptorSet &descriptorSet);
 
 
         VkShaderModule LoadShader(const std::string& shaderPath);
@@ -174,6 +179,12 @@ namespace Osiris {
         glm::mat4 m_LightSpaceMatrices[SHADOW_CASCADE_COUNT];
         float m_CascadeSplits[SHADOW_CASCADE_COUNT];
         uint32_t m_CurrentCascadeIndex = 0;
+
+        TextureHandle m_DefaultAlbedo;
+        TextureHandle m_DefaultNormal;
+        TextureHandle m_DefaultMetallic;
+        TextureHandle m_DefaultRoughness;
+        TextureHandle m_DefaultAO;
     };
 } // Osiris
 

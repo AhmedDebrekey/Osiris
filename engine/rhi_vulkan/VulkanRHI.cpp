@@ -193,6 +193,11 @@ namespace Osiris {
 
         m_ColorBufferRG = RGTexture{0};
         m_DepthBufferRG = RGTexture{1};
+        m_DefaultAlbedo     = CreateSolidColorTexture(255, 255, 255, 255);
+        m_DefaultNormal     = CreateSolidColorTexture(128, 128, 255, 255);
+        m_DefaultMetallic   = CreateSolidColorTexture(000, 000, 000, 255);
+        m_DefaultRoughness  = CreateSolidColorTexture(128, 128, 128, 255);
+        m_DefaultAO         = CreateSolidColorTexture(255, 255, 255, 255);
 
         return true;
     }
@@ -597,6 +602,25 @@ namespace Osiris {
         return ShaderHandle();
     }
 
+    void VulkanRHI::WriteToDescriptorSet(TextureHandle textureHandle, uint32_t dstBinding, VkDescriptorSet& descriptorSet) {
+        VulkanImage& texture = m_Textures[textureHandle.id];
+        VkDescriptorImageInfo imageInfo = {
+            .sampler     = texture.sampler,
+            .imageView   = texture.imageView,
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        };
+        VkWriteDescriptorSet write = {
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet          = descriptorSet,
+            .dstBinding      = dstBinding,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo      = &imageInfo,
+        };
+        vkUpdateDescriptorSets(m_Device.logicalDevice, 1, &write, 0, nullptr);
+    }
+
     MaterialHandle VulkanRHI::CreateMaterial(const MaterialDesc& desc) {
         // 1. Allocate a descriptor set from the pool using the material layout
         VkDescriptorSet materialSet;
@@ -609,22 +633,45 @@ namespace Osiris {
         VK_CHECK(vkAllocateDescriptorSets(m_Device.logicalDevice, &allocInfo, &materialSet));
 
         // 2. Write the texture into it
-        VulkanImage& texture = m_Textures[desc.albedo.id];
-        VkDescriptorImageInfo imageInfo = {
-            .sampler     = texture.sampler,
-            .imageView   = texture.imageView,
-            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        };
-        VkWriteDescriptorSet write = {
-            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet          = materialSet,
-            .dstBinding      = 0,
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo      = &imageInfo,
-        };
-        vkUpdateDescriptorSets(m_Device.logicalDevice, 1, &write, 0, nullptr);
+        TextureHandle albedo;
+        if (!desc.albedo.IsValid()) {
+            albedo = m_DefaultAlbedo;
+        }else {
+            albedo = desc.albedo;
+        }
+        WriteToDescriptorSet(albedo, 0, materialSet);
+
+        TextureHandle normal;
+        if (!desc.normal.IsValid()) {
+            normal = m_DefaultNormal;
+        } else {
+            normal = desc.normal;
+        }
+        WriteToDescriptorSet(normal, 1, materialSet);
+
+        TextureHandle metallic;
+        if (!desc.metallic.IsValid()) {
+            metallic = m_DefaultMetallic;
+        } else {
+            metallic = desc.metallic;
+        }
+        WriteToDescriptorSet(metallic, 2, materialSet);
+
+        TextureHandle roughness;
+        if (!desc.roughness.IsValid()) {
+            roughness = m_DefaultRoughness;
+        } else {
+            roughness = desc.roughness;
+        }
+        WriteToDescriptorSet(roughness, 3, materialSet);
+
+        TextureHandle ao;
+        if (!desc.ao.IsValid()) {
+            ao = m_DefaultAO;
+        } else {
+            ao = desc.ao;
+        }
+        WriteToDescriptorSet(ao, 4, materialSet);
 
         // 3. Store and return handle
         VulkanMaterial material;
@@ -1552,16 +1599,42 @@ bool VulkanRHI::SetupDebugMessenger() {
         };
         VK_CHECK(vkCreateDescriptorSetLayout(m_Device.logicalDevice, &frameLayoutInfo, nullptr, &m_FrameDescriptorLayout));
 
-        VkDescriptorSetLayoutBinding textureBinding = {
-            .binding         = 0,
-            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .descriptorCount = 1,
-            .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+        VkDescriptorSetLayoutBinding textureBinding[] = {
+            {
+                .binding         = 0,
+               .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+               .descriptorCount = 1,
+               .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
+            {
+                .binding         = 1,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
+            {
+                .binding         = 2,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
+            {
+                .binding         = 3,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
+            {
+                .binding         = 4,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+            }
         };
         VkDescriptorSetLayoutCreateInfo materialLayoutInfo = {
             .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            .bindingCount = 1,
-            .pBindings    = &textureBinding,
+            .bindingCount = 5,
+            .pBindings    = textureBinding,
         };
         VK_CHECK(vkCreateDescriptorSetLayout(m_Device.logicalDevice, &materialLayoutInfo, nullptr, &m_MaterialDescriptorLayout));
 
@@ -1572,11 +1645,11 @@ bool VulkanRHI::SetupDebugMessenger() {
     bool VulkanRHI::CreateDescriptorPool() {
         VkDescriptorPoolSize poolSizes[] = {
             { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         1 },
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1003  },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 5003  },
         };
         const VkDescriptorPoolCreateInfo descriptorPoolInfo = {
             .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-            .maxSets = 1001,
+            .maxSets = 5003,
             .poolSizeCount = 2,
             .pPoolSizes = poolSizes,
         };
@@ -1874,6 +1947,20 @@ void VulkanRHI::UpdateCascades(const glm::mat4& view, const glm::mat4& projectio
         lastSplitDist = cascadeSplits[cascadeIndex];
     }
 }
+
+    TextureHandle VulkanRHI::CreateSolidColorTexture(uint32_t r, uint32_t g, uint32_t b, uint32_t a) {
+        uint32_t pixels[4] = {r, g, b, a};
+
+        TextureDesc desc {
+            .pixels = pixels,
+            .dataSize = 4,
+            .width = 1,
+            .height = 1,
+            .format = TextureFormat::RGBA8_UNORM,
+        };
+
+        return CreateTexture(desc);
+    }
 
     void VulkanRHI::UpdateShadowDescriptors() {
         for (uint32_t i = 0; i < SHADOW_CASCADE_COUNT; i++) {

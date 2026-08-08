@@ -68,6 +68,10 @@ struct ShaderDesc {
 
 struct MaterialDesc {
     TextureHandle albedo;
+    TextureHandle normal;
+    TextureHandle metallic;
+    TextureHandle roughness;
+    TextureHandle ao;
 };
 
 #endif //OSIRIS_RHITYPES_H

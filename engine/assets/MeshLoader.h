@@ -7,13 +7,14 @@
 #include "renderer/MeshType.h"
 #include "rhi/RHI.h"
 #include <string>
+#include <vector>
 
 namespace Osiris {
     class MeshLoader {
         public:
             static Mesh LoadFromGLTF(const std::string& path, IRHI* rhi);
             static Mesh CreatePlane(float width, float height, IRHI* rhi);
-
+            static void GenerateTangents(std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices);
     };
 } // Osiris
 

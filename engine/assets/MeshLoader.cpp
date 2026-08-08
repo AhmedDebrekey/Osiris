@@ -100,7 +100,11 @@ namespace Osiris {
         // Extract Tangents
         auto tangentIt = std::find_if(primitive.attributes.begin(), primitive.attributes.end(),
             [](const auto& attr) { return attr.first == "TANGENT"; });
-        if (tangentIt != primitive.attributes.end()) {
+        bool hasTangets = (tangentIt != primitive.attributes.end());
+        if (!hasTangets) {
+            GenerateTangents(vertices, indices);
+        } else {
+            OSIRIS_INFO("Found Tangent: {}", tangentIt->second);
             auto& accessor = asset->accessors[tangentIt->second];
             std::size_t i = 0;
             fastgltf::iterateAccessor<glm::vec4>(asset.get(), accessor, [&](glm::vec4 tangent) {
@@ -157,6 +161,8 @@ namespace Osiris {
 
         std::vector<uint32_t> indices = {0, 2, 1, 0, 3, 2};
 
+        GenerateTangents(vertices, indices);
+
         AABB bounds;
         for (const auto& v : vertices) {
             bounds.min = glm::min(bounds.min, v.Position);
@@ -188,4 +194,60 @@ namespace Osiris {
             .bounds       = bounds,
         };
     }
+
+void MeshLoader::GenerateTangents(std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices) {
+    // Initialize tangents to zero
+    std::vector<glm::vec3> tangents(vertices.size(), glm::vec3(0.0f));
+    std::vector<glm::vec3> bitangents(vertices.size(), glm::vec3(0.0f));
+
+    // Compute tangent for each triangle
+    for (size_t i = 0; i < indices.size(); i += 3) {
+        uint32_t i0 = indices[i];
+        uint32_t i1 = indices[i + 1];
+        uint32_t i2 = indices[i + 2];
+
+        glm::vec3 pos0 = vertices[i0].Position;
+        glm::vec3 pos1 = vertices[i1].Position;
+        glm::vec3 pos2 = vertices[i2].Position;
+
+        glm::vec2 uv0 = vertices[i0].TexCoord;
+        glm::vec2 uv1 = vertices[i1].TexCoord;
+        glm::vec2 uv2 = vertices[i2].TexCoord;
+
+        glm::vec3 edge1    = pos1 - pos0;
+        glm::vec3 edge2    = pos2 - pos0;
+        glm::vec2 deltaUV1 = uv1 - uv0;
+        glm::vec2 deltaUV2 = uv2 - uv0;
+
+        float denom = deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y;
+        if (abs(denom) < 1e-6f) continue; // degenerate UV triangle
+
+        float f = 1.0f / denom;
+
+        glm::vec3 tangent = {
+            f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x),
+            f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y),
+            f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z),
+        };
+
+        tangents[i0] += tangent;
+        tangents[i1] += tangent;
+        tangents[i2] += tangent;
+    }
+
+    // Orthogonalize and set handedness
+    for (size_t i = 0; i < vertices.size(); i++) {
+        glm::vec3 N = glm::normalize(vertices[i].Normal);
+        glm::vec3 T = glm::normalize(tangents[i]);
+
+        // Gram-Schmidt orthogonalize
+        T = glm::normalize(T - glm::dot(T, N) * N);
+
+        // Compute bitangent and determine handedness
+        glm::vec3 B       = glm::cross(N, T);
+        float handedness  = (glm::dot(B, glm::normalize(bitangents[i])) < 0.0f) ? -1.0f : 1.0f;
+
+        vertices[i].Tangent = glm::vec4(T, handedness);
+    }
+}
 } // Osiris

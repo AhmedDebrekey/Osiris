@@ -85,10 +85,10 @@ void main() {
     float ao            = texture(aoMap,        inTexCoord).r;
 
     // ── Normal mapping ────────────────────────────────────────
-    vec3 normalSample = texture(normalMap, inTexCoord).rgb;
-    normalSample      = normalSample * 2.0 - 1.0;
-    mat3 TBN          = mat3(normalize(inTangent), normalize(inBitangent), normalize(inNormal));
-    vec3 N            = normalize(TBN * normalSample);
+    vec3 normalSample = texture(normalMap, inTexCoord).rgb * 2.0 - 1.0;
+    mat3 TBN = mat3(normalize(inTangent), normalize(inBitangent), normalize(inNormal));
+    vec3 N   = normalize(TBN * normalSample); //TODO: use the TBN not inNormal normalize(TBN * normalSample)
+
 
     // ── Vectors ───────────────────────────────────────────────
     vec3 V = normalize(camera.cameraPosition.xyz - inWorldPos);

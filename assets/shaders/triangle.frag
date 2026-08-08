@@ -137,7 +137,8 @@ void main() {
     vec3 color = ambient + Lo;
 
     // Tone mapping (Reinhard)
-    color = color / (color + vec3(1.0));
+    color = (color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14);
+    color = clamp(color, 0.0, 1.0);
 
     // Gamma correction
     color = pow(color, vec3(1.0 / 2.2));

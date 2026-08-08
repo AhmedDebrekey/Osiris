@@ -97,6 +97,17 @@ namespace Osiris {
             });
         }
 
+        // Extract Tangents
+        auto tangentIt = std::find_if(primitive.attributes.begin(), primitive.attributes.end(),
+            [](const auto& attr) { return attr.first == "TANGENT"; });
+        if (tangentIt != primitive.attributes.end()) {
+            auto& accessor = asset->accessors[tangentIt->second];
+            std::size_t i = 0;
+            fastgltf::iterateAccessor<glm::vec4>(asset.get(), accessor, [&](glm::vec4 tangent) {
+                vertices[i++].Tangent = tangent;
+            });
+        }
+
         OSIRIS_INFO("Vertices: {}", vertices.size());
         OSIRIS_INFO("Indices: {}", indices.size());
 
@@ -138,10 +149,10 @@ namespace Osiris {
         float halfH = height * 0.5f;
 
         std::vector<Vertex> vertices = {
-            { .Position = {-halfW, 0.0f, -halfH}, .Normal = {0.0f, 1.0f, 0.0f}, .TexCoord = {0.0f, 0.0f} },
-            { .Position = { halfW, 0.0f, -halfH}, .Normal = {0.0f, 1.0f, 0.0f}, .TexCoord = {1.0f, 0.0f} },
-            { .Position = { halfW, 0.0f,  halfH}, .Normal = {0.0f, 1.0f, 0.0f}, .TexCoord = {1.0f, 1.0f} },
-            { .Position = {-halfW, 0.0f,  halfH}, .Normal = {0.0f, 1.0f, 0.0f}, .TexCoord = {0.0f, 1.0f} },
+            { .Position = {-halfW, 0.0f, -halfH}, .Normal = {0.0f, 1.0f, 0.0f}, .TexCoord = {0.0f, 0.0f}, .Tangent = {1.0f, 0.0f, 0.0f, 1.0f} },
+            { .Position = { halfW, 0.0f, -halfH}, .Normal = {0.0f, 1.0f, 0.0f}, .TexCoord = {1.0f, 0.0f}, .Tangent = {1.0f, 0.0f, 0.0f, 1.0f}},
+            { .Position = { halfW, 0.0f,  halfH}, .Normal = {0.0f, 1.0f, 0.0f}, .TexCoord = {1.0f, 1.0f}, .Tangent = {1.0f, 0.0f, 0.0f, 1.0f} },
+            { .Position = {-halfW, 0.0f,  halfH}, .Normal = {0.0f, 1.0f, 0.0f}, .TexCoord = {0.0f, 1.0f}, .Tangent = {1.0f, 0.0f, 0.0f, 1.0f} },
         };
 
         std::vector<uint32_t> indices = {0, 2, 1, 0, 3, 2};

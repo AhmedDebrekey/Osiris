@@ -594,7 +594,7 @@ namespace Osiris
 
             const std::array<
                 VkVertexInputAttributeDescription,
-                3> attributeDescriptions{
+                4> attributeDescriptions{
                 VkVertexInputAttributeDescription{
                     .location = 0,
                     .binding = 0,
@@ -615,7 +615,14 @@ namespace Osiris
                     .format = VK_FORMAT_R32G32_SFLOAT,
                     .offset = static_cast<uint32_t>(
                         offsetof(Vertex, TexCoord))
-                }
+                },
+                    VkVertexInputAttributeDescription{
+                        .location = 3,
+                        .binding = 0,
+                        .format = VK_FORMAT_R32G32B32A32_SFLOAT,
+                        .offset = static_cast<uint32_t>(
+                            offsetof(Vertex, Tangent))
+                    },
             };
 
             const VkPipelineVertexInputStateCreateInfo

@@ -10,6 +10,9 @@
 #include <glm/glm.hpp>
 
 namespace Osiris {
+    struct ShadowSettings;
+    struct DirectionalLight;
+
     class IRHI {
         public:
         virtual ~IRHI() = default;
@@ -26,7 +29,8 @@ namespace Osiris {
         virtual void SetMeshData(const Mesh& mesh) = 0;
         virtual void SetModelMatrix(const glm::mat4& model) = 0;
 
-        virtual void UpdateCamera(const glm::mat4& view, const glm::mat4& projection, const glm::vec4& position) = 0;
+        virtual void UpdateCamera(const glm::mat4& view, const glm::mat4& projection, const glm::vec4& position, const glm::vec3& front) = 0;
+        virtual void SetCameraBuffer(const glm::mat4& view, const glm::mat4& projection, const glm::vec4& position) = 0;
 
         virtual BufferHandle    CreateBuffer(const BufferDesc&)          = 0;
         virtual TextureHandle   CreateTexture(const TextureDesc&)        = 0;
@@ -51,6 +55,11 @@ namespace Osiris {
         virtual void ShutdownImGui()    = 0;
         virtual void BeginImGuiFrame()  = 0;
         virtual void RenderImGui()      = 0;
+
+        virtual DirectionalLight& GetDirectionalLight() = 0;
+        virtual glm::mat4 GetLightViewMatrix(uint32_t cascade) const = 0;
+        virtual glm::mat4 GetLightProjMatrix(uint32_t cascade) const = 0;
+        virtual ShadowSettings& GetShadowSettings() = 0;
 
         virtual void Dispatch (uint32_t x, uint32_t y, uint32_t z) = 0;
 

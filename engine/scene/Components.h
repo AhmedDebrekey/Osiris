@@ -30,6 +30,16 @@ namespace Osiris {
     struct TagComponent {
         std::string name;
     };
+
+    struct SpotLightComponent {
+        glm::vec3 color     = glm::vec3(1.0f);
+        float intensity     = 1.0f;
+        float innerCone     = 12.5f;
+        float outerCone     = 17.5f;
+        float range         = 10.f;
+        bool enabled        = true;
+        bool castsShadow    = true;
+    };
 }
 
 #endif //OSIRIS_COMPONENTS_H

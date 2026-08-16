@@ -60,8 +60,8 @@ namespace Osiris {
                     break;
 
                 case SDL_KEYDOWN:
-                    if (event.key.keysym.sym == SDLK_ESCAPE)
-                        m_ShouldClose = true;
+                    // if (event.key.keysym.sym == SDLK_ESCAPE)
+                    //     m_ShouldClose = true;
                     break;
 
                 default:

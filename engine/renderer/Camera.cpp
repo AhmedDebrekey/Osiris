@@ -31,6 +31,10 @@ namespace Osiris
         return glm::perspective(m_Fov, m_AspectRatio, m_zNear, m_zFar);
     }
 
+    glm::vec3 Camera::GetFront() const {
+        return m_Front;
+    }
+
     void Camera::Update(const Input& input, float deltaTime) {
         // Mouse look
         if (input.IsMouseButtonHeld(SDL_BUTTON_RIGHT)){

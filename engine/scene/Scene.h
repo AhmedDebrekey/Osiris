@@ -17,6 +17,7 @@ namespace Osiris {
     class Scene {
     public:
         Entity CreateEntity(const std::string& name);
+        Entity FindEntityByName(const std::string& name);
         void Update(float deltaTime);
         void Render(IRHI* rhi, const Camera& camera);
         void RenderShadows(IRHI* rhi);

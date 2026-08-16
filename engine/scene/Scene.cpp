@@ -17,6 +17,17 @@ namespace Osiris {
         return entity;
     }
 
+    Entity Scene::FindEntityByName(const std::string& name) {
+        auto view = m_Registry.view<TagComponent>();
+        for (auto entity : view) {
+            auto& tag = view.get<TagComponent>(entity);
+            if (tag.name == name) {
+                return Entity(entity, this);
+            }
+        }
+        return Entity{};
+    }
+
 
     void Scene::Render(IRHI* rhi, const Camera& camera) {
         const Frustum frustum = Frustum::FromViewProjection(

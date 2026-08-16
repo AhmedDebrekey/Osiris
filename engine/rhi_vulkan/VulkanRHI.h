@@ -73,7 +73,13 @@ namespace Osiris {
 
         void Dispatch(uint32_t x, uint32_t y, uint32_t z) override;
 
-        void UpdateCamera(const glm::mat4 &view, const glm::mat4 &projection, const glm::vec4& position) override;
+        DirectionalLight& GetDirectionalLight() override { return m_DirectionalLight; }
+        glm::mat4 GetLightViewMatrix(uint32_t cascade) const override { return m_LightViewMatrices[cascade]; }
+        glm::mat4 GetLightProjMatrix(uint32_t cascade) const override { return m_LightProjMatrices[cascade]; }
+        ShadowSettings& GetShadowSettings() override {return m_ShadowSettings;}
+
+        void UpdateCamera(const glm::mat4 &view, const glm::mat4 &projection, const glm::vec4& position, const glm::vec3& front) override;
+        void SetCameraBuffer(const glm::mat4& view, const glm::mat4& projection, const glm::vec4& position) override;
 
         void BeginForwardPass() override;
 
@@ -113,10 +119,11 @@ namespace Osiris {
 
         void UpdateCascades(const glm::mat4& view, const glm::mat4& projection);
 
+        void UpdateSpotLight(const glm::vec3& position, const glm::vec3& direction, float outerConeDegrees, float range);
+
         TextureHandle CreateSolidColorTexture(uint32_t r, uint32_t g, uint32_t b, uint32_t a);
 
         void WriteToDescriptorSet(TextureHandle textureHandle, uint32_t dstBinding, VkDescriptorSet &descriptorSet);
-
 
         VkShaderModule LoadShader(const std::string& shaderPath);
 
@@ -175,7 +182,14 @@ namespace Osiris {
         static constexpr uint32_t SHADOW_MAP_SIZE      = 2048;
         VulkanImage m_ShadowMaps[SHADOW_CASCADE_COUNT];
 
+        VulkanImage m_SpotShadowMap;
+        glm::mat4 m_SpotLightSpaceMatrix = glm::mat4(1.0f);
+
+        ShadowSettings m_ShadowSettings;
+
         DirectionalLight m_DirectionalLight;
+        glm::mat4 m_LightViewMatrices[SHADOW_CASCADE_COUNT];
+        glm::mat4 m_LightProjMatrices[SHADOW_CASCADE_COUNT];
         glm::mat4 m_LightSpaceMatrices[SHADOW_CASCADE_COUNT];
         float m_CascadeSplits[SHADOW_CASCADE_COUNT];
         uint32_t m_CurrentCascadeIndex = 0;

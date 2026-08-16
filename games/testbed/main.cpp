@@ -12,6 +12,7 @@
 #include <iostream>
 #include <glm/gtc/matrix_transform.hpp>
 #include "imgui.h"
+#include "renderer/Light.h"
 
 int main() {
     std::cout << "Osiris Engine" << std::endl;
@@ -22,90 +23,97 @@ int main() {
         return -1;
     }
 
-    // Create plane mesh
+    // Create plane meshes
     Osiris::Mesh wallPlane  = Osiris::MeshLoader::CreatePlane(10.0f, 3.0f, engine.GetRHI());
     Osiris::Mesh floorPlane = Osiris::MeshLoader::CreatePlane(10.0f, 10.0f, engine.GetRHI());
 
+    // Load box mesh + texture
+    auto boxPrimitives = Osiris::MeshLoader::LoadFromGLTF(
+        Osiris::AssetManager::GetPath("models/BoxTexturedGLTF/BoxTextured.gltf"), engine.GetRHI());
 
-    // Create a grey texture for walls/floor/ceiling
     TextureHandle greyTexture = Osiris::TextureLoader::LoadFromFile(
         Osiris::AssetManager::GetPath("textures/grey.png"), engine.GetRHI());
-
-    auto helmetPrimitives = Osiris::MeshLoader::LoadFromGLTF(
-    Osiris::AssetManager::GetPath("models/DamagedHelmet/DamagedHelmet.gltf"), engine.GetRHI());
-
-
-    // Create materials
     MaterialHandle greyMaterial = engine.GetRHI()->CreateMaterial({.albedo = greyTexture});
 
     Osiris::Scene scene;
 
-    for (auto& primitive : helmetPrimitives) {
-        Osiris::Entity e = scene.CreateEntity("helmet_part");
-        e.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-2.0f, 0.5f, 0.0f);
-        e.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(90.0f, 180.0f, 0.0f);
-        e.AddComponent<Osiris::MeshComponent>(primitive.mesh);
-        e.AddComponent<Osiris::MaterialComponent>(primitive.material);
-    }
-    // Floor
 
     // Ceiling
-    Osiris::Entity floor = scene.CreateEntity("floor");
-    floor.GetComponent<Osiris::TransformComponent>().position = glm::vec3(0.0f, 3.0f, 0.0f);
-    floor.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(180.0f, 0.0f, 0.0f);
-    floor.AddComponent<Osiris::MeshComponent>(floorPlane);
-    floor.AddComponent<Osiris::MaterialComponent>(greyMaterial);
+    Osiris::Entity ceiling = scene.CreateEntity("Ceiling");
+    ceiling.GetComponent<Osiris::TransformComponent>().position = glm::vec3(0.0f, 3.0f, 0.0f);
+    ceiling.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(180.0f, 0.0f, 0.0f);
+    ceiling.AddComponent<Osiris::MeshComponent>(floorPlane);
+    ceiling.AddComponent<Osiris::MaterialComponent>(greyMaterial);
 
-    // Wall North (Z-)
+    // Walls
     Osiris::Entity wallNorth = scene.CreateEntity("Wall_North");
     wallNorth.GetComponent<Osiris::TransformComponent>().position = glm::vec3(0.0f, 1.5f, -5.0f);
     wallNorth.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(90.0f, 0.0f, 0.0f);
     wallNorth.AddComponent<Osiris::MeshComponent>(wallPlane);
     wallNorth.AddComponent<Osiris::MaterialComponent>(greyMaterial);
 
-    // Wall South (Z+)
     Osiris::Entity wallSouth = scene.CreateEntity("Wall_South");
     wallSouth.GetComponent<Osiris::TransformComponent>().position = glm::vec3(0.0f, 1.5f, 5.0f);
     wallSouth.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(-90.0f, 0.0f, 0.0f);
     wallSouth.AddComponent<Osiris::MeshComponent>(wallPlane);
     wallSouth.AddComponent<Osiris::MaterialComponent>(greyMaterial);
 
-    // Wall East (X+)
     Osiris::Entity wallEast = scene.CreateEntity("Wall_East");
     wallEast.GetComponent<Osiris::TransformComponent>().position = glm::vec3(5.0f, 1.5f, 0.0f);
     wallEast.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(90.0f, 0.0f, 90.0f);
     wallEast.AddComponent<Osiris::MeshComponent>(wallPlane);
     wallEast.AddComponent<Osiris::MaterialComponent>(greyMaterial);
 
-    // Wall West (X-)
     Osiris::Entity wallWest = scene.CreateEntity("Wall_West");
     wallWest.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-5.0f, 1.5f, 0.0f);
     wallWest.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(-90.0f, 0.0f, -90.0f);
     wallWest.AddComponent<Osiris::MeshComponent>(wallPlane);
     wallWest.AddComponent<Osiris::MaterialComponent>(greyMaterial);
 
+    // Crates
+    for (uint32_t i = 0; i < boxPrimitives.size(); i++) {
+        Osiris::Entity crate1 = scene.CreateEntity("Crate_01_" + std::to_string(i));
+        crate1.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-1.0f, 0.5f, -1.0f);
+        crate1.AddComponent<Osiris::MeshComponent>(boxPrimitives[i].mesh);
+        crate1.AddComponent<Osiris::MaterialComponent>(boxPrimitives[i].material);
+
+        Osiris::Entity crate2 = scene.CreateEntity("Crate_02_" + std::to_string(i));
+        crate2.GetComponent<Osiris::TransformComponent>().position = glm::vec3(1.5f, 0.5f, 0.5f);
+        crate2.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(0.0f, 45.0f, 0.0f);
+        crate2.AddComponent<Osiris::MeshComponent>(boxPrimitives[i].mesh);
+        crate2.AddComponent<Osiris::MaterialComponent>(boxPrimitives[i].material);
+    }
+
     Osiris::Camera camera(
-        glm::vec3(0.0f, 1.5f, 10.0f),
-        glm::vec3(0.0f, 0.0f, -1.0f)   // looking north
+        glm::vec3(0.0f, 1.5f, 4.0f),
+        glm::vec3(0.0f, 0.0f, -1.0f)
     );
 
     uint64_t lastCounter = SDL_GetPerformanceCounter();
     const double frequency = static_cast<double>(SDL_GetPerformanceFrequency());
-    float rotation = 0.0f;
+
+    static bool debugLightView = false;
+    static int debugCascade = 0;
 
     while (engine.IsRunning()) {
         const uint64_t currentCounter = SDL_GetPerformanceCounter();
         float deltaTime = static_cast<float>((currentCounter - lastCounter) / frequency);
         lastCounter = currentCounter;
 
-        rotation += 45.0f * deltaTime;
-
         engine.BeginFrame();
 
         camera.Update(*engine.GetInput(), deltaTime);
-        engine.GetRHI()->UpdateCamera(camera.GetViewMatrix(), camera.GetProjectionMatrix(), glm::vec4(camera.GetPosition(), 0.0f));
 
-        // Shadow passes — render scene from light's perspective for each cascade
+        glm::mat4 lightView, lightProj;
+        engine.GetRHI()->UpdateCamera(camera.GetViewMatrix(), camera.GetProjectionMatrix(), glm::vec4(camera.GetPosition(), 0.0f), camera.GetFront());
+
+        if (debugLightView) {
+            lightView = engine.GetRHI()->GetLightViewMatrix(debugCascade);
+            lightProj = engine.GetRHI()->GetLightProjMatrix(debugCascade);
+            engine.GetRHI()->SetCameraBuffer(lightView, lightProj, glm::vec4(camera.GetPosition(), 0.0f));
+        }
+
+        // Shadow passes
         for (uint32_t i = 0; i < 3; i++) {
             engine.GetRHI()->BeginShadowPass(i);
             scene.RenderShadows(engine.GetRHI());
@@ -127,6 +135,29 @@ int main() {
         ImGui::Separator();
         ImGui::Text("Draw calls: %d", scene.GetDrawCallCount());
         ImGui::Text("Culled: %d", scene.GetCulledCount());
+        ImGui::Separator();
+
+        auto& light = engine.GetRHI()->GetDirectionalLight();
+        ImGui::SliderFloat3("Light Direction", &light.direction.x, -1.0f, 1.0f);
+        light.direction = glm::normalize(light.direction);
+        if (glm::abs(light.direction.y) > 0.999f) {
+            light.direction.y = glm::sign(light.direction.y) * 0.999f;
+            light.direction = glm::normalize(light.direction);
+        }
+        ImGui::ColorEdit3("Light Color", &light.color.x);
+        ImGui::SliderFloat("Light Intensity", &light.intensity, 0.0f, 5.0f);
+        ImGui::Separator();
+
+        auto& shadowSettings = engine.GetRHI()->GetShadowSettings();
+        ImGui::SliderFloat("Shadow Near", &shadowSettings.nearClip, 0.01f, 5.0f);
+        ImGui::SliderFloat("Shadow Far", &shadowSettings.farClip, 5.0f, 50.0f);
+        ImGui::SliderFloat("Cascade Lambda", &shadowSettings.cascadeSplitLambda, 0.0f, 1.0f);
+        ImGui::Separator();
+
+        ImGui::Checkbox("Debug: Light View", &debugLightView);
+        if (debugLightView) {
+            ImGui::SliderInt("Cascade", &debugCascade, 0, 2);
+        }
         ImGui::End();
 
         engine.GetRHI()->RenderImGui();

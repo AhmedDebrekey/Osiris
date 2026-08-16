@@ -15,6 +15,14 @@ namespace Osiris {
         float     intensity = 1.0f;
     };
 
+    struct ShadowSettings {
+        float nearClip           = 0.5f;
+        float farClip            = 80.0f;
+        float cascadeSplitLambda = 0.95f;
+        float depthBiasConstant  = 1.25f;
+        float depthBiasSlope     = 1.75f;
+    };
+
 }
 
 #endif //OSIRIS_LIGHT_H

@@ -156,9 +156,9 @@ namespace Osiris {
             .depthTest          = true,
             .depthWrite         = true,
             .depthBias          = true,
-            .depthBiasConstant  = 0.0f,
-            .depthBiasClamp     = 0.0f,
-            .depthBiasSlope     = 0.1f,
+            .depthBiasConstant = 1.0f,
+            .depthBiasClamp    = 0.0f,
+            .depthBiasSlope    = 1.5f,
             .cullMode           = VK_CULL_MODE_FRONT_BIT,
             .frontFace          = VK_FRONT_FACE_CLOCKWISE,
             .setLayoutCount     = 1,
@@ -232,6 +232,12 @@ namespace Osiris {
                 vkDestroyImageView(m_Device.logicalDevice, shadowMap.imageView, nullptr);
                 vmaDestroyImage(m_Allocator, shadowMap.image, shadowMap.allocation);
             }
+        }
+
+        if (m_SpotShadowMap.image != VK_NULL_HANDLE) {
+            vkDestroySampler(m_Device.logicalDevice, m_SpotShadowMap.sampler, nullptr);
+            vkDestroyImageView(m_Device.logicalDevice, m_SpotShadowMap.imageView, nullptr);
+            vmaDestroyImage(m_Allocator, m_SpotShadowMap.image, m_SpotShadowMap.allocation);
         }
 
         vkDestroyCommandPool(m_Device.logicalDevice, m_CommandPool, nullptr);
@@ -825,7 +831,13 @@ namespace Osiris {
     void VulkanRHI::Dispatch(uint32_t x, uint32_t y, uint32_t z) {
     }
 
-    void VulkanRHI::UpdateCamera(const glm::mat4& view, const glm::mat4& projection, const glm::vec4& position) {
+    void VulkanRHI::UpdateCamera(const glm::mat4& view, const glm::mat4& projection, const glm::vec4& position, const glm::vec3& front) {
+        UpdateCascades(view, projection);
+        SetCameraBuffer(view, projection, position);
+        UpdateSpotLight(glm::vec3(position.x, position.y, position.z), front, 20, 10.0f);
+    }
+
+    void VulkanRHI::SetCameraBuffer(const glm::mat4& view, const glm::mat4& projection, const glm::vec4& position) {
         struct CameraBufferFull {
             glm::mat4 view;
             glm::mat4 projection;
@@ -842,17 +854,11 @@ namespace Osiris {
             cameraBuffer.lightSpaceMatrices[i] = m_LightSpaceMatrices[i];
         }
         cameraBuffer.cascadeSplits = glm::vec4(
-            m_CascadeSplits[0],
-            m_CascadeSplits[1],
-            m_CascadeSplits[2],
-            0.0f
-        );
+            m_CascadeSplits[0], m_CascadeSplits[1], m_CascadeSplits[2], 0.0f);
         cameraBuffer.lightDirection = glm::vec4(-m_DirectionalLight.direction, 0.0f);
         cameraBuffer.cameraPosition = position;
 
-
         UploadDynamicBuffer(m_CameraUniformBuffer, &cameraBuffer, sizeof(CameraBufferFull));
-        UpdateCascades(view, projection);
     }
 
     void VulkanRHI::BeginForwardPass() {
@@ -1730,6 +1736,19 @@ bool VulkanRHI::SetupDebugMessenger() {
             .usage = VMA_MEMORY_USAGE_GPU_ONLY,
         };
 
+        VkSamplerCreateInfo samplerInfo = {
+            .sType        = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+            .magFilter    = VK_FILTER_LINEAR,
+            .minFilter    = VK_FILTER_LINEAR,
+            .mipmapMode   = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+            .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+            .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+            .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+            .compareEnable = VK_TRUE,
+            .compareOp     = VK_COMPARE_OP_LESS_OR_EQUAL,
+            .borderColor  = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
+        };
+
         for (auto& map : m_ShadowMaps) {
             map.format = VK_FORMAT_D32_SFLOAT;
             VK_CHECK(vmaCreateImage(m_Allocator, &imageCreateInfo, &allocationCreateInfo, &map.image, &map.allocation, nullptr));
@@ -1754,20 +1773,34 @@ bool VulkanRHI::SetupDebugMessenger() {
                 return false;
             }
 
-            VkSamplerCreateInfo samplerInfo = {
-                .sType        = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-                .magFilter    = VK_FILTER_LINEAR,
-                .minFilter    = VK_FILTER_LINEAR,
-                .mipmapMode   = VK_SAMPLER_MIPMAP_MODE_LINEAR,
-                .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
-                .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
-                .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
-                .compareEnable = VK_TRUE,
-                .compareOp     = VK_COMPARE_OP_LESS_OR_EQUAL,
-                .borderColor  = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
-            };
             VK_CHECK(vkCreateSampler(m_Device.logicalDevice, &samplerInfo, nullptr, &map.sampler));
         }
+
+        m_SpotShadowMap.format = VK_FORMAT_D32_SFLOAT;
+        VK_CHECK(vmaCreateImage(m_Allocator, &imageCreateInfo, &allocationCreateInfo,
+            &m_SpotShadowMap.image, &m_SpotShadowMap.allocation, nullptr));
+
+        VkImageViewCreateInfo viewCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = m_SpotShadowMap.image,
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format = VK_FORMAT_D32_SFLOAT,
+
+            .subresourceRange = {
+                .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer= 0,
+                .layerCount = 1
+            }
+        };
+        const VkResult result = vkCreateImageView(m_Device.logicalDevice, &viewCreateInfo, nullptr, &m_SpotShadowMap.imageView);
+        if (result != VK_SUCCESS) {
+            OSIRIS_ERROR("Failed to create image view for depth buffer!");
+            return false;
+        }
+        VK_CHECK(vkCreateSampler(m_Device.logicalDevice, &samplerInfo, nullptr, &m_SpotShadowMap.sampler));
+
 
         return true;
     }
@@ -1858,11 +1891,11 @@ bool VulkanRHI::SetupDebugMessenger() {
 
 void VulkanRHI::UpdateCascades(const glm::mat4& view, const glm::mat4& projection) {
     // Cascade split distances in view space
-    float nearClip  = 1.0f;
-    float farClip   = 50.0f;
+    float nearClip  = m_ShadowSettings.nearClip;
+    float farClip   = m_ShadowSettings.farClip;
     float clipRange = farClip - nearClip;
 
-    float cascadeSplitLambda = 0.95f;
+    float cascadeSplitLambda = m_ShadowSettings.cascadeSplitLambda;
 
     float cascadeSplits[SHADOW_CASCADE_COUNT];
 
@@ -1927,8 +1960,8 @@ void VulkanRHI::UpdateCascades(const glm::mat4& view, const glm::mat4& projectio
 
         // Build light view matrix
         glm::vec3 lightDir = glm::normalize(-m_DirectionalLight.direction);
-        glm::vec3 up       = glm::abs(glm::dot(lightDir, glm::vec3(0,1,0))) < 0.99f
-                             ? glm::vec3(0,1,0) : glm::vec3(1,0,0);
+        glm::vec3 up = glm::abs(glm::dot(lightDir, glm::vec3(0,1,0))) < 0.8f
+                     ? glm::vec3(0,1,0) : glm::vec3(1,0,0);
 
         glm::mat4 lightView = glm::lookAt(
             frustumCenter - lightDir * -minExtents.z,
@@ -1944,13 +1977,31 @@ void VulkanRHI::UpdateCascades(const glm::mat4& view, const glm::mat4& projectio
         );
 
         m_CascadeSplits[cascadeIndex]       = (nearClip + splitDist * clipRange) * -1.0f;
+        m_LightViewMatrices[cascadeIndex] = lightView;
+        m_LightProjMatrices[cascadeIndex] = lightProj;
         m_LightSpaceMatrices[cascadeIndex]  = lightProj * lightView;
 
         lastSplitDist = cascadeSplits[cascadeIndex];
     }
 }
 
-    TextureHandle VulkanRHI::CreateSolidColorTexture(uint32_t r, uint32_t g, uint32_t b, uint32_t a) {
+    void VulkanRHI::UpdateSpotLight(const glm::vec3& position, const glm::vec3& direction, float outerConeDegrees, float range) {
+        float fov    = glm::radians(outerConeDegrees * 2.0f);
+        float aspect = 1.0f;
+        float nearZ  = 0.1f;
+        float farZ   = range;
+
+        glm::vec3 up = glm::abs(glm::dot(direction, glm::vec3(0, 1, 0))) > 0.9f
+                     ? glm::vec3(1, 0, 0)
+                     : glm::vec3(0, 1, 0);
+
+        glm::mat4 lightView = glm::lookAt(position, position + direction, up);
+        glm::mat4 lightProj = glm::perspective(fov, aspect, nearZ, farZ);
+
+        m_SpotLightSpaceMatrix = lightProj * lightView;
+    }
+
+TextureHandle VulkanRHI::CreateSolidColorTexture(uint32_t r, uint32_t g, uint32_t b, uint32_t a) {
         uint32_t pixels[4] = {r, g, b, a};
 
         TextureDesc desc {

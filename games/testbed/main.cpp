@@ -104,6 +104,10 @@ int main() {
 
         camera.Update(*engine.GetInput(), deltaTime);
 
+        auto& spotLight = engine.GetRHI()->GetSpotLight();
+        spotLight.position  = camera.GetPosition() + camera.GetFront() * 0.5f;
+        spotLight.direction = camera.GetFront();
+
         glm::mat4 lightView, lightProj;
         engine.GetRHI()->UpdateCamera(camera.GetViewMatrix(), camera.GetProjectionMatrix(), glm::vec4(camera.GetPosition(), 0.0f), camera.GetFront());
 
@@ -155,10 +159,10 @@ int main() {
         ImGui::SliderFloat("Light Intensity", &light.intensity, 0.0f, 5.0f);
         ImGui::Separator();
 
-        auto& spotLight = engine.GetRHI()->GetSpotLight();
-        ImGui::SliderFloat3("Spot Position", &spotLight.position.x, -10.0f, 10.0f);
-        ImGui::SliderFloat3("Spot Direction", &spotLight.direction.x, -1.0f, 1.0f);
-        spotLight.direction = glm::normalize(spotLight.direction);
+        ImGui::Text("Spot Position: %.2f %.2f %.2f",
+            spotLight.position.x, spotLight.position.y, spotLight.position.z);
+        ImGui::Text("Spot Direction: %.2f %.2f %.2f",
+            spotLight.direction.x, spotLight.direction.y, spotLight.direction.z);
         ImGui::ColorEdit3("Spot Color", &spotLight.color.x);
         ImGui::SliderFloat("Spot Intensity", &spotLight.intensity, 0.0f, 50.0f);
         ImGui::SliderFloat("Spot Inner Cone", &spotLight.innerConeDegrees, 1.0f, 89.0f);

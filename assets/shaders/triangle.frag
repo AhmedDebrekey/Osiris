@@ -40,7 +40,13 @@ layout(set = 1, binding = 4) uniform sampler2D aoMap;
 layout(location = 0) out vec4 outColor;
 
 // ── Shadow PCF ──────────────────────────────────────────────
-float SampleShadowPCF(sampler2DShadow shadowMap, vec4 shadowCoord) {
+// NdotL biases the comparison: surfaces the light grazes at a steep angle
+// need much more depth bias to avoid self-shadowing acne than surfaces the
+// light hits head-on. A single flat bias can't satisfy both at once — too
+// small and grazing surfaces (e.g. walls under a near-overhead light) acne,
+// too large and head-on surfaces (e.g. a floor under the same light) show
+// visible peter-panning.
+float SampleShadowPCF(sampler2DShadow shadowMap, vec4 shadowCoord, float NdotL) {
     vec3 proj = shadowCoord.xyz / shadowCoord.w;
     proj.xy   = proj.xy * 0.5 + 0.5;
 
@@ -53,8 +59,9 @@ float SampleShadowPCF(sampler2DShadow shadowMap, vec4 shadowCoord) {
     // VK_FORMAT_D32_SFLOAT makes the rasterizer's hardware depth bias (see the
     // shadow pipeline's depthBiasConstant/Slope) resolve to a near-zero offset
     // near 0.0, so it isn't enough on its own to prevent self-shadowing acne.
-    const float bias = 0.02;
-    float biasedZ  = proj.z - bias;
+    float slopeScale = clamp(1.0 - NdotL, 0.0, 1.0);
+    float bias       = mix(0.0008, 0.03, slopeScale);
+    float biasedZ    = proj.z;
 
     float shadow   = 0.0;
     vec2 texelSize = 1.0 / vec2(textureSize(shadowMap, 0));
@@ -106,7 +113,7 @@ void main() {
 
     // ── Vectors ───────────────────────────────────────────────
     vec3 V = normalize(camera.cameraPosition.xyz - inWorldPos);
-    vec3 L        = normalize(camera.lightDirection.xyz);
+    vec3 L        = normalize(-camera.lightDirection.xyz);
     vec3 H        = normalize(V + L);
 
     float NdotL   = max(dot(N, L), 0.0);
@@ -136,13 +143,12 @@ void main() {
 
     float shadow;
     if (depth < abs(camera.cascadeSplits.x)) {
-        shadow = SampleShadowPCF(shadowMap0, inShadowCoord0);
+        shadow = SampleShadowPCF(shadowMap0, inShadowCoord0, NdotL);
     } else if (depth < abs(camera.cascadeSplits.y)) {
-        shadow = SampleShadowPCF(shadowMap1, inShadowCoord1);
+        shadow = SampleShadowPCF(shadowMap1, inShadowCoord1, NdotL);
     } else {
-        shadow = SampleShadowPCF(shadowMap2, inShadowCoord2);
+        shadow = SampleShadowPCF(shadowMap2, inShadowCoord2, NdotL);
     }
-
 
     Lo *= shadow;
 
@@ -177,7 +183,7 @@ void main() {
     vec3 kDspot        = (vec3(1.0) - Fspot) * (1.0 - metallic);
     vec3 diffuseSpot    = kDspot * albedo / PI;
 
-    float spotShadow = SampleShadowPCF(shadowMapSpot, inShadowCoordSpot);
+    float spotShadow = SampleShadowPCF(shadowMapSpot, inShadowCoordSpot, NdotLspot);
 
     vec3 spotLightColor = camera.spotColor.rgb * spotIntensity;
     Lo += (diffuseSpot + specularSpot) * spotLightColor * NdotLspot * coneAtten * distAtten * spotShadow;
@@ -187,6 +193,7 @@ void main() {
 
     // ── Final color ───────────────────────────────────────────
     vec3 color = ambient + Lo;
+
 
     // Tone mapping (Reinhard)
     color = (color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14);

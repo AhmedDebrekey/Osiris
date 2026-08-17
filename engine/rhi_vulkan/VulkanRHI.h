@@ -77,6 +77,7 @@ namespace Osiris {
         glm::mat4 GetLightViewMatrix(uint32_t cascade) const override { return m_LightViewMatrices[cascade]; }
         glm::mat4 GetLightProjMatrix(uint32_t cascade) const override { return m_LightProjMatrices[cascade]; }
         ShadowSettings& GetShadowSettings() override {return m_ShadowSettings;}
+        SpotLight& GetSpotLight() override { return m_SpotLight; }
 
         void UpdateCamera(const glm::mat4 &view, const glm::mat4 &projection, const glm::vec4& position, const glm::vec3& front) override;
         void SetCameraBuffer(const glm::mat4& view, const glm::mat4& projection, const glm::vec4& position) override;
@@ -89,7 +90,15 @@ namespace Osiris {
 
         void DrawShadowIndexed(uint32_t indexCount) override;
 
+        void BeginSpotShadowPass() override;
+
+        void EndSpotShadowPass()   override;
+
         void UpdateShadowDescriptors();
+
+        glm::mat4 GetLightSpaceMatrix(uint32_t cascadeIndex) const override {
+            return m_LightSpaceMatrices[cascadeIndex];
+        }
 
     private:
         bool SetupDebugMessenger();
@@ -184,6 +193,7 @@ namespace Osiris {
 
         VulkanImage m_SpotShadowMap;
         glm::mat4 m_SpotLightSpaceMatrix = glm::mat4(1.0f);
+        SpotLight m_SpotLight;
 
         ShadowSettings m_ShadowSettings;
 
@@ -193,6 +203,8 @@ namespace Osiris {
         glm::mat4 m_LightSpaceMatrices[SHADOW_CASCADE_COUNT];
         float m_CascadeSplits[SHADOW_CASCADE_COUNT];
         uint32_t m_CurrentCascadeIndex = 0;
+
+        glm::mat4 m_ActiveLightSpaceMatrix;
 
         TextureHandle m_DefaultAlbedo;
         TextureHandle m_DefaultNormal;

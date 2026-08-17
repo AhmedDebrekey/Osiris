@@ -23,6 +23,16 @@ namespace Osiris {
         float depthBiasSlope     = 1.75f;
     };
 
+    struct SpotLight {
+        glm::vec3 position          = glm::vec3(0.0f, 2.0f, 0.0f);
+        glm::vec3 direction         = glm::vec3(0.0f, -1.0f, 0.0f);
+        glm::vec3 color             = glm::vec3(1.0f, 1.0f, 1.0f);
+        float     intensity         = 10.0f;
+        float     innerConeDegrees  = 15.0f;
+        float     outerConeDegrees  = 20.0f;
+        float     range             = 10.0f;
+    };
+
 }
 
 #endif //OSIRIS_LIGHT_H

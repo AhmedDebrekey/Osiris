@@ -12,6 +12,7 @@
 namespace Osiris {
     struct ShadowSettings;
     struct DirectionalLight;
+    struct SpotLight;
 
     class IRHI {
         public:
@@ -51,6 +52,10 @@ namespace Osiris {
         virtual void DrawShadowIndexed  (uint32_t indexCount)   = 0;
         virtual void BeginForwardPass   ()                      = 0;
 
+
+        virtual void BeginSpotShadowPass() = 0;
+        virtual void EndSpotShadowPass()   = 0;
+
         virtual void InitImGui()        = 0;
         virtual void ShutdownImGui()    = 0;
         virtual void BeginImGuiFrame()  = 0;
@@ -60,8 +65,12 @@ namespace Osiris {
         virtual glm::mat4 GetLightViewMatrix(uint32_t cascade) const = 0;
         virtual glm::mat4 GetLightProjMatrix(uint32_t cascade) const = 0;
         virtual ShadowSettings& GetShadowSettings() = 0;
+        virtual SpotLight& GetSpotLight() = 0;
 
         virtual void Dispatch (uint32_t x, uint32_t y, uint32_t z) = 0;
+
+        // TEMP
+        virtual glm::mat4 GetLightSpaceMatrix(uint32_t cascadeIndex) const = 0;
 
     };
 }

@@ -10,6 +10,7 @@ layout(location = 4) in vec4 inShadowCoord1;
 layout(location = 5) in vec4 inShadowCoord2;
 layout(location = 6) in vec3 inTangent;
 layout(location = 7) in vec3 inBitangent;
+layout(location = 8) in vec4 inShadowCoordSpot;
 
 layout(set = 0, binding = 0) uniform CameraUBO {
     mat4 view;
@@ -18,11 +19,17 @@ layout(set = 0, binding = 0) uniform CameraUBO {
     vec4 cascadeSplits;
     vec4 lightDirection;
     vec4 cameraPosition;
+    mat4 spotLightSpaceMatrix;
+    vec4 spotPosition;
+    vec4 spotDirection;
+    vec4 spotParams; // x = cos(inner), y = cos(outer), z = range, w = intensity
+    vec4 spotColor;  // rgb = color
 } camera;
 
 layout(set = 0, binding = 1) uniform sampler2DShadow shadowMap0;
 layout(set = 0, binding = 2) uniform sampler2DShadow shadowMap1;
 layout(set = 0, binding = 3) uniform sampler2DShadow shadowMap2;
+layout(set = 0, binding = 4) uniform sampler2DShadow shadowMapSpot;
 
 layout(set = 1, binding = 0) uniform sampler2D albedoMap;
 layout(set = 1, binding = 1) uniform sampler2D normalMap;
@@ -42,13 +49,20 @@ float SampleShadowPCF(sampler2DShadow shadowMap, vec4 shadowCoord) {
         return 1.0;
     }
 
+    // NDC-space bias, independent of the depth format's precision curve.
+    // VK_FORMAT_D32_SFLOAT makes the rasterizer's hardware depth bias (see the
+    // shadow pipeline's depthBiasConstant/Slope) resolve to a near-zero offset
+    // near 0.0, so it isn't enough on its own to prevent self-shadowing acne.
+    const float bias = 0.02;
+    float biasedZ  = proj.z - bias;
+
     float shadow   = 0.0;
     vec2 texelSize = 1.0 / vec2(textureSize(shadowMap, 0));
 
     for (int x = -1; x <= 1; x++) {
         for (int y = -1; y <= 1; y++) {
             shadow += texture(shadowMap,
-                              vec3(proj.xy + vec2(x, y) * texelSize, proj.z));
+                              vec3(proj.xy + vec2(x, y) * texelSize, biasedZ));
         }
     }
     return shadow / 9.0;
@@ -116,6 +130,7 @@ void main() {
     vec3 lightColor = vec3(3.0);
     vec3 Lo = (diffuse + specular) * lightColor * NdotL;
 
+
     // ── Shadow ────────────────────────────────────────────────
     float depth = abs((camera.view * vec4(inWorldPos, 1.0)).z);
 
@@ -128,7 +143,44 @@ void main() {
         shadow = SampleShadowPCF(shadowMap2, inShadowCoord2);
     }
 
+
     Lo *= shadow;
+
+    // ── Spot light ────────────────────────────────────────────
+    vec3 toSpotLight  = camera.spotPosition.xyz - inWorldPos;
+    float spotDist    = length(toSpotLight);
+    vec3 Lspot         = toSpotLight / max(spotDist, 0.0001);
+    vec3 spotDir       = normalize(camera.spotDirection.xyz);
+
+    float cosInner = camera.spotParams.x;
+    float cosOuter = camera.spotParams.y;
+    float spotRange     = camera.spotParams.z;
+    float spotIntensity = camera.spotParams.w;
+
+    float cosTheta  = dot(-Lspot, spotDir);
+    float coneAtten = clamp((cosTheta - cosOuter) / max(cosInner - cosOuter, 0.0001), 0.0, 1.0);
+    coneAtten *= coneAtten;
+
+    float distAtten = clamp(1.0 - (spotDist / max(spotRange, 0.0001)), 0.0, 1.0);
+    distAtten *= distAtten;
+
+    vec3 Hspot      = normalize(V + Lspot);
+    float NdotLspot = max(dot(N, Lspot), 0.0);
+    float NdotHspot = max(dot(N, Hspot), 0.0);
+    float HdotVspot = max(dot(Hspot, V), 0.0);
+
+    float Dspot = D_GGX(NdotHspot, roughness);
+    float Gspot = G_Smith(NdotV, NdotLspot, roughness);
+    vec3  Fspot = F_Schlick(HdotVspot, F0);
+
+    vec3 specularSpot = (Dspot * Gspot * Fspot) / max(4.0 * NdotV * NdotLspot, 0.001);
+    vec3 kDspot        = (vec3(1.0) - Fspot) * (1.0 - metallic);
+    vec3 diffuseSpot    = kDspot * albedo / PI;
+
+    float spotShadow = SampleShadowPCF(shadowMapSpot, inShadowCoordSpot);
+
+    vec3 spotLightColor = camera.spotColor.rgb * spotIntensity;
+    Lo += (diffuseSpot + specularSpot) * spotLightColor * NdotLspot * coneAtten * distAtten * spotShadow;
 
     // ── Ambient ───────────────────────────────────────────────
     vec3 ambient = vec3(0.1) * albedo * ao;

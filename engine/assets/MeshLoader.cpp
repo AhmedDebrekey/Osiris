@@ -11,8 +11,49 @@
 #include "core/Log.h"
 #include "fastgltf/glm_element_traits.hpp"
 #include <vector>
+#include <unordered_map>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 namespace Osiris {
+    namespace {
+        // glTF node transforms are either a raw column-major matrix or separate T/R/S components.
+        glm::mat4 GetNodeLocalMatrix(const fastgltf::Node& node) {
+            if (const auto* mat = std::get_if<fastgltf::Node::TransformMatrix>(&node.transform)) {
+                return glm::make_mat4(mat->data());
+            }
+
+            const auto& trs = std::get<fastgltf::TRS>(node.transform);
+            glm::mat4 t = glm::translate(glm::mat4(1.0f),
+                glm::vec3(trs.translation[0], trs.translation[1], trs.translation[2]));
+            glm::quat q(trs.rotation[3], trs.rotation[0], trs.rotation[1], trs.rotation[2]);
+            glm::mat4 r = glm::mat4_cast(q);
+            glm::mat4 s = glm::scale(glm::mat4(1.0f),
+                glm::vec3(trs.scale[0], trs.scale[1], trs.scale[2]));
+            return t * r * s;
+        }
+
+        // Walks the node hierarchy accumulating world transforms, recording the transform that
+        // applies to each referenced mesh. Some glTF exporters (e.g. COLLADA2GLTF) bake an
+        // axis-correction rotation into the node hierarchy rather than the raw vertex data, so
+        // skipping this step leaves meshes in the wrong orientation.
+        void CollectMeshTransforms(const fastgltf::Asset& asset, std::size_t nodeIndex,
+                                    const glm::mat4& parentTransform,
+                                    std::unordered_map<std::size_t, glm::mat4>& outTransforms) {
+            const auto& node = asset.nodes[nodeIndex];
+            glm::mat4 worldTransform = parentTransform * GetNodeLocalMatrix(node);
+
+            if (node.meshIndex.has_value()) {
+                outTransforms[node.meshIndex.value()] = worldTransform;
+            }
+
+            for (std::size_t child : node.children) {
+                CollectMeshTransforms(asset, child, worldTransform, outTransforms);
+            }
+        }
+    }
+
     std::vector<MeshPrimitive> MeshLoader::LoadFromGLTF(const std::string& path, IRHI* rhi) {
     std::vector<MeshPrimitive> result;
 
@@ -61,8 +102,19 @@ namespace Osiris {
         return asset->textures[textureIndex].imageIndex.value_or(0);
     };
 
+    // Bake each node's world transform into its mesh's vertices, so exporter-added
+    // axis-correction rotations (e.g. COLLADA's Z-up -> glTF's Y-up) aren't lost.
+    std::unordered_map<std::size_t, glm::mat4> meshTransforms;
+    if (!asset->scenes.empty()) {
+        std::size_t sceneIndex = asset->defaultScene.value_or(0);
+        for (std::size_t nodeIndex : asset->scenes[sceneIndex].nodeIndices) {
+            CollectMeshTransforms(asset.get(), nodeIndex, glm::mat4(1.0f), meshTransforms);
+        }
+    }
+
     // Loop over all meshes and primitives
-    for (auto& mesh : asset->meshes) {
+    for (std::size_t meshIndex = 0; meshIndex < asset->meshes.size(); ++meshIndex) {
+        auto& mesh = asset->meshes[meshIndex];
         for (auto& primitive : mesh.primitives) {
             std::vector<Vertex>   vertices;
             std::vector<uint32_t> indices;
@@ -105,6 +157,20 @@ namespace Osiris {
                     [&](glm::vec3 norm) { vertices[i++].Normal = norm; });
             }
 
+            // Bake the node's world transform into positions/normals now, so anything derived
+            // from them below (generated tangents, AABB) is computed in the correct space.
+            {
+                auto it = meshTransforms.find(meshIndex);
+                if (it != meshTransforms.end()) {
+                    const glm::mat4& nodeTransform = it->second;
+                    glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(nodeTransform)));
+                    for (auto& v : vertices) {
+                        v.Position = glm::vec3(nodeTransform * glm::vec4(v.Position, 1.0f));
+                        v.Normal   = glm::normalize(normalMatrix * v.Normal);
+                    }
+                }
+            }
+
             // Extract UVs
             auto uvIt = std::find_if(primitive.attributes.begin(), primitive.attributes.end(),
                 [](const auto& attr) { return attr.first == "TEXCOORD_0"; });
@@ -123,6 +189,16 @@ namespace Osiris {
                 std::size_t i = 0;
                 fastgltf::iterateAccessor<glm::vec4>(asset.get(), accessor,
                     [&](glm::vec4 tangent) { vertices[i++].Tangent = tangent; });
+
+                // Authored tangents also need the node rotation applied (handedness in .w is unaffected).
+                auto it = meshTransforms.find(meshIndex);
+                if (it != meshTransforms.end()) {
+                    glm::mat3 rotation(it->second);
+                    for (auto& v : vertices) {
+                        glm::vec3 t = glm::normalize(rotation * glm::vec3(v.Tangent));
+                        v.Tangent = glm::vec4(t, v.Tangent.w);
+                    }
+                }
             } else {
                 GenerateTangents(vertices, indices);
             }

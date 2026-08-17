@@ -12,6 +12,10 @@ layout(set = 0, binding = 0) uniform CameraUBO {
     vec4 cascadeSplits;
     vec4 lightDirection;
     vec4 cameraPosition;
+    mat4 spotLightSpaceMatrix;
+    vec4 spotPosition;
+    vec4 spotDirection;
+    vec4 spotParams;
 } camera;
 
 layout(push_constant) uniform PushConstants {
@@ -26,6 +30,7 @@ layout(location = 4) out vec4 outShadowCoord1;
 layout(location = 5) out vec4 outShadowCoord2;
 layout(location = 6) out vec3 outTangent;
 layout(location = 7) out vec3 outBitangent;
+layout(location = 8) out vec4 outShadowCoordSpot;
 
 void main() {
     vec4 worldPos = push.model * vec4(inPosition, 1.0);
@@ -45,4 +50,5 @@ void main() {
     outShadowCoord0 = camera.lightSpaceMatrices[0] * worldPos;
     outShadowCoord1 = camera.lightSpaceMatrices[1] * worldPos;
     outShadowCoord2 = camera.lightSpaceMatrices[2] * worldPos;
+    outShadowCoordSpot = camera.spotLightSpaceMatrix * worldPos;
 }

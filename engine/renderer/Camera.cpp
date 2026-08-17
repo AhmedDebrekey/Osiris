@@ -28,7 +28,11 @@ namespace Osiris
     }
 
     glm::mat4 Camera::GetProjectionMatrix() const {
-        return glm::perspective(m_Fov, m_AspectRatio, m_zNear, m_zFar);
+        glm::mat4 projection = glm::perspective(m_Fov, m_AspectRatio, m_zNear, m_zFar);
+        // Vulkan's NDC has +Y pointing down (opposite of the OpenGL convention glm::perspective
+        // assumes), so without this the whole scene renders vertically flipped on screen.
+        projection[1][1] *= -1.0f;
+        return projection;
     }
 
     glm::vec3 Camera::GetFront() const {
@@ -40,7 +44,7 @@ namespace Osiris
         if (input.IsMouseButtonHeld(SDL_BUTTON_RIGHT)){
             glm::vec2 mouseDelta = input.GetMouseDelta();
             m_Yaw   += mouseDelta.x * m_Sensitivity;
-            m_Pitch += mouseDelta.y * m_Sensitivity;
+            m_Pitch -= mouseDelta.y * m_Sensitivity;
             m_Pitch  = glm::clamp(m_Pitch, -89.0f, 89.0f);
         }
 
@@ -63,9 +67,9 @@ namespace Osiris
         if (input.IsKeyHeld(SDL_SCANCODE_D))
             m_Position += right * m_Speed * deltaTime;
         if (input.IsKeyHeld(SDL_SCANCODE_Q))
-            m_Position += m_Up * m_Speed * deltaTime;
-        if (input.IsKeyHeld(SDL_SCANCODE_E))
             m_Position -= m_Up * m_Speed * deltaTime;
+        if (input.IsKeyHeld(SDL_SCANCODE_E))
+            m_Position += m_Up * m_Speed * deltaTime;
     }
 
     glm::vec3 Camera::GetPosition() const {

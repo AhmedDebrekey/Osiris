@@ -20,7 +20,7 @@ namespace Osiris {
         bool IsMouseButtonHeld(int button) const;
 
     private:
-        const uint8_t* m_CurrentKeys  = nullptr;
+        uint8_t        m_CurrentKeys[SDL_NUM_SCANCODES]  = {};
         uint8_t        m_PreviousKeys[SDL_NUM_SCANCODES] = {};
 
         glm::vec2 m_MouseDelta    = {0.0f, 0.0f};

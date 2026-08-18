@@ -26,7 +26,7 @@ void SceneLoader::Load(const std::string& path, Scene& scene, IRHI* rhi) {
 
     // Caches
     std::unordered_map<std::string, std::vector<MeshPrimitive>> meshCache;
-    std::unordered_map<std::string, TextureHandle>               textureCache;
+    std::unordered_map<std::string, TextureHandle>              textureCache;
 
     for (auto& entityJson : json["entities"]) {
         std::string name = entityJson["name"];

@@ -331,6 +331,77 @@ namespace Osiris {
         };
     }
 
+    Mesh MeshLoader::CreateBox(const glm::vec3& halfExtents, IRHI* rhi) {
+        const glm::vec3& h = halfExtents;
+
+        // 4 verts per face (not a shared 8-vert cube) so each face gets its own normal/UV,
+        // same reasoning CreatePlane already follows for a single quad. right/up are chosen
+        // so that up x right == normal and the {0,2,1, 0,3,2} winding below matches
+        // CreatePlane's front-face convention exactly (CreatePlane: R=+X, U=+Z, N=+Y, and
+        // indeed Z x X = Y) — reusing a different winding here would cull half the box.
+        struct Face { glm::vec3 normal; glm::vec3 right; glm::vec3 up; };
+        const Face faces[6] = {
+            { { 1, 0, 0}, {0, 0, 1}, {0, 1, 0} }, // +X: Y x Z = X
+            { {-1, 0, 0}, {0, 0,-1}, {0, 1, 0} }, // -X: Y x -Z = -X
+            { { 0, 1, 0}, {1, 0, 0}, {0, 0, 1} }, // +Y: Z x X = Y
+            { { 0,-1, 0}, {-1,0, 0}, {0, 0, 1} }, // -Y: Z x -X = -Y
+            { { 0, 0, 1}, {0, 1, 0}, {1, 0, 0} }, // +Z: X x Y = Z
+            { { 0, 0,-1}, {0,-1, 0}, {1, 0, 0} }, // -Z: X x -Y = -Z
+        };
+
+        std::vector<Vertex> vertices;
+        std::vector<uint32_t> indices;
+        vertices.reserve(24);
+        indices.reserve(36);
+
+        for (const Face& face : faces) {
+            glm::vec3 center = face.normal * h;
+            glm::vec3 right  = face.right * h;
+            glm::vec3 up     = face.up * h;
+
+            uint32_t base = static_cast<uint32_t>(vertices.size());
+            vertices.push_back({ .Position = center - right - up, .Normal = face.normal, .TexCoord = {0.0f, 0.0f}, .Tangent = glm::vec4(glm::normalize(face.right), 1.0f) });
+            vertices.push_back({ .Position = center + right - up, .Normal = face.normal, .TexCoord = {1.0f, 0.0f}, .Tangent = glm::vec4(glm::normalize(face.right), 1.0f) });
+            vertices.push_back({ .Position = center + right + up, .Normal = face.normal, .TexCoord = {1.0f, 1.0f}, .Tangent = glm::vec4(glm::normalize(face.right), 1.0f) });
+            vertices.push_back({ .Position = center - right + up, .Normal = face.normal, .TexCoord = {0.0f, 1.0f}, .Tangent = glm::vec4(glm::normalize(face.right), 1.0f) });
+
+            indices.insert(indices.end(), { base, base + 2, base + 1, base, base + 3, base + 2 });
+        }
+
+        GenerateTangents(vertices, indices);
+
+        AABB bounds;
+        for (const auto& v : vertices) {
+            bounds.min = glm::min(bounds.min, v.Position);
+            bounds.max = glm::max(bounds.max, v.Position);
+        }
+
+        BufferDesc vertexBufferDesc = {
+            .size       = sizeof(Vertex) * vertices.size(),
+            .usage      = BufferUsage::Vertex,
+            .cpuVisible = false,
+        };
+        BufferDesc indexBufferDesc = {
+            .size       = sizeof(uint32_t) * indices.size(),
+            .usage      = BufferUsage::Index,
+            .cpuVisible = false,
+        };
+
+        BufferHandle vertexBuffer = rhi->CreateBuffer(vertexBufferDesc);
+        rhi->UploadBufferData(vertexBuffer, vertices.data(), sizeof(Vertex) * vertices.size());
+
+        BufferHandle indexBuffer = rhi->CreateBuffer(indexBufferDesc);
+        rhi->UploadBufferData(indexBuffer, indices.data(), sizeof(uint32_t) * indices.size());
+
+        return Mesh {
+            .vertexBuffer = vertexBuffer,
+            .indexBuffer  = indexBuffer,
+            .vertexCount  = static_cast<uint32_t>(vertices.size()),
+            .indexCount   = static_cast<uint32_t>(indices.size()),
+            .bounds       = bounds,
+        };
+    }
+
 void MeshLoader::GenerateTangents(std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices) {
     // Initialize tangents to zero
     std::vector<glm::vec3> tangents(vertices.size(), glm::vec3(0.0f));

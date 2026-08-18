@@ -9,6 +9,8 @@
 #include "renderer/Frustum.h"
 #include "renderer/Camera.h"
 #include "rhi/RHI.h"
+#include "physics/IPhysics.h"
+#include "audio/IAudio.h"
 
 namespace Osiris {
     Entity Scene::CreateEntity(const std::string& name) {
@@ -30,6 +32,14 @@ namespace Osiris {
         return Entity{};
     }
 
+
+    std::vector<Entity> Scene::GetAllEntities() {
+        std::vector<Entity> result;
+        auto view = m_Registry.view<TagComponent>();
+        result.reserve(view.size());
+        for (auto entity : view) result.emplace_back(entity, this);
+        return result;
+    }
 
     void Scene::Render(IRHI* rhi, const Camera& camera) {
         const Frustum frustum = Frustum::FromViewProjection(
@@ -123,6 +133,65 @@ namespace Osiris {
         result.reserve(candidates.size());
         for (auto& candidate : candidates) result.push_back(candidate.data);
         return result;
+    }
+
+    void Scene::CreatePhysicsBodies(IPhysics* physics) {
+        const auto view = m_Registry.view<TransformComponent, ColliderComponent, RigidBodyComponent>();
+        for (auto entity : view) {
+            auto& transform  = view.get<TransformComponent>(entity);
+            auto& collider   = view.get<ColliderComponent>(entity);
+            auto& rigidBody  = view.get<RigidBodyComponent>(entity);
+
+            RigidBodyDesc desc{};
+            desc.collider.halfExtents = collider.halfExtents;
+            desc.motionType    = rigidBody.motionType;
+            desc.position       = transform.position;
+            desc.rotationEuler  = transform.rotation;
+
+            rigidBody.bodyHandle = physics->CreateBody(desc);
+        }
+    }
+
+    void Scene::SyncPhysicsTransforms(IPhysics* physics) {
+        const auto view = m_Registry.view<TransformComponent, RigidBodyComponent>();
+        for (auto entity : view) {
+            auto& transform = view.get<TransformComponent>(entity);
+            auto& rigidBody = view.get<RigidBodyComponent>(entity);
+            if (rigidBody.motionType == BodyMotionType::Static) continue;
+
+            transform.position = physics->GetBodyPosition(rigidBody.bodyHandle);
+            transform.rotation = physics->GetBodyRotationEuler(rigidBody.bodyHandle);
+        }
+    }
+
+    void Scene::CreateAudioSources(IAudio* audio) {
+        const auto view = m_Registry.view<TransformComponent, AudioSourceComponent>();
+        for (auto entity : view) {
+            auto& transform = view.get<TransformComponent>(entity);
+            auto& audioSrc  = view.get<AudioSourceComponent>(entity);
+
+            AudioSourceDesc desc{};
+            desc.buffer           = audioSrc.clip;
+            desc.gain             = audioSrc.gain;
+            desc.pitch            = audioSrc.pitch;
+            desc.loop             = audioSrc.loop;
+            desc.referenceDistance = audioSrc.referenceDistance;
+            desc.maxDistance      = audioSrc.maxDistance;
+            desc.rolloffFactor    = audioSrc.rolloffFactor;
+
+            audioSrc.sourceHandle = audio->CreateSource(desc);
+            audio->SetSourcePosition(audioSrc.sourceHandle, transform.position);
+            if (audioSrc.autoPlay) audio->PlaySource(audioSrc.sourceHandle);
+        }
+    }
+
+    void Scene::SyncAudioSources(IAudio* audio) {
+        const auto view = m_Registry.view<TransformComponent, AudioSourceComponent>();
+        for (auto entity : view) {
+            auto& transform = view.get<TransformComponent>(entity);
+            auto& audioSrc  = view.get<AudioSourceComponent>(entity);
+            audio->SetSourcePosition(audioSrc.sourceHandle, transform.position);
+        }
     }
 
     int Scene::GetEntityCount() {

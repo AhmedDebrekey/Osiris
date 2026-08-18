@@ -121,6 +121,26 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(JoltPhysics)
 
 # ------------------------------------------------------------
+# OpenAL Soft
+# ------------------------------------------------------------
+# openal-soft 1.23.1's own CMakeLists.txt declares cmake_minimum_required(VERSION < 3.5),
+# which newer CMake (4.x) refuses to process at all ("Compatibility with CMake < 3.5 has
+# been removed"). This tells CMake to treat it as if it required 3.5, same fix CMake's own
+# error message suggests via -DCMAKE_POLICY_VERSION_MINIMUM.
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+set(ALSOFT_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(ALSOFT_UTILS OFF CACHE BOOL "" FORCE)
+set(ALSOFT_TESTS OFF CACHE BOOL "" FORCE)
+set(ALSOFT_INSTALL OFF CACHE BOOL "" FORCE)
+set(ALSOFT_INSTALL_CONFIG OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+        openal-soft
+        GIT_REPOSITORY https://github.com/kcat/openal-soft.git
+        GIT_TAG        1.23.1
+)
+FetchContent_MakeAvailable(openal-soft)
+
+# ------------------------------------------------------------
 # Lua
 # ------------------------------------------------------------
 FetchContent_Declare(

@@ -6,6 +6,8 @@
 #include "Log.h"
 #include "rhi/RHI.h"
 #include "platform/Input.h"
+#include "physics/IPhysics.h"
+#include "audio/IAudio.h"
 namespace Osiris {
     class Engine {
     public:
@@ -21,6 +23,8 @@ namespace Osiris {
         void Shutdown();
 
         IRHI* GetRHI() const { return m_RHI.get(); }
+        IPhysics* GetPhysics() const { return m_Physics.get(); }
+        IAudio* GetAudio() const { return m_Audio.get(); }
 
         Input* GetInput() { return &m_Input; }
 
@@ -43,6 +47,8 @@ namespace Osiris {
         Log m_Logger;
 
         std::unique_ptr<IRHI> m_RHI;
+        std::unique_ptr<IPhysics> m_Physics;
+        std::unique_ptr<IAudio> m_Audio;
     };
 }
 

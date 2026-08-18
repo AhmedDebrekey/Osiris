@@ -2,6 +2,8 @@
 
 #include "AssetManager.h"
 #include "rhi_vulkan/VulkanRHI.h"
+#include "physics/jolt/JoltPhysics.h"
+#include "audio/openal/OpenALAudio.h"
 
 namespace Osiris {
     bool Engine::Initialize() {
@@ -36,6 +38,18 @@ namespace Osiris {
 
         m_RHI->InitImGui();
 
+        m_Physics = std::make_unique<JoltPhysics>();
+        if (!m_Physics->Init()) {
+            OSIRIS_ERROR("Failed to initialize physics!");
+            return false;
+        }
+
+        m_Audio = std::make_unique<OpenALAudio>();
+        if (!m_Audio->Init()) {
+            OSIRIS_ERROR("Failed to initialize audio!");
+            return false;
+        }
+
         return true;
     }
 
@@ -51,6 +65,8 @@ namespace Osiris {
     }
 
     void Engine::Shutdown() {
+        m_Audio->Shutdown();
+        m_Physics->Shutdown();
         m_RHI->ShutdownImGui();
         m_RHI->Shutdown();
         m_Window.Shutdown();

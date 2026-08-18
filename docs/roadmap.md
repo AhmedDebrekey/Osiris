@@ -21,7 +21,7 @@ This document is the authoritative phase plan. Status: ✅ done · 🔶 partial 
 | Graphics | Vulkan 1.4 SDK (1.4.350.0), VMA, dynamic rendering (no `VkRenderPass`) |
 | Platform / math | SDL2, GLM |
 | Engine | EnTT (ECS) |
-| Physics / audio / scripting | Jolt Physics, OpenAL Soft, Lua + Sol3 *(none integrated yet — see Phase 7)* |
+| Physics / audio / scripting | Jolt Physics *(integrated, Phase 7A)* · OpenAL Soft, Lua + Sol3 *(not yet — see Phase 7B)* |
 | Assets | fastgltf, ufbx, stb_image, nlohmann/json |
 | Tools | Dear ImGui (docking branch), spdlog, Tracy *(not yet integrated)* |
 
@@ -44,6 +44,8 @@ Core → Platform → RHI → Renderer → ECS/Scene → Game
 | `engine/renderer/` | `Camera`, `RenderGraph`, `Frustum`, `MeshType.h`, `Light.h` |
 | `engine/scene/` | `Scene`, `Entity`, `Components.h` (EnTT-based ECS) |
 | `engine/assets/` | `MeshLoader`, `TextureLoader`, `SceneLoader` |
+| `engine/physics/` | `IPhysics` interface, `PhysicsTypes.h`; `physics/jolt/JoltPhysics` is the only backend |
+| `engine/editor/` | `SceneInspectorPanel` — ImGui entity list + per-component editor |
 | `assets/shaders/` | `triangle.vert/frag`, `shadow.vert`, `skybox.vert/frag`, `brdf_lut.comp`, `equirect_to_cubemap.comp`, `irradiance_convolve.comp`, `prefilter_env.comp` |
 | `assets/scenes/` | JSON scene files |
 
@@ -158,19 +160,36 @@ Twice in this project, a find-and-replace across similarly-named variables (`m_A
 
 ---
 
-## Phase 7 — Game Systems ⬜
+## Phase 7 — Game Systems 🔶
 
-- **7A — Jolt Physics.** Rigid body simulation, collision detection, first-person character controller with collision.
-- **7B — OpenAL Audio.** 3D positional audio, sound emitters as ECS components, reverb zones, audio occlusion through geometry — high priority for horror atmosphere.
-- **7C — Player System.** First-person controller (distinct from the free-fly debug `Camera`), interaction system, simple inventory.
+**7A — Jolt Physics ✅** Full integration behind an `IPhysics`/`JoltPhysics` split mirroring `IRHI`/`VulkanRHI` — no raw Jolt types outside `engine/physics/jolt/`.
+- Fixed 60Hz timestep via an accumulator in `IPhysics::Update(deltaTime)`, clamped to `8×` the step so a stalled frame (breakpoint, window drag) can't spiral into an ever-growing catch-up loop.
+- Static + Dynamic box colliders (`ColliderComponent`/`RigidBodyComponent`, box shape only), spawned once by `Scene::CreatePhysicsBodies`. Position *and* rotation synced back into `TransformComponent` every frame by `Scene::SyncPhysicsTransforms` — the rotation decomposition was hand-derived to match `TransformComponent::GetModelMatrix`'s exact `Rx*Ry*Rz` composition order (deliberately not GLM's generic Euler-angle helpers, which use a different convention and would have silently produced wrong rotations).
+- Capsule `CharacterVirtual` controller: camera-relative WASD (flattened to XZ), space-jump, gravity, ground-snap, and step-up, all via Jolt's `ExtendedUpdate`. Automatically pushes `Dynamic` bodies it walks into — Jolt does this natively, but needed `BoxShape` density dropped from Jolt's 1000 kg/m³ default to 200 kg/m³ before pushes were fast enough to notice (a stock box was ~340 kg, heavier than stone).
+- Camera position is interpolated between the character's pre/post fixed-step positions (leftover accumulator fraction as the blend weight) — reading the raw 60Hz-stepped position directly every render frame caused visible camera jitter, since render rate isn't phase-locked to the fixed physics rate.
+- `kPhysicsTestScene` toggle in `main.cpp` swaps the full Sponza/DamagedHelmet room for a minimal ground + static obstacle boxes + dropped dynamic boxes, to test physics in isolation from heavy geometry.
+- ⬜ Non-box colliders (sphere/capsule) and character-vs-character-pushes-character interactions aren't implemented — no concrete use case yet.
 
-Physics and audio can run in parallel with remaining Phase 6 rendering work — neither depends on the render graph or PBR being finished, and a walking/colliding/audible player gives a more concrete sense of progress than more shader polish.
+**7B — OpenAL Audio 🔶** Full integration behind an `IAudio`/`OpenALAudio` split mirroring `IRHI`/`IPhysics` — no raw AL types outside `engine/audio/openal/`.
+- ✅ **3D positional audio + sound emitters as ECS components.** `AudioSourceComponent` (clip, gain, pitch, loop, autoplay, reference/max distance, rolloff) — position sourced from `TransformComponent`, same pattern as `SpotLightComponent`. `Scene::CreateAudioSources`/`SyncAudioSources` mirror the physics `CreatePhysicsBodies`/`SyncPhysicsTransforms` split. Listener tracks whichever camera is currently active (`SetListenerTransform`, called every frame regardless of `kPhysicsTestScene`).
+- ✅ **WAV loading** — hand-rolled RIFF/WAVE parser (`AudioLoader::LoadWAV`, PCM only, no new dependency).
+- ✅ Two real gotchas found and fixed during testing:
+  - OpenAL only spatializes **mono** sources — a stereo buffer plays back flat with no attenuation/panning regardless of `AL_POSITION`/distance settings. `OpenALAudio::CreateBuffer` now auto-downmixes any stereo PCM to mono unconditionally (averages L+R per sample, 8-bit and 16-bit) before upload, so this can't silently bite on a future stereo asset.
+  - OpenAL's default distance model (Inverse Distance Clamped) doesn't make `AL_MAX_DISTANCE` mean "silent beyond this range" — it only caps how far attenuation keeps *increasing*; gain plateaus at a low-but-nonzero value and stays audible forever past it. Switched to `AL_LINEAR_DISTANCE_CLAMPED` (set once in `Init()`) so gain actually reaches 0 at `maxDistance`.
+- ⬜ **OGG support** — WAV only so far; `stb_vorbis` (already available via the `stb` dependency) not wired up yet.
+- ⬜ **Reverb zones** — needs OpenAL's EFX extension (auxiliary effect slots), not touched.
+- ⬜ **Audio occlusion through geometry** — needs a raycast against the Jolt collision world per source per frame to attenuate/muffle occluded emitters; physics (7A) now provides what this would need, but it isn't wired up.
+- ⬜ `SceneInspectorPanel` doesn't have an `AudioSourceComponent` editor section yet (would be a one-line addition following the existing `DrawComponentSection<T>` pattern).
+
+**7C — Player System 🔶** First-person controller (distinct from the free-fly debug `Camera`) is effectively done as a side effect of 7A's `CharacterVirtual` work. Still missing: interaction system, simple inventory.
+
+Audio can run in parallel with anything else — it doesn't depend on physics or the render graph being finished.
 
 ## Phase 8 — Editor & Tools ⬜
 
 - **8A — Docked ImGui editor.** Needs an offscreen render target (`VkImage` the scene renders into, displayed via `ImGui::Image` inside a dockable viewport) plus `ImGui::DockSpaceOverViewport()`. Panel code from 4E/6 transfers directly — docking is additive.
 - **8B — Asset browser.** Browse meshes/textures/scenes, drag-and-drop into scene.
-- **8C — Scene editor.** Place/move/rotate objects, save scene back to JSON, transform gizmos.
+- **8C — Scene editor.** Place/move/rotate objects, save scene back to JSON, transform gizmos. Entity/component inspection — a scrollable entity list plus a typed, editable field UI per component type — already exists ahead of schedule via `SceneInspectorPanel` (`engine/editor/`), built as a standalone detour outside the phase plan. Still missing for 8C proper: gizmos, viewport picking, and JSON round-trip.
 - **8D — Render graph visualizer.** Debug view of passes, timings, resource dependency graph.
 - **8E — CommandBuffer abstraction** (completes 5D). Revisit once a second backend is attempted or Forward+ compute passes make the raw `VkCommandBuffer` leakage actively painful.
 - **8F — Entity parent/child hierarchy.** Every glTF primitive is currently an independent flat `Scene` entity — moving a multi-primitive model means moving each part separately. Needs `ParentComponent`/`ChildrenComponent` and transform propagation in `Scene::Render`. Deferred until the editor exists — hierarchies are far more usable with gizmos than JSON editing.
@@ -191,5 +210,6 @@ Deliberately small scope — proving the full stack end-to-end, not a full game:
 
 ## Suggested session priority from here
 
-1. **Bloom + SSAO** (rest of 6D) if more visual polish is wanted, **or** jump to **7A/7B** (physics + audio — the biggest "feels like a game" gap) now that IBL closes out the biggest lighting gap.
-2. **8A** (docked editor) whenever panel-based iteration starts feeling cramped — not urgent before then.
+1. Rest of **7C** (interaction system, inventory) now that both physics (7A) and core positional audio (7B) are done — there's finally something worth interacting with and hearing. **Or** **Bloom + SSAO** (rest of 6D) if visual polish is wanted first.
+2. Round out **7B**'s remaining scope (OGG, reverb zones, occlusion) whenever audio needs more than a looping test emitter — none of it blocks anything else.
+3. **8A** (docked editor) whenever panel-based iteration starts feeling cramped — `SceneInspectorPanel` already covers basic inspection in the meantime.

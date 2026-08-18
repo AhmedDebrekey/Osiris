@@ -8,6 +8,10 @@
 #include "assets/TextureLoader.h"
 #include "core/AssetManager.h"
 #include "scene/Scene.h"
+#include "physics/IPhysics.h"
+#include "editor/SceneInspectorPanel.h"
+#include "audio/IAudio.h"
+#include "assets/AudioLoader.h"
 
 #include <iostream>
 #include <glm/gtc/matrix_transform.hpp>
@@ -23,13 +27,10 @@ int main() {
         return -1;
     }
 
-    // Create plane meshes
-    Osiris::Mesh wallPlane  = Osiris::MeshLoader::CreatePlane(10.0f, 3.0f, engine.GetRHI());
-    Osiris::Mesh floorPlane = Osiris::MeshLoader::CreatePlane(10.0f, 10.0f, engine.GetRHI());
-
-    // Load box mesh + texture
-    auto boxPrimitives = Osiris::MeshLoader::LoadFromGLTF(
-        Osiris::AssetManager::GetPath("models/BoxTexturedGLTF/BoxTextured.gltf"), engine.GetRHI());
+    // Phase 7A checkpoint: a minimal cube-only scene to test static colliders + the character
+    // controller in isolation, without Sponza/DamagedHelmet's mesh weight in the way. Flip this
+    // back to false to restore the full room scene below.
+    constexpr bool kPhysicsTestScene = true;
 
     TextureHandle greyTexture = Osiris::TextureLoader::LoadFromFile(
         Osiris::AssetManager::GetPath("textures/grey.png"), engine.GetRHI());
@@ -46,83 +47,166 @@ int main() {
             static_cast<uint32_t>(environmentHDR.height));
     }
 
+    // Audio (Phase 7B). Drop a test file at assets/audio/test.wav before building.
+    Osiris::PCMAudioData testAudio = Osiris::AudioLoader::LoadWAV(
+        Osiris::AssetManager::GetPath("audio/test.wav"));
+    Osiris::AudioBufferHandle testSoundBuffer;
+    if (!testAudio.pcmData.empty()) {
+        testSoundBuffer = engine.GetAudio()->CreateBuffer(testAudio);
+    }
+
     Osiris::Scene scene;
 
-
-    // Ceiling
-    Osiris::Entity ceiling = scene.CreateEntity("Ceiling");
-    ceiling.GetComponent<Osiris::TransformComponent>().position = glm::vec3(0.0f, 0.0f, 0.0f);
-    ceiling.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(0.0f, 0.0f, 0.0f);
-    ceiling.AddComponent<Osiris::MeshComponent>(floorPlane);
-    ceiling.AddComponent<Osiris::MaterialComponent>(greyMaterial);
-
-    // Walls
-    Osiris::Entity wallNorth = scene.CreateEntity("Wall_North");
-    wallNorth.GetComponent<Osiris::TransformComponent>().position = glm::vec3(0.0f, 1.5f, -5.0f);
-    wallNorth.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(90.0f, 0.0f, 0.0f);
-    wallNorth.AddComponent<Osiris::MeshComponent>(wallPlane);
-    wallNorth.AddComponent<Osiris::MaterialComponent>(greyMaterial);
-
-    Osiris::Entity wallSouth = scene.CreateEntity("Wall_South");
-    wallSouth.GetComponent<Osiris::TransformComponent>().position = glm::vec3(0.0f, 1.5f, 5.0f);
-    wallSouth.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(-90.0f, 0.0f, 0.0f);
-    wallSouth.AddComponent<Osiris::MeshComponent>(wallPlane);
-    wallSouth.AddComponent<Osiris::MaterialComponent>(greyMaterial);
-
-    Osiris::Entity wallEast = scene.CreateEntity("Wall_East");
-    wallEast.GetComponent<Osiris::TransformComponent>().position = glm::vec3(5.0f, 1.5f, 0.0f);
-    wallEast.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(90.0f, 0.0f, 90.0f);
-    wallEast.AddComponent<Osiris::MeshComponent>(wallPlane);
-    wallEast.AddComponent<Osiris::MaterialComponent>(greyMaterial);
-
-    Osiris::Entity wallWest = scene.CreateEntity("Wall_West");
-    wallWest.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-5.0f, 1.5f, 0.0f);
-    wallWest.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(-90.0f, 0.0f, -90.0f);
-    wallWest.AddComponent<Osiris::MeshComponent>(wallPlane);
-    wallWest.AddComponent<Osiris::MaterialComponent>(greyMaterial);
-
-    // Crates
-    for (uint32_t i = 0; i < boxPrimitives.size(); i++) {
-        Osiris::Entity crate1 = scene.CreateEntity("Crate_01_" + std::to_string(i));
-        crate1.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-1.0f, 1.5f, -1.0f);
-        crate1.AddComponent<Osiris::MeshComponent>(boxPrimitives[i].mesh);
-        crate1.AddComponent<Osiris::MaterialComponent>(boxPrimitives[i].material);
-
-        Osiris::Entity crate2 = scene.CreateEntity("Crate_02_" + std::to_string(i));
-        crate2.GetComponent<Osiris::TransformComponent>().position = glm::vec3(1.5f, 2.5f, 0.5f);
-        crate2.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(0.0f, 45.0f, 0.0f);
-        crate2.AddComponent<Osiris::MeshComponent>(boxPrimitives[i].mesh);
-        crate2.AddComponent<Osiris::MaterialComponent>(boxPrimitives[i].material);
+    // Phase 7B checkpoint 2: a looping 3D emitter positioned away from the player's spawn, so
+    // walking toward/away from it is an easy way to hear distance attenuation/panning working.
+    // 'P' toggles it on/off during testing.
+    Osiris::Entity audioTestEntity;
+    if (testSoundBuffer.IsValid()) {
+        audioTestEntity = scene.CreateEntity("AudioTest_Emitter");
+        audioTestEntity.GetComponent<Osiris::TransformComponent>().position = glm::vec3(0.0f, 1.0f, -2.0f);
+        auto& audioSrc = audioTestEntity.AddComponent<Osiris::AudioSourceComponent>();
+        audioSrc.clip              = testSoundBuffer;
+        audioSrc.loop              = true;
+        audioSrc.autoPlay          = true;
+        audioSrc.gain              = 0.6f;
+        audioSrc.referenceDistance = 1.5f;
+        audioSrc.maxDistance       = 15.0f;
     }
 
-    // PBR test model (Khronos DamagedHelmet) — has real metallic/roughness
-    // variation, unlike the fully-diffuse crates, so it's a much better way
-    // to visually verify specular IBL once tasks 4-6 land.
-    auto helmetPrimitives = Osiris::MeshLoader::LoadFromGLTF(
-        Osiris::AssetManager::GetPath("models/DamagedHelmet/DamagedHelmet.gltf"), engine.GetRHI());
-    for (uint32_t i = 0; i < helmetPrimitives.size(); i++) {
-        Osiris::Entity helmet = scene.CreateEntity("DamagedHelmet_" + std::to_string(i));
-        helmet.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-2.5f, 1.3f, -0.5f);
-        helmet.AddComponent<Osiris::MeshComponent>(helmetPrimitives[i].mesh);
-        helmet.AddComponent<Osiris::MaterialComponent>(helmetPrimitives[i].material);
+
+    // Player character (Phase 7A). Feet start a little above the ground box so it's visibly
+    // dropped and settled by gravity/collision on the first few frames, not just spawned resting.
+    Osiris::CharacterHandle playerCharacter;
+    constexpr float kPlayerEyeHeight = 1.5f;
+    if (kPhysicsTestScene) {
+        playerCharacter = engine.GetPhysics()->CreateCharacter({
+            .radius = 0.3f,
+            .height = 1.6f,
+            .position = glm::vec3(0.0f, 1.0f, 3.0f),
+        });
     }
 
-    auto envTestPrimitives = Osiris::MeshLoader::LoadFromGLTF(
-        Osiris::AssetManager::GetPath("models/EnvironmentTest/EnvironmentTest.gltf"), engine.GetRHI());
-    for (uint32_t i = 0; i < envTestPrimitives.size(); i++) {
-        Osiris::Entity env = scene.CreateEntity("EnvironmentTest_" + std::to_string(i));
-        env.GetComponent<Osiris::TransformComponent>().position = glm::vec3(4.0f, 2.9f, 4.0f);
-        env.AddComponent<Osiris::MeshComponent>(envTestPrimitives[i].mesh);
-        env.AddComponent<Osiris::MaterialComponent>(envTestPrimitives[i].material);
+    if (kPhysicsTestScene) {
+        // Ground: a wide, flat static box. Top surface sits at y=0.
+        Osiris::Mesh groundMesh = Osiris::MeshLoader::CreateBox({10.0f, 0.5f, 10.0f}, engine.GetRHI());
+        Osiris::Entity ground = scene.CreateEntity("Ground");
+        ground.GetComponent<Osiris::TransformComponent>().position = glm::vec3(0.0f, -0.5f, 0.0f);
+        ground.AddComponent<Osiris::MeshComponent>(groundMesh);
+        ground.AddComponent<Osiris::MaterialComponent>(greyMaterial);
+        ground.AddComponent<Osiris::ColliderComponent>(glm::vec3(10.0f, 0.5f, 10.0f));
+        ground.AddComponent<Osiris::RigidBodyComponent>(Osiris::BodyMotionType::Static);
+
+        // A few static obstacle boxes to walk into and verify collision response.
+        struct Obstacle { glm::vec3 position; glm::vec3 halfExtents; };
+        const Obstacle obstacles[] = {
+            { {-2.0f, 0.5f, -2.0f}, {0.5f, 0.5f, 0.5f} },
+            { { 2.0f, 0.75f, -1.0f}, {0.75f, 0.75f, 0.75f} },
+            { { 0.0f, 0.4f,  2.5f}, {1.0f, 0.4f, 0.4f} },
+        };
+        for (size_t i = 0; i < sizeof(obstacles) / sizeof(obstacles[0]); i++) {
+            Osiris::Mesh boxMesh = Osiris::MeshLoader::CreateBox(obstacles[i].halfExtents, engine.GetRHI());
+            Osiris::Entity obstacle = scene.CreateEntity("Obstacle_" + std::to_string(i));
+            obstacle.GetComponent<Osiris::TransformComponent>().position = obstacles[i].position;
+            obstacle.AddComponent<Osiris::MeshComponent>(boxMesh);
+            obstacle.AddComponent<Osiris::MaterialComponent>(greyMaterial);
+            obstacle.AddComponent<Osiris::ColliderComponent>(obstacles[i].halfExtents);
+            obstacle.AddComponent<Osiris::RigidBodyComponent>(Osiris::BodyMotionType::Static);
+        }
+
+        // A few dynamic boxes dropped above the obstacles, to check that bodies actually fall,
+        // tumble, collide, and settle — position + rotation are synced back to
+        // TransformComponent every frame via Scene::SyncPhysicsTransforms.
+        const glm::vec3 dropHalfExtents(0.35f, 0.35f, 0.35f);
+        const glm::vec3 dropPositions[] = {
+            { 0.0f, 4.0f, 0.0f },
+            { 0.3f, 5.0f, 0.2f },
+            {-0.2f, 6.0f, -0.1f },
+        };
+        for (size_t i = 0; i < sizeof(dropPositions) / sizeof(dropPositions[0]); i++) {
+            Osiris::Mesh boxMesh = Osiris::MeshLoader::CreateBox(dropHalfExtents, engine.GetRHI());
+            Osiris::Entity dropBox = scene.CreateEntity("DropBox_" + std::to_string(i));
+            dropBox.GetComponent<Osiris::TransformComponent>().position = dropPositions[i];
+            dropBox.AddComponent<Osiris::MeshComponent>(boxMesh);
+            dropBox.AddComponent<Osiris::MaterialComponent>(greyMaterial);
+            dropBox.AddComponent<Osiris::ColliderComponent>(dropHalfExtents);
+            dropBox.AddComponent<Osiris::RigidBodyComponent>(Osiris::BodyMotionType::Dynamic);
+        }
+
+    } else {
+        Osiris::Mesh wallPlane  = Osiris::MeshLoader::CreatePlane(10.0f, 3.0f, engine.GetRHI());
+        Osiris::Mesh floorPlane = Osiris::MeshLoader::CreatePlane(10.0f, 10.0f, engine.GetRHI());
+        auto boxPrimitives = Osiris::MeshLoader::LoadFromGLTF(
+            Osiris::AssetManager::GetPath("models/BoxTexturedGLTF/BoxTextured.gltf"), engine.GetRHI());
+
+        // Ceiling
+        Osiris::Entity ceiling = scene.CreateEntity("Ceiling");
+        ceiling.GetComponent<Osiris::TransformComponent>().position = glm::vec3(0.0f, 0.0f, 0.0f);
+        ceiling.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(0.0f, 0.0f, 0.0f);
+        ceiling.AddComponent<Osiris::MeshComponent>(floorPlane);
+        ceiling.AddComponent<Osiris::MaterialComponent>(greyMaterial);
+
+        // Walls
+        Osiris::Entity wallNorth = scene.CreateEntity("Wall_North");
+        wallNorth.GetComponent<Osiris::TransformComponent>().position = glm::vec3(0.0f, 1.5f, -5.0f);
+        wallNorth.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(90.0f, 0.0f, 0.0f);
+        wallNorth.AddComponent<Osiris::MeshComponent>(wallPlane);
+        wallNorth.AddComponent<Osiris::MaterialComponent>(greyMaterial);
+
+        Osiris::Entity wallSouth = scene.CreateEntity("Wall_South");
+        wallSouth.GetComponent<Osiris::TransformComponent>().position = glm::vec3(0.0f, 1.5f, 5.0f);
+        wallSouth.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(-90.0f, 0.0f, 0.0f);
+        wallSouth.AddComponent<Osiris::MeshComponent>(wallPlane);
+        wallSouth.AddComponent<Osiris::MaterialComponent>(greyMaterial);
+
+        Osiris::Entity wallEast = scene.CreateEntity("Wall_East");
+        wallEast.GetComponent<Osiris::TransformComponent>().position = glm::vec3(5.0f, 1.5f, 0.0f);
+        wallEast.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(90.0f, 0.0f, 90.0f);
+        wallEast.AddComponent<Osiris::MeshComponent>(wallPlane);
+        wallEast.AddComponent<Osiris::MaterialComponent>(greyMaterial);
+
+        Osiris::Entity wallWest = scene.CreateEntity("Wall_West");
+        wallWest.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-5.0f, 1.5f, 0.0f);
+        wallWest.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(-90.0f, 0.0f, -90.0f);
+        wallWest.AddComponent<Osiris::MeshComponent>(wallPlane);
+        wallWest.AddComponent<Osiris::MaterialComponent>(greyMaterial);
+
+        // Crates
+        for (uint32_t i = 0; i < boxPrimitives.size(); i++) {
+            Osiris::Entity crate1 = scene.CreateEntity("Crate_01_" + std::to_string(i));
+            crate1.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-1.0f, 1.5f, -1.0f);
+            crate1.AddComponent<Osiris::MeshComponent>(boxPrimitives[i].mesh);
+            crate1.AddComponent<Osiris::MaterialComponent>(boxPrimitives[i].material);
+
+            Osiris::Entity crate2 = scene.CreateEntity("Crate_02_" + std::to_string(i));
+            crate2.GetComponent<Osiris::TransformComponent>().position = glm::vec3(1.5f, 2.5f, 0.5f);
+            crate2.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(0.0f, 45.0f, 0.0f);
+            crate2.AddComponent<Osiris::MeshComponent>(boxPrimitives[i].mesh);
+            crate2.AddComponent<Osiris::MaterialComponent>(boxPrimitives[i].material);
+        }
+
+        // PBR test model (Khronos DamagedHelmet) — has real metallic/roughness
+        // variation, unlike the fully-diffuse crates, so it's a much better way
+        // to visually verify specular IBL once tasks 4-6 land.
+        auto helmetPrimitives = Osiris::MeshLoader::LoadFromGLTF(
+            Osiris::AssetManager::GetPath("models/DamagedHelmet/DamagedHelmet.gltf"), engine.GetRHI());
+        for (uint32_t i = 0; i < helmetPrimitives.size(); i++) {
+            Osiris::Entity helmet = scene.CreateEntity("DamagedHelmet_" + std::to_string(i));
+            helmet.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-2.5f, 1.3f, -0.5f);
+            helmet.AddComponent<Osiris::MeshComponent>(helmetPrimitives[i].mesh);
+            helmet.AddComponent<Osiris::MaterialComponent>(helmetPrimitives[i].material);
+        }
+
+        auto sponzaPrimitives = Osiris::MeshLoader::LoadFromGLTF(
+            Osiris::AssetManager::GetPath("models/sponza/Sponza.gltf"), engine.GetRHI());
+        for (uint32_t i = 0; i < sponzaPrimitives.size(); i++) {
+            Osiris::Entity sponza = scene.CreateEntity("sponza_" + std::to_string(i));
+            sponza.AddComponent<Osiris::MeshComponent>(sponzaPrimitives[i].mesh);
+            sponza.AddComponent<Osiris::MaterialComponent>(sponzaPrimitives[i].material);
+        }
     }
 
-    auto sponzaPrimitives = Osiris::MeshLoader::LoadFromGLTF(
-        Osiris::AssetManager::GetPath("models/sponza/Sponza.gltf"), engine.GetRHI());
-    for (uint32_t i = 0; i < sponzaPrimitives.size(); i++) {
-        Osiris::Entity sponza = scene.CreateEntity("sponza_" + std::to_string(i));
-        sponza.AddComponent<Osiris::MeshComponent>(sponzaPrimitives[i].mesh);
-        sponza.AddComponent<Osiris::MaterialComponent>(sponzaPrimitives[i].material);
-    }
+    scene.CreatePhysicsBodies(engine.GetPhysics());
+    scene.CreateAudioSources(engine.GetAudio());
 
     // Spotlights: TransformComponent + SpotLightComponent.
     Osiris::Entity spotLight1 = scene.CreateEntity("SpotLight_Ceiling");
@@ -151,28 +235,12 @@ int main() {
     spotLight3Comp.range        = 5.0f;
     spotLight3Comp.castsShadow  = false; // demonstrates a non-shadow-casting spot light
 
-    auto DrawSpotLightUI = [](const char* label, Osiris::Entity entity) {
-        auto& transform = entity.GetComponent<Osiris::TransformComponent>();
-        auto& light      = entity.GetComponent<Osiris::SpotLightComponent>();
-        if (ImGui::TreeNode(label)) {
-            ImGui::SliderFloat3("Position", &transform.position.x, -6.0f, 6.0f);
-            ImGui::SliderFloat3("Rotation", &transform.rotation.x, -180.0f, 180.0f);
-            ImGui::ColorEdit3("Color", &light.color.x);
-            ImGui::SliderFloat("Intensity", &light.intensity, 0.0f, 50.0f);
-            ImGui::SliderFloat("Inner Cone", &light.innerCone, 1.0f, 89.0f);
-            ImGui::SliderFloat("Outer Cone", &light.outerCone, 1.0f, 89.0f);
-            if (light.outerCone < light.innerCone) light.outerCone = light.innerCone;
-            ImGui::SliderFloat("Range", &light.range, 1.0f, 50.0f);
-            ImGui::Checkbox("Enabled", &light.enabled);
-            ImGui::Checkbox("Casts Shadow", &light.castsShadow);
-            ImGui::TreePop();
-        }
-    };
-
     Osiris::Camera camera(
         glm::vec3(0.0f, 1.5f, 4.0f),
         glm::vec3(0.0f, 0.0f, -1.0f)
     );
+
+    Osiris::SceneInspectorPanel sceneInspector;
 
     uint64_t lastCounter = SDL_GetPerformanceCounter();
     const double frequency = static_cast<double>(SDL_GetPerformanceFrequency());
@@ -187,7 +255,45 @@ int main() {
 
         engine.BeginFrame();
 
-        camera.Update(*engine.GetInput(), deltaTime);
+        if (audioTestEntity.IsValid() && engine.GetInput()->IsKeyPressed(SDL_SCANCODE_P)) {
+            auto& audioSrc = audioTestEntity.GetComponent<Osiris::AudioSourceComponent>();
+            if (engine.GetAudio()->IsSourcePlaying(audioSrc.sourceHandle)) {
+                engine.GetAudio()->StopSource(audioSrc.sourceHandle);
+            } else {
+                engine.GetAudio()->PlaySource(audioSrc.sourceHandle);
+            }
+        }
+
+        if (kPhysicsTestScene) {
+            // Mouse-look only — WASD drives the character controller's velocity below,
+            // not the camera's own free-fly movement.
+            camera.Update(*engine.GetInput(), deltaTime, false);
+
+            glm::vec3 flatForward = glm::normalize(glm::vec3(camera.GetFront().x, 0.0f, camera.GetFront().z));
+            glm::vec3 flatRight   = glm::normalize(glm::cross(flatForward, glm::vec3(0.0f, 1.0f, 0.0f)));
+
+            constexpr float kWalkSpeed = 4.0f;
+            glm::vec3 desiredVelocity(0.0f);
+            if (engine.GetInput()->IsKeyHeld(SDL_SCANCODE_W)) desiredVelocity += flatForward;
+            if (engine.GetInput()->IsKeyHeld(SDL_SCANCODE_S)) desiredVelocity -= flatForward;
+            if (engine.GetInput()->IsKeyHeld(SDL_SCANCODE_A)) desiredVelocity -= flatRight;
+            if (engine.GetInput()->IsKeyHeld(SDL_SCANCODE_D)) desiredVelocity += flatRight;
+            if (glm::length(desiredVelocity) > 0.0f) desiredVelocity = glm::normalize(desiredVelocity) * kWalkSpeed;
+
+            bool jump = engine.GetInput()->IsKeyPressed(SDL_SCANCODE_SPACE);
+            engine.GetPhysics()->SetCharacterDesiredVelocity(playerCharacter, desiredVelocity, jump);
+            engine.GetPhysics()->Update(deltaTime);
+            scene.SyncPhysicsTransforms(engine.GetPhysics());
+
+            glm::vec3 feet = engine.GetPhysics()->GetCharacterPosition(playerCharacter);
+            camera.SetPosition(feet + glm::vec3(0.0f, kPlayerEyeHeight, 0.0f));
+        } else {
+            camera.Update(*engine.GetInput(), deltaTime);
+        }
+
+        // Listener tracks whichever camera is actually driving the view, in either scene mode.
+        engine.GetAudio()->SetListenerTransform(camera.GetPosition(), camera.GetFront(), glm::vec3(0.0f, 1.0f, 0.0f));
+        scene.SyncAudioSources(engine.GetAudio());
 
         auto activeSpotLights = scene.GatherSpotLights(camera.GetPosition());
         engine.GetRHI()->UpdateSpotLights(activeSpotLights);
@@ -231,6 +337,14 @@ int main() {
             camera.GetPosition().x, camera.GetPosition().y, camera.GetPosition().z);
         ImGui::SliderFloat("Camera Speed", &camera.GetSpeed(), 0.1f, 20.0f);
         ImGui::Separator();
+
+        if (kPhysicsTestScene) {
+            glm::vec3 feet = engine.GetPhysics()->GetCharacterPosition(playerCharacter);
+            ImGui::Text("Character feet: %.2f %.2f %.2f", feet.x, feet.y, feet.z);
+            ImGui::Text("Grounded: %s", engine.GetPhysics()->IsCharacterGrounded(playerCharacter) ? "yes" : "no");
+            ImGui::Text("WASD to move, Space to jump, mouse (RMB held) to look");
+            ImGui::Separator();
+        }
         ImGui::Text("Draw calls: %d", scene.GetDrawCallCount());
         ImGui::Text("Culled: %d", scene.GetCulledCount());
         ImGui::Separator();
@@ -248,17 +362,12 @@ int main() {
 
         ImGui::SliderFloat("Environment Exposure", &engine.GetRHI()->GetEnvironmentExposure(),
             0.001f, 4.0f, "%.4f", ImGuiSliderFlags_Logarithmic);
-        ImGui::Separator();
 
+        ImGui::Separator();
         int activeShadowCasters = 0;
         for (const auto& sl : activeSpotLights) {
             if (sl.shadowIndex >= 0) activeShadowCasters++;
         }
-        ImGui::Text("Active spot lights: %d (shadow casters: %d / %d)",
-            static_cast<int>(activeSpotLights.size()), activeShadowCasters, Osiris::MAX_SPOT_SHADOW_CASTERS);
-        DrawSpotLightUI("Spot Light 1 (Ceiling)", spotLight1);
-        DrawSpotLightUI("Spot Light 2 (Corner)", spotLight2);
-        DrawSpotLightUI("Spot Light 3 (Accent, no shadow)", spotLight3);
         ImGui::Separator();
 
         auto& shadowSettings = engine.GetRHI()->GetShadowSettings();
@@ -284,6 +393,8 @@ int main() {
             }
         }
         ImGui::End();
+
+        sceneInspector.Draw(scene);
 
         engine.GetRHI()->RenderImGui();
         engine.EndFrame();

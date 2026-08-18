@@ -20,8 +20,11 @@ namespace Osiris
         glm::mat4 GetViewMatrix() const;
         glm::mat4 GetProjectionMatrix() const;
         glm::vec3 GetFront() const;
-        void Update(const Input& input, float deltaTime);
+        // applyMovement=false skips the WASD position update (mouse-look/yaw/pitch still
+        // apply) — used when something else (e.g. a physics character controller) owns position.
+        void Update(const Input& input, float deltaTime, bool applyMovement = true);
         glm::vec3 GetPosition() const;
+        void SetPosition(const glm::vec3& position);
         float& GetSpeed();
 
     private:

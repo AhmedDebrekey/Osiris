@@ -32,6 +32,18 @@ add_library(OsirisEngine STATIC
         rhi_vulkan/PipelineManager.cpp
         rhi_vulkan/PipelineManager.h
         renderer/Light.h
+        physics/PhysicsTypes.h
+        physics/IPhysics.h
+        physics/jolt/JoltPhysics.h
+        physics/jolt/JoltPhysics.cpp
+        editor/SceneInspectorPanel.h
+        editor/SceneInspectorPanel.cpp
+        audio/AudioTypes.h
+        audio/IAudio.h
+        audio/openal/OpenALAudio.h
+        audio/openal/OpenALAudio.cpp
+        assets/AudioLoader.h
+        assets/AudioLoader.cpp
 )
 
 target_include_directories(OsirisEngine PUBLIC
@@ -52,6 +64,7 @@ target_link_libraries(OsirisEngine PUBLIC
     nlohmann_json::nlohmann_json
     imgui
     Jolt
+    OpenAL::OpenAL
     liblua
     sol2
     fastgltf

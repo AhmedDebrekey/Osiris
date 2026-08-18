@@ -25,6 +25,9 @@ namespace Osiris {
 
         bool IsValid() const { return m_Handle != entt::null; }
 
+        entt::entity GetHandle() const { return m_Handle; }
+        bool operator==(const Entity& other) const { return m_Handle == other.m_Handle && m_Scene == other.m_Scene; }
+
     private:
         entt::entity m_Handle = entt::null;
         Scene*       m_Scene  = nullptr;

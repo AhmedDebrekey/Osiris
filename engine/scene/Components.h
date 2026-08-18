@@ -9,6 +9,8 @@
 
 #include "renderer/MeshType.h"
 #include "rhi/RHITypes.h"
+#include "physics/PhysicsTypes.h"
+#include "audio/AudioTypes.h"
 
 namespace Osiris {
     struct TransformComponent {
@@ -41,6 +43,35 @@ namespace Osiris {
         float range         = 10.f;
         bool enabled        = true;
         bool castsShadow    = true;
+    };
+
+    // Box shape only for now — extend once a second concrete shape (sphere/capsule
+    // props) actually needs it. Half-extents match BoxColliderDesc's units (meters).
+    struct ColliderComponent {
+        glm::vec3 halfExtents = {0.5f, 0.5f, 0.5f};
+    };
+
+    // Paired with ColliderComponent; split into two components (rather than one) to mirror
+    // the existing MeshComponent/MaterialComponent split. Scene::CreatePhysicsBodies fills in
+    // bodyHandle from the entity's TransformComponent + ColliderComponent at scene setup time.
+    struct RigidBodyComponent {
+        BodyMotionType    motionType = BodyMotionType::Static;
+        PhysicsBodyHandle bodyHandle;
+    };
+
+    // Position comes from the entity's TransformComponent (same pattern as SpotLightComponent
+    // not storing its own position). Scene::CreateAudioSources fills in sourceHandle at scene
+    // setup time; Scene::SyncAudioSources keeps the live OpenAL source's position current.
+    struct AudioSourceComponent {
+        AudioBufferHandle clip;
+        float gain              = 1.0f;
+        float pitch             = 1.0f;
+        bool  loop               = false;
+        bool  autoPlay           = true;
+        float referenceDistance = 1.0f;
+        float maxDistance       = 30.0f;
+        float rolloffFactor     = 1.0f;
+        AudioSourceHandle sourceHandle;
     };
 }
 

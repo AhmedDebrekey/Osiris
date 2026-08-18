@@ -14,6 +14,7 @@ namespace Osiris {
         public:
             static std::vector<MeshPrimitive> LoadFromGLTF(const std::string& path, IRHI* rhi);
             static Mesh CreatePlane(float width, float height, IRHI* rhi);
+            static Mesh CreateBox(const glm::vec3& halfExtents, IRHI* rhi);
             static void GenerateTangents(std::vector<Vertex>& vertices, const std::vector<uint32_t>& indices);
     };
 } // Osiris

@@ -15,14 +15,34 @@
 namespace Osiris {
     class Camera;
     class IRHI;
+    class IPhysics;
+    class IAudio;
 
     class Scene {
     public:
         Entity CreateEntity(const std::string& name);
         Entity FindEntityByName(const std::string& name);
+        std::vector<Entity> GetAllEntities();
         void Update(float deltaTime);
         void Render(IRHI* rhi, const Camera& camera);
         void RenderShadows(IRHI* rhi);
+
+        // Spawns a physics body for every entity that has both a ColliderComponent and a
+        // RigidBodyComponent — call once after the scene's entities are set up.
+        void CreatePhysicsBodies(IPhysics* physics);
+
+        // Writes each Dynamic/Kinematic body's live position + rotation back into
+        // TransformComponent — call once per frame, after IPhysics::Update(). Static bodies
+        // never move, so they're skipped.
+        void SyncPhysicsTransforms(IPhysics* physics);
+
+        // Creates a live OpenAL source for every entity with a TransformComponent +
+        // AudioSourceComponent — call once after the scene's entities are set up. Auto-plays
+        // any source with autoPlay=true.
+        void CreateAudioSources(IAudio* audio);
+
+        // Keeps each audio source's 3D position current — call once per frame.
+        void SyncAudioSources(IAudio* audio);
 
         std::vector<SpotLightRenderData> GatherSpotLights(const glm::vec3& cameraPosition);
 

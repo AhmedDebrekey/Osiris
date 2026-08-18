@@ -39,7 +39,7 @@ namespace Osiris
         return m_Front;
     }
 
-    void Camera::Update(const Input& input, float deltaTime) {
+    void Camera::Update(const Input& input, float deltaTime, bool applyMovement) {
         // Mouse look
         if (input.IsMouseButtonHeld(SDL_BUTTON_RIGHT)){
             glm::vec2 mouseDelta = input.GetMouseDelta();
@@ -53,6 +53,8 @@ namespace Osiris
         m_Front.y = sin(glm::radians(m_Pitch));
         m_Front.z = sin(glm::radians(m_Yaw)) * cos(glm::radians(m_Pitch));
         m_Front   = glm::normalize(m_Front);
+
+        if (!applyMovement) return;
 
         // Derive right vector
         glm::vec3 right = glm::normalize(glm::cross(m_Front, m_WorldUp));
@@ -74,6 +76,10 @@ namespace Osiris
 
     glm::vec3 Camera::GetPosition() const {
         return m_Position;
+    }
+
+    void Camera::SetPosition(const glm::vec3& position) {
+        m_Position = position;
     }
 
     float& Camera::GetSpeed() {

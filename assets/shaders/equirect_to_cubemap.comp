@@ -1,0 +1,44 @@
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) uniform sampler2D equirectMap;
+layout(set = 0, binding = 1, rgba16f) uniform writeonly image2DArray outCubemap;
+
+const float PI = 3.14159265359;
+
+// Vulkan cube array layer order: 0=+X 1=-X 2=+Y 3=-Y 4=+Z 5=-Z.
+vec3 FaceDirection(uint face, vec2 c) {
+    switch (face) {
+        case 0u: return normalize(vec3( 1.0, -c.y, -c.x));
+        case 1u: return normalize(vec3(-1.0, -c.y,  c.x));
+        case 2u: return normalize(vec3( c.x,  1.0,  c.y));
+        case 3u: return normalize(vec3( c.x, -1.0, -c.y));
+        case 4u: return normalize(vec3( c.x, -c.y,  1.0));
+        default: return normalize(vec3(-c.x, -c.y, -1.0));
+    }
+}
+
+// Y-up equirectangular mapping: direction -> (longitude, latitude) -> uv.
+// v is negated so straight up (dir.y = +1) lands on v=0 — the top row of a
+// standard equirect image (zenith/sky), not the bottom (nadir/ground).
+vec2 SampleSphericalMap(vec3 dir) {
+    vec2 uv = vec2(atan(dir.z, dir.x), -asin(clamp(dir.y, -1.0, 1.0)));
+    uv *= vec2(1.0 / (2.0 * PI), 1.0 / PI);
+    uv += 0.5;
+    return uv;
+}
+
+void main() {
+    ivec3 size = imageSize(outCubemap);
+    ivec3 coord = ivec3(gl_GlobalInvocationID);
+    if (coord.x >= size.x || coord.y >= size.y || coord.z >= 6) return;
+
+    vec2 uv = (vec2(coord.xy) + 0.5) / vec2(size.xy);
+    vec2 c  = uv * 2.0 - 1.0;
+
+    vec3 dir = FaceDirection(uint(coord.z), c);
+    vec2 equirectUV = SampleSphericalMap(dir);
+
+    imageStore(outCubemap, coord, texture(equirectMap, equirectUV));
+}

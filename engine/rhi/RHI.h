@@ -53,6 +53,12 @@ namespace Osiris {
 
         virtual void UpdateSpotLights(const std::vector<SpotLightRenderData>& lights) = 0;
 
+        // Takes raw RGBA32F equirectangular pixel data (the RHI doesn't know or
+        // care about HDR file formats) and builds the environment cubemap used
+        // for IBL. One-shot setup call, not part of the per-frame loop.
+        virtual bool LoadEnvironmentMap(const float* pixels, uint32_t width, uint32_t height) = 0;
+        virtual float& GetEnvironmentExposure() = 0;
+
         virtual void BeginSpotShadowPass(uint32_t index) = 0;
         virtual void EndSpotShadowPass(uint32_t index)   = 0;
 

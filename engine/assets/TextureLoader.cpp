@@ -31,4 +31,22 @@ namespace Osiris {
         return handle;
     }
 
+    HDRImageData TextureLoader::LoadHDR(const std::string& path) {
+        HDRImageData result;
+
+        int width, height, channels;
+        float* pixels = stbi_loadf(path.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+        if (!pixels) {
+            OSIRIS_ERROR("Failed to load HDR image: {} — {}", path, stbi_failure_reason());
+            return result;
+        }
+
+        result.width  = width;
+        result.height = height;
+        result.pixels.assign(pixels, pixels + (static_cast<size_t>(width) * height * 4));
+
+        stbi_image_free(pixels);
+        return result;
+    }
+
 } // Osiris

@@ -16,7 +16,7 @@ layout(set = 0, binding = 0) uniform CameraUBO {
     mat4 view;
     mat4 projection;
     mat4 lightSpaceMatrices[3];
-    vec4 cascadeSplits;
+    vec4 cascadeSplits; // w = environment exposure (IBL), unused slot repurposed
     vec4 lightDirection;
     vec4 cameraPosition;
 } camera;
@@ -25,6 +25,17 @@ layout(set = 0, binding = 1) uniform sampler2DShadow shadowMap0;
 layout(set = 0, binding = 2) uniform sampler2DShadow shadowMap1;
 layout(set = 0, binding = 3) uniform sampler2DShadow shadowMap2;
 layout(set = 0, binding = 4) uniform sampler2DShadow shadowMapSpot[3];
+
+// IBL (Phase 6D): raw environment (skybox, unused here), diffuse irradiance,
+// specular prefiltered mip chain, split-sum BRDF LUT. All at raw HDR scale —
+// camera.cascadeSplits.w (environment exposure) is applied to the ambient
+// term below so IBL-lit surfaces match the skybox's exposure.
+layout(set = 0, binding = 6) uniform samplerCube environmentMap;
+layout(set = 0, binding = 7) uniform samplerCube irradianceMap;
+layout(set = 0, binding = 8) uniform samplerCube prefilteredEnvMap;
+layout(set = 0, binding = 9) uniform sampler2D brdfLUT;
+// Keep in sync with VulkanRHI.h's PREFILTER_MIP_COUNT - 1.
+const float MAX_REFLECTION_LOD = 4.0;
 
 // Must stay in sync with MAX_SPOT_LIGHTS / MAX_SPOT_SHADOW_CASTERS in Light.h.
 const int MAX_SPOT_LIGHTS = 8;
@@ -107,6 +118,13 @@ float G_Smith(float NdotV, float NdotL, float roughness) {
 
 vec3 F_Schlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+// Roughness-aware Fresnel for ambient/IBL use: at grazing angles, a rough
+// surface doesn't show as strong a bright rim as a smooth one, unlike plain
+// F_Schlick which assumes a single incident light direction.
+vec3 F_SchlickRoughness(float cosTheta, vec3 F0, float roughness) {
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
 void main() {
@@ -216,19 +234,33 @@ void main() {
         Lo += (diffuseSpot + specularSpot) * spotLightColor * NdotLspot * coneAtten * distAtten * spotShadow;
     }
 
-    // ── Ambient ───────────────────────────────────────────────
-    vec3 ambient = vec3(0.1) * albedo * ao;
+    // ── Ambient (IBL) ────────────────────────────────────────
+    float exposure = camera.cascadeSplits.w;
+
+    vec3 Fambient = F_SchlickRoughness(NdotV, F0, roughness);
+    vec3 kSambient = Fambient;
+    vec3 kDambient = (1.0 - kSambient) * (1.0 - metallic);
+
+    vec3 irradiance = texture(irradianceMap, N).rgb * exposure;
+    vec3 diffuseIBL = irradiance * albedo;
+
+    vec3 R = reflect(-V, N);
+    vec3 prefilteredColor = textureLod(prefilteredEnvMap, R, roughness * MAX_REFLECTION_LOD).rgb * exposure;
+    vec2 envBRDF = texture(brdfLUT, vec2(NdotV, roughness)).rg;
+    vec3 specularIBL = prefilteredColor * (Fambient * envBRDF.x + envBRDF.y);
+
+    vec3 ambient = (kDambient * diffuseIBL + specularIBL) * ao;
 
     // ── Final color ───────────────────────────────────────────
     vec3 color = ambient + Lo;
 
 
-    // Tone mapping (Reinhard)
+    // Tone mapping (ACES filmic approximation)
     color = (color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14);
     color = clamp(color, 0.0, 1.0);
 
-    // Gamma correction
-    color = pow(color, vec3(1.0 / 2.2));
-
+    // No manual gamma correction here: the swapchain is VK_FORMAT_B8G8R8A8_SRGB,
+    // so the hardware already linear->sRGB encodes this on write. Gamma-correcting
+    // here too would double-encode (crushes everything toward white).
     outColor = vec4(color, albedoSample.a);
 }

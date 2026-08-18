@@ -6,6 +6,7 @@
 
 #include "../renderer/MeshType.h"
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <fstream>
@@ -160,6 +161,7 @@ namespace Osiris
                polygonMode == rhs.polygonMode &&
                topology == rhs.topology &&
                samples == rhs.samples &&
+               vertexInput == rhs.vertexInput &&
                pushConstantSize == rhs.pushConstantSize &&
                pushConstantStages == rhs.pushConstantStages &&
                DescriptorLayoutsEqual(*this, rhs);
@@ -193,6 +195,7 @@ namespace Osiris
         HashCombine(seed, static_cast<int32_t>(desc.polygonMode));
         HashCombine(seed, static_cast<int32_t>(desc.topology));
         HashCombine(seed, static_cast<int32_t>(desc.samples));
+        HashCombine(seed, desc.vertexInput);
 
         HashCombine(seed, desc.setLayoutCount);
 
@@ -206,6 +209,40 @@ namespace Osiris
 
         HashCombine(seed, desc.pushConstantSize);
         HashCombine(seed, desc.pushConstantStages);
+
+        return seed;
+    }
+
+    bool ComputePipelineDesc::operator==(
+        const ComputePipelineDesc& rhs) const noexcept
+    {
+        return computeShader == rhs.computeShader &&
+               pushConstantSize == rhs.pushConstantSize &&
+               pushConstantStages == rhs.pushConstantStages &&
+               setLayoutCount == rhs.setLayoutCount &&
+               (setLayoutCount == 0 ||
+                std::equal(
+                    pSetLayouts, pSetLayouts + setLayoutCount,
+                    rhs.pSetLayouts));
+    }
+
+    std::size_t ComputePipelineDescHash::operator()(
+        const ComputePipelineDesc& desc) const noexcept
+    {
+        std::size_t seed = 0;
+
+        HashCombine(seed, desc.computeShader.generic_string());
+        HashCombine(seed, desc.pushConstantSize);
+        HashCombine(seed, desc.pushConstantStages);
+        HashCombine(seed, desc.setLayoutCount);
+
+        if (desc.pSetLayouts != nullptr)
+        {
+            for (uint32_t i = 0; i < desc.setLayoutCount; ++i)
+            {
+                HashCombine(seed, desc.pSetLayouts[i]);
+            }
+        }
 
         return seed;
     }
@@ -322,6 +359,65 @@ namespace Osiris
         return GetLayout(pipeline);
     }
 
+    VkPipeline PipelineManager::GetOrCreateCompute(
+        const ComputePipelineDesc& desc)
+    {
+        ValidateComputeDesc(desc);
+
+        ComputePipelineKey key = MakeComputeKey(desc);
+
+        std::scoped_lock lock(m_Mutex);
+
+        if (const auto existing = m_ComputePipelines.find(key);
+            existing != m_ComputePipelines.end())
+        {
+            return existing->second.pipeline;
+        }
+
+        PipelineEntry entry = CreateComputePipelineEntry(key);
+        const VkPipeline pipeline = entry.pipeline;
+
+        try
+        {
+            const auto [iterator, inserted] =
+                m_ComputePipelines.emplace(std::move(key), entry);
+
+            if (!inserted)
+            {
+                vkDestroyPipeline(
+                    m_Device,
+                    entry.pipeline,
+                    m_Allocator);
+
+                vkDestroyPipelineLayout(
+                    m_Device,
+                    entry.layout,
+                    m_Allocator);
+
+                return iterator->second.pipeline;
+            }
+
+            m_LayoutsByPipeline.emplace(
+                entry.pipeline,
+                entry.layout);
+        }
+        catch (...)
+        {
+            vkDestroyPipeline(
+                m_Device,
+                entry.pipeline,
+                m_Allocator);
+
+            vkDestroyPipelineLayout(
+                m_Device,
+                entry.layout,
+                m_Allocator);
+            OSIRIS_ERROR("PipelineManager: Destroying compute pipeline and pipeline layout");
+        }
+
+        return pipeline;
+    }
+
     void PipelineManager::Shutdown()
     {
         std::scoped_lock lock(m_Mutex);
@@ -352,8 +448,30 @@ namespace Osiris
             }
         }
 
+        for (const auto& [key, entry] : m_ComputePipelines)
+        {
+            static_cast<void>(key);
+
+            if (entry.pipeline != VK_NULL_HANDLE)
+            {
+                vkDestroyPipeline(
+                    m_Device,
+                    entry.pipeline,
+                    m_Allocator);
+            }
+
+            if (entry.layout != VK_NULL_HANDLE)
+            {
+                vkDestroyPipelineLayout(
+                    m_Device,
+                    entry.layout,
+                    m_Allocator);
+            }
+        }
+
         m_LayoutsByPipeline.clear();
         m_Pipelines.clear();
+        m_ComputePipelines.clear();
     }
 
     std::size_t PipelineManager::GetPipelineCount() const noexcept
@@ -390,6 +508,7 @@ namespace Osiris
         HashCombine(seed, static_cast<int32_t>(key.polygonMode));
         HashCombine(seed, static_cast<int32_t>(key.topology));
         HashCombine(seed, static_cast<int32_t>(key.samples));
+        HashCombine(seed, key.vertexInput);
 
         HashCombine(seed, key.setLayouts.size());
 
@@ -436,6 +555,7 @@ namespace Osiris
         key.polygonMode = desc.polygonMode;
         key.topology = desc.topology;
         key.samples = desc.samples;
+        key.vertexInput = desc.vertexInput;
 
         if (desc.setLayoutCount > 0)
         {
@@ -464,6 +584,80 @@ namespace Osiris
         }
 
         return key;
+    }
+
+    std::size_t PipelineManager::ComputePipelineKeyHash::operator()(
+        const ComputePipelineKey& key) const noexcept
+    {
+        std::size_t seed = 0;
+
+        HashCombine(seed, key.computeShader);
+        HashCombine(seed, key.setLayouts.size());
+
+        for (VkDescriptorSetLayout layout : key.setLayouts)
+        {
+            HashCombine(seed, layout);
+        }
+
+        HashCombine(seed, key.pushConstantSize);
+        HashCombine(seed, key.pushConstantStages);
+
+        return seed;
+    }
+
+    PipelineManager::ComputePipelineKey PipelineManager::MakeComputeKey(
+        const ComputePipelineDesc& desc)
+    {
+        ComputePipelineKey key{};
+
+        key.computeShader = NormalizePath(desc.computeShader);
+
+        if (desc.setLayoutCount > 0)
+        {
+            key.setLayouts.assign(
+                desc.pSetLayouts,
+                desc.pSetLayouts + desc.setLayoutCount);
+        }
+
+        key.pushConstantSize = desc.pushConstantSize;
+        key.pushConstantStages =
+            desc.pushConstantSize > 0 ? desc.pushConstantStages : 0;
+
+        return key;
+    }
+
+    void PipelineManager::ValidateComputeDesc(
+        const ComputePipelineDesc& desc)
+    {
+        if (desc.computeShader.empty())
+        {
+            OSIRIS_ERROR("PipelineManager: a compute shader is required");
+        }
+
+        if (desc.setLayoutCount > 0 &&
+            desc.pSetLayouts == nullptr)
+        {
+            OSIRIS_ERROR("PipelineManager: setLayoutCount is non-zero but pSetLayouts is null");
+        }
+
+        for (uint32_t i = 0; i < desc.setLayoutCount; ++i)
+        {
+            if (desc.pSetLayouts[i] == VK_NULL_HANDLE)
+            {
+                OSIRIS_ERROR("PipelineManager: descriptor set layout is null");
+            }
+        }
+
+        if ((desc.pushConstantSize % 4U) != 0)
+        {
+            OSIRIS_ERROR("PipelineManager: pushConstantSize must be a multiple of four bytes");
+        }
+
+        if (desc.pushConstantSize > 0 &&
+            desc.pushConstantStages == 0)
+        {
+            OSIRIS_ERROR("PipelineManager: Push constants require at least one shader stage");
+        }
     }
 
     void PipelineManager::ValidateDesc(
@@ -631,14 +825,19 @@ namespace Osiris
                         VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
                     .pNext = nullptr,
                     .flags = 0,
-                    .vertexBindingDescriptionCount = 1,
+                    .vertexBindingDescriptionCount =
+                        key.vertexInput ? 1U : 0U,
                     .pVertexBindingDescriptions =
-                        &bindingDescription,
+                        key.vertexInput ? &bindingDescription : nullptr,
                     .vertexAttributeDescriptionCount =
-                        static_cast<uint32_t>(
-                            attributeDescriptions.size()),
+                        key.vertexInput
+                            ? static_cast<uint32_t>(
+                                attributeDescriptions.size())
+                            : 0U,
                     .pVertexAttributeDescriptions =
-                        attributeDescriptions.data()
+                        key.vertexInput
+                            ? attributeDescriptions.data()
+                            : nullptr
                 };
 
             const VkPipelineInputAssemblyStateCreateInfo
@@ -939,6 +1138,138 @@ namespace Osiris
         }
 
         return layout;
+    }
+
+    VkPipelineLayout PipelineManager::CreateComputePipelineLayout(
+        const ComputePipelineKey& key) const
+    {
+        VkPushConstantRange pushConstantRange{
+            .stageFlags = key.pushConstantStages,
+            .offset = 0,
+            .size = key.pushConstantSize
+        };
+
+        const VkPipelineLayoutCreateInfo layoutInfo{
+            .sType =
+                VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .setLayoutCount =
+                static_cast<uint32_t>(key.setLayouts.size()),
+            .pSetLayouts =
+                key.setLayouts.empty()
+                    ? nullptr
+                    : key.setLayouts.data(),
+            .pushConstantRangeCount =
+                key.pushConstantSize > 0 ? 1U : 0U,
+            .pPushConstantRanges =
+                key.pushConstantSize > 0
+                    ? &pushConstantRange
+                    : nullptr
+        };
+
+        VkPipelineLayout layout = VK_NULL_HANDLE;
+
+        const VkResult result = vkCreatePipelineLayout(
+            m_Device,
+            &layoutInfo,
+            m_Allocator,
+            &layout);
+
+        if (result != VK_SUCCESS)
+        {
+            OSIRIS_ERROR("PipelineManager: vkCreatePipelineLayout (compute) failed with result {}",
+                         std::to_string(static_cast<int32_t>(result)));
+        }
+
+        return layout;
+    }
+
+    PipelineManager::PipelineEntry
+    PipelineManager::CreateComputePipelineEntry(
+        const ComputePipelineKey& key) const
+    {
+        PipelineEntry entry{};
+        VkShaderModule computeModule = VK_NULL_HANDLE;
+
+        try
+        {
+            entry.layout = CreateComputePipelineLayout(key);
+            computeModule = LoadShaderModule(key.computeShader);
+
+            const VkPipelineShaderStageCreateInfo shaderStage{
+                .sType =
+                    VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+                .module = computeModule,
+                .pName = "main",
+                .pSpecializationInfo = nullptr
+            };
+
+            const VkComputePipelineCreateInfo pipelineInfo{
+                .sType =
+                    VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = 0,
+                .stage = shaderStage,
+                .layout = entry.layout,
+                .basePipelineHandle = VK_NULL_HANDLE,
+                .basePipelineIndex = -1
+            };
+
+            const VkResult result = vkCreateComputePipelines(
+                m_Device,
+                m_PipelineCache,
+                1,
+                &pipelineInfo,
+                m_Allocator,
+                &entry.pipeline);
+
+            if (result != VK_SUCCESS)
+            {
+                OSIRIS_ERROR("PipelineManager: vkCreateComputePipelines failed with result: {}",
+                             std::to_string(static_cast<int32_t>(result)));
+            }
+
+            vkDestroyShaderModule(
+                m_Device,
+                computeModule,
+                m_Allocator);
+
+            computeModule = VK_NULL_HANDLE;
+
+            return entry;
+        }
+        catch (...)
+        {
+            if (computeModule != VK_NULL_HANDLE)
+            {
+                vkDestroyShaderModule(
+                    m_Device,
+                    computeModule,
+                    m_Allocator);
+            }
+
+            if (entry.pipeline != VK_NULL_HANDLE)
+            {
+                vkDestroyPipeline(
+                    m_Device,
+                    entry.pipeline,
+                    m_Allocator);
+            }
+
+            if (entry.layout != VK_NULL_HANDLE)
+            {
+                vkDestroyPipelineLayout(
+                    m_Device,
+                    entry.layout,
+                    m_Allocator);
+            }
+
+            OSIRIS_ERROR("PipelineManager: Destroying compute shader module, pipeline and pipeline layout");
+        }
     }
 
     VkShaderModule PipelineManager::LoadShaderModule(

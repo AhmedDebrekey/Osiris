@@ -80,6 +80,9 @@ namespace Osiris {
 
         void UpdateSpotLights(const std::vector<SpotLightRenderData>& lights) override;
 
+        bool LoadEnvironmentMap(const float* pixels, uint32_t width, uint32_t height) override;
+        float& GetEnvironmentExposure() override { return m_EnvironmentExposure; }
+
         void UpdateCamera(const glm::mat4 &view, const glm::mat4 &projection, const glm::vec4& position, const glm::vec3& front) override;
         void SetCameraBuffer(const glm::mat4& view, const glm::mat4& projection, const glm::vec4& position) override;
 
@@ -125,6 +128,11 @@ namespace Osiris {
         bool CreateCommandBuffers();
         bool CreateShadowMap();
 
+        bool GenerateBRDFLUT();
+        bool CreateDefaultEnvironmentCubemap();
+        bool ConvolveIrradiance();
+        bool PrefilterEnvironment();
+
         void RecreateSwapChain();
 
         void UpdateCascades(const glm::mat4& view, const glm::mat4& projection);
@@ -156,6 +164,8 @@ namespace Osiris {
         VkPipelineLayout    m_ForwardPipelineLayout = VK_NULL_HANDLE;
         VkPipeline          m_ShadowPipeline        = VK_NULL_HANDLE;
         VkPipelineLayout    m_ShadowPipelineLayout  = VK_NULL_HANDLE;
+        VkPipeline          m_SkyboxPipeline        = VK_NULL_HANDLE;
+        VkPipelineLayout    m_SkyboxPipelineLayout  = VK_NULL_HANDLE;
 
         std::array<VkSemaphore, MAX_FRAMES_IN_FLIGHT> m_ImageAvailableSemaphores;
         std::vector<VkSemaphore> m_RenderFinishedSemaphores;
@@ -211,6 +221,35 @@ namespace Osiris {
         TextureHandle m_DefaultMetallic;
         TextureHandle m_DefaultRoughness;
         TextureHandle m_DefaultAO;
+
+        // IBL (Phase 6D). Built once at startup, entirely internal — not routed
+        // through the generic CreateTexture path (same reasoning as shadow maps:
+        // needs storage-image usage, custom formats/views CreateTexture doesn't
+        // support).
+        static constexpr uint32_t BRDF_LUT_SIZE = 512;
+        VkDescriptorSetLayout m_BRDFLutComputeLayout = VK_NULL_HANDLE;
+        VulkanImage m_BRDFLut;
+
+        static constexpr uint32_t ENV_CUBEMAP_SIZE = 512;
+        VkDescriptorSetLayout m_EquirectToCubemapLayout = VK_NULL_HANDLE;
+        VulkanCubemapImage m_EnvironmentCubemap;
+        bool m_EnvironmentLoaded = false;
+
+        // Placeholder for frame set bindings 6-8 until LoadEnvironmentMap
+        // succeeds — keeps those statically-referenced IBL bindings valid
+        // even if no environment is ever loaded (see triangle.frag).
+        VulkanCubemapImage m_DefaultEnvironmentCubemap;
+        float m_EnvironmentExposure = 0.35f; // sweet spot found for EveningRoad.hdr; adjust per-environment
+
+        static constexpr uint32_t IRRADIANCE_CUBEMAP_SIZE = 32;
+        VkDescriptorSetLayout m_IrradianceConvolveLayout = VK_NULL_HANDLE;
+        VulkanCubemapImage m_IrradianceCubemap;
+
+        static constexpr uint32_t PREFILTER_BASE_SIZE = 128;
+        static constexpr uint32_t PREFILTER_MIP_COUNT  = 5;
+        VkDescriptorSetLayout m_PrefilterConvolveLayout = VK_NULL_HANDLE;
+        VulkanCubemapImage m_PrefilteredCubemap;
+        VkImageView m_PrefilterMipViews[PREFILTER_MIP_COUNT] = {};
     };
 } // Osiris
 

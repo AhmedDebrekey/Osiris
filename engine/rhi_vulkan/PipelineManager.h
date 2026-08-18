@@ -55,6 +55,11 @@ namespace Osiris
         // Multisampling.
         VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
 
+        // False for bufferless fullscreen-triangle passes (skybox, post-
+        // processing) whose vertex shader generates positions from
+        // gl_VertexIndex instead of reading the Vertex struct.
+        bool vertexInput = true;
+
         // Pipeline layout.
         uint32_t setLayoutCount = 0;
         const VkDescriptorSetLayout* pSetLayouts = nullptr;
@@ -71,6 +76,27 @@ namespace Osiris
     {
         [[nodiscard]] std::size_t operator()(
             const PipelineDesc& desc) const noexcept;
+    };
+
+    struct ComputePipelineDesc
+    {
+        // SPIR-V shader file.
+        std::filesystem::path computeShader;
+
+        // Pipeline layout.
+        uint32_t setLayoutCount = 0;
+        const VkDescriptorSetLayout* pSetLayouts = nullptr;
+
+        uint32_t pushConstantSize = 0;
+        VkShaderStageFlags pushConstantStages = VK_SHADER_STAGE_COMPUTE_BIT;
+
+        [[nodiscard]] bool operator==(const ComputePipelineDesc& rhs) const noexcept;
+    };
+
+    struct ComputePipelineDescHash
+    {
+        [[nodiscard]] std::size_t operator()(
+            const ComputePipelineDesc& desc) const noexcept;
     };
 
     class PipelineManager final
@@ -100,6 +126,10 @@ namespace Osiris
         /// Convenience overload that retrieves or creates the pipeline first.
         [[nodiscard]] VkPipelineLayout GetOrCreateLayout(
             const PipelineDesc& desc);
+
+        /// Returns an existing compatible compute pipeline or creates a new one.
+        [[nodiscard]] VkPipeline GetOrCreateCompute(
+            const ComputePipelineDesc& desc);
 
         /// Destroys every cached pipeline and pipeline layout.
         ///
@@ -136,6 +166,7 @@ namespace Osiris
             VkPrimitiveTopology topology =
                 VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
             VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
+            bool vertexInput = true;
 
             std::vector<VkDescriptorSetLayout> setLayouts;
 
@@ -158,16 +189,46 @@ namespace Osiris
             VkPipelineLayout layout = VK_NULL_HANDLE;
         };
 
+        struct ComputePipelineKey
+        {
+            std::string computeShader;
+
+            std::vector<VkDescriptorSetLayout> setLayouts;
+
+            uint32_t pushConstantSize = 0;
+            VkShaderStageFlags pushConstantStages = 0;
+
+            [[nodiscard]] bool operator==(
+                const ComputePipelineKey& rhs) const noexcept = default;
+        };
+
+        struct ComputePipelineKeyHash
+        {
+            [[nodiscard]] std::size_t operator()(
+                const ComputePipelineKey& key) const noexcept;
+        };
+
         [[nodiscard]] static PipelineKey MakeKey(
             const PipelineDesc& desc);
 
+        [[nodiscard]] static ComputePipelineKey MakeComputeKey(
+            const ComputePipelineDesc& desc);
+
         static void ValidateDesc(const PipelineDesc& desc);
+
+        static void ValidateComputeDesc(const ComputePipelineDesc& desc);
 
         [[nodiscard]] PipelineEntry CreatePipeline(
             const PipelineKey& key) const;
 
+        [[nodiscard]] PipelineEntry CreateComputePipelineEntry(
+            const ComputePipelineKey& key) const;
+
         [[nodiscard]] VkPipelineLayout CreatePipelineLayout(
             const PipelineKey& key) const;
+
+        [[nodiscard]] VkPipelineLayout CreateComputePipelineLayout(
+            const ComputePipelineKey& key) const;
 
         [[nodiscard]] VkShaderModule LoadShaderModule(
             std::string_view path) const;
@@ -178,6 +239,9 @@ namespace Osiris
 
         std::unordered_map<PipelineKey, PipelineEntry, PipelineKeyHash>
             m_Pipelines;
+
+        std::unordered_map<ComputePipelineKey, PipelineEntry, ComputePipelineKeyHash>
+            m_ComputePipelines;
 
         std::unordered_map<VkPipeline, VkPipelineLayout>
             m_LayoutsByPipeline;

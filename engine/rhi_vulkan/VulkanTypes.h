@@ -54,4 +54,18 @@ struct VulkanMaterial {
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
 };
 
+// A cube-compatible image with two views into the same memory: a 2D_ARRAY
+// view (6 layers) for compute imageStore, and a CUBE view for samplerCube
+// reads. Single-mip only — the prefiltered environment mip chain needs a
+// storage view per mip and is handled separately.
+struct VulkanCubemapImage {
+    VkImage       image        = VK_NULL_HANDLE;
+    VmaAllocation allocation   = VK_NULL_HANDLE;
+    VkImageView   storageView  = VK_NULL_HANDLE;
+    VkImageView   sampledView  = VK_NULL_HANDLE;
+    VkSampler     sampler      = VK_NULL_HANDLE;
+    VkFormat      format       = VK_FORMAT_UNDEFINED;
+    uint32_t      size         = 0;
+};
+
 #endif //OSIRIS_VULKANTYPES_H

@@ -35,6 +35,17 @@ int main() {
         Osiris::AssetManager::GetPath("textures/grey.png"), engine.GetRHI());
     MaterialHandle greyMaterial = engine.GetRHI()->CreateMaterial({.albedo = greyTexture});
 
+    // IBL environment (Phase 6D). One-shot: builds the environment cubemap
+    // once at startup, not part of the per-frame loop.
+    Osiris::HDRImageData environmentHDR = Osiris::TextureLoader::LoadHDR(
+        Osiris::AssetManager::GetPath("hdr/EveningRoad.hdr"));
+    if (!environmentHDR.pixels.empty()) {
+        engine.GetRHI()->LoadEnvironmentMap(
+            environmentHDR.pixels.data(),
+            static_cast<uint32_t>(environmentHDR.width),
+            static_cast<uint32_t>(environmentHDR.height));
+    }
+
     Osiris::Scene scene;
 
 
@@ -84,13 +95,43 @@ int main() {
         crate2.AddComponent<Osiris::MaterialComponent>(boxPrimitives[i].material);
     }
 
+    // PBR test model (Khronos DamagedHelmet) — has real metallic/roughness
+    // variation, unlike the fully-diffuse crates, so it's a much better way
+    // to visually verify specular IBL once tasks 4-6 land.
+    auto helmetPrimitives = Osiris::MeshLoader::LoadFromGLTF(
+        Osiris::AssetManager::GetPath("models/DamagedHelmet/DamagedHelmet.gltf"), engine.GetRHI());
+    for (uint32_t i = 0; i < helmetPrimitives.size(); i++) {
+        Osiris::Entity helmet = scene.CreateEntity("DamagedHelmet_" + std::to_string(i));
+        helmet.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-2.5f, 1.3f, -0.5f);
+        helmet.AddComponent<Osiris::MeshComponent>(helmetPrimitives[i].mesh);
+        helmet.AddComponent<Osiris::MaterialComponent>(helmetPrimitives[i].material);
+    }
+
+    auto envTestPrimitives = Osiris::MeshLoader::LoadFromGLTF(
+        Osiris::AssetManager::GetPath("models/EnvironmentTest/EnvironmentTest.gltf"), engine.GetRHI());
+    for (uint32_t i = 0; i < envTestPrimitives.size(); i++) {
+        Osiris::Entity env = scene.CreateEntity("EnvironmentTest_" + std::to_string(i));
+        env.GetComponent<Osiris::TransformComponent>().position = glm::vec3(4.0f, 2.9f, 4.0f);
+        env.AddComponent<Osiris::MeshComponent>(envTestPrimitives[i].mesh);
+        env.AddComponent<Osiris::MaterialComponent>(envTestPrimitives[i].material);
+    }
+
+    auto sponzaPrimitives = Osiris::MeshLoader::LoadFromGLTF(
+        Osiris::AssetManager::GetPath("models/sponza/Sponza.gltf"), engine.GetRHI());
+    for (uint32_t i = 0; i < sponzaPrimitives.size(); i++) {
+        Osiris::Entity sponza = scene.CreateEntity("sponza_" + std::to_string(i));
+        sponza.AddComponent<Osiris::MeshComponent>(sponzaPrimitives[i].mesh);
+        sponza.AddComponent<Osiris::MaterialComponent>(sponzaPrimitives[i].material);
+    }
+
     // Spotlights: TransformComponent + SpotLightComponent.
     Osiris::Entity spotLight1 = scene.CreateEntity("SpotLight_Ceiling");
-    spotLight1.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-1.0f, 2.9f, -1.0f);
+    spotLight1.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-2.5f, 5.0f, 1.5f);
+    spotLight1.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(25.0f, 0.0f, 0.0f);
     auto& spotLight1Comp = spotLight1.AddComponent<Osiris::SpotLightComponent>();
     spotLight1Comp.color        = glm::vec3(1.0f, 0.9f, 0.75f);
-    spotLight1Comp.intensity    = 15.0f;
-    spotLight1Comp.range        = 6.0f;
+    spotLight1Comp.intensity    = 30.0f;
+    spotLight1Comp.range        = 10.0f;
     spotLight1Comp.castsShadow  = true;
 
     Osiris::Entity spotLight2 = scene.CreateEntity("SpotLight_Corner");
@@ -203,6 +244,10 @@ int main() {
         }
         ImGui::ColorEdit3("Light Color", &light.color.x);
         ImGui::SliderFloat("Light Intensity", &light.intensity, 0.0f, 5.0f);
+        ImGui::Separator();
+
+        ImGui::SliderFloat("Environment Exposure", &engine.GetRHI()->GetEnvironmentExposure(),
+            0.001f, 4.0f, "%.4f", ImGuiSliderFlags_Logarithmic);
         ImGui::Separator();
 
         int activeShadowCasters = 0;

@@ -4,6 +4,8 @@
 
 #include "Scene.h"
 
+#include <algorithm>
+
 #include "renderer/Frustum.h"
 #include "renderer/Camera.h"
 #include "rhi/RHI.h"
@@ -68,6 +70,61 @@ namespace Osiris {
             rhi->DrawShadowIndexed(mesh.mesh.indexCount);
         }
     }
+    std::vector<SpotLightRenderData> Scene::GatherSpotLights(const glm::vec3& cameraPosition) {
+        struct Candidate {
+            SpotLightRenderData data;
+            float distSq;
+            bool  castsShadow;
+        };
+
+        std::vector<Candidate> candidates;
+        const auto view = m_Registry.view<TransformComponent, SpotLightComponent>();
+        for (auto entity : view) {
+            auto& transform = view.get<TransformComponent>(entity);
+            auto& light     = view.get<SpotLightComponent>(entity);
+            if (!light.enabled) continue;
+
+            SpotLightRenderData data{};
+            data.position          = transform.position;
+            data.direction         = transform.GetForward();
+            data.color             = light.color;
+            data.intensity         = light.intensity;
+            data.innerConeDegrees  = light.innerCone;
+            data.outerConeDegrees  = light.outerCone;
+            data.range             = light.range;
+
+            const glm::vec3 toCamera = transform.position - cameraPosition;
+            candidates.push_back({data, glm::dot(toCamera, toCamera), light.castsShadow});
+        }
+
+        // Shadow slots go to the nearest castsShadow=true candidates first.
+        std::vector<size_t> shadowCandidates;
+        for (size_t i = 0; i < candidates.size(); i++) {
+            if (candidates[i].castsShadow) shadowCandidates.push_back(i);
+        }
+        std::sort(shadowCandidates.begin(), shadowCandidates.end(),
+            [&](size_t a, size_t b) { return candidates[a].distSq < candidates[b].distSq; });
+        for (size_t slot = 0; slot < shadowCandidates.size() && slot < MAX_SPOT_SHADOW_CASTERS; slot++) {
+            candidates[shadowCandidates[slot]].data.shadowIndex = static_cast<int>(slot);
+        }
+
+        // Cap at MAX_SPOT_LIGHTS, keeping shadow casters first.
+        std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) {
+            const bool aCasts = a.data.shadowIndex >= 0;
+            const bool bCasts = b.data.shadowIndex >= 0;
+            if (aCasts != bCasts) return aCasts;
+            return a.distSq < b.distSq;
+        });
+        if (candidates.size() > MAX_SPOT_LIGHTS) {
+            candidates.resize(MAX_SPOT_LIGHTS);
+        }
+
+        std::vector<SpotLightRenderData> result;
+        result.reserve(candidates.size());
+        for (auto& candidate : candidates) result.push_back(candidate.data);
+        return result;
+    }
+
     int Scene::GetEntityCount() {
         return static_cast<int>(m_Registry.view<TagComponent>().size());
     }

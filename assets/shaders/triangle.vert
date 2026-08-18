@@ -12,11 +12,21 @@ layout(set = 0, binding = 0) uniform CameraUBO {
     vec4 cascadeSplits;
     vec4 lightDirection;
     vec4 cameraPosition;
-    mat4 spotLightSpaceMatrix;
-    vec4 spotPosition;
-    vec4 spotDirection;
-    vec4 spotParams;
 } camera;
+
+// Must stay in sync with MAX_SPOT_LIGHTS / MAX_SPOT_SHADOW_CASTERS in Light.h.
+struct SpotLightGPU {
+    vec4 position;
+    vec4 direction;
+    vec4 color;
+    vec4 params;
+};
+
+layout(set = 0, binding = 5) uniform SpotLightUBO {
+    mat4 shadowMatrices[3];
+    SpotLightGPU lights[8];
+    ivec4 counts;
+} spotLights;
 
 layout(push_constant) uniform PushConstants {
     mat4 model;
@@ -30,7 +40,7 @@ layout(location = 4) out vec4 outShadowCoord1;
 layout(location = 5) out vec4 outShadowCoord2;
 layout(location = 6) out vec3 outTangent;
 layout(location = 7) out vec3 outBitangent;
-layout(location = 8) out vec4 outShadowCoordSpot;
+layout(location = 8) out vec4 outShadowCoordSpot[3];
 
 void main() {
     vec4 worldPos = push.model * vec4(inPosition, 1.0);
@@ -50,5 +60,7 @@ void main() {
     outShadowCoord0 = camera.lightSpaceMatrices[0] * worldPos;
     outShadowCoord1 = camera.lightSpaceMatrices[1] * worldPos;
     outShadowCoord2 = camera.lightSpaceMatrices[2] * worldPos;
-    outShadowCoordSpot = camera.spotLightSpaceMatrix * worldPos;
+    for (int i = 0; i < 3; i++) {
+        outShadowCoordSpot[i] = spotLights.shadowMatrices[i] * worldPos;
+    }
 }

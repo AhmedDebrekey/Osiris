@@ -84,6 +84,50 @@ int main() {
         crate2.AddComponent<Osiris::MaterialComponent>(boxPrimitives[i].material);
     }
 
+    // Spotlights: TransformComponent + SpotLightComponent.
+    Osiris::Entity spotLight1 = scene.CreateEntity("SpotLight_Ceiling");
+    spotLight1.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-1.0f, 2.9f, -1.0f);
+    auto& spotLight1Comp = spotLight1.AddComponent<Osiris::SpotLightComponent>();
+    spotLight1Comp.color        = glm::vec3(1.0f, 0.9f, 0.75f);
+    spotLight1Comp.intensity    = 15.0f;
+    spotLight1Comp.range        = 6.0f;
+    spotLight1Comp.castsShadow  = true;
+
+    Osiris::Entity spotLight2 = scene.CreateEntity("SpotLight_Corner");
+    spotLight2.GetComponent<Osiris::TransformComponent>().position = glm::vec3(4.0f, 2.9f, 4.0f);
+    spotLight2.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(0.0f, 0.0f, 20.0f);
+    auto& spotLight2Comp = spotLight2.AddComponent<Osiris::SpotLightComponent>();
+    spotLight2Comp.color        = glm::vec3(0.7f, 0.85f, 1.0f);
+    spotLight2Comp.intensity    = 15.0f;
+    spotLight2Comp.range        = 7.0f;
+    spotLight2Comp.castsShadow  = true;
+
+    Osiris::Entity spotLight3 = scene.CreateEntity("SpotLight_Accent");
+    spotLight3.GetComponent<Osiris::TransformComponent>().position = glm::vec3(1.5f, 2.9f, 0.5f);
+    auto& spotLight3Comp = spotLight3.AddComponent<Osiris::SpotLightComponent>();
+    spotLight3Comp.color        = glm::vec3(1.0f, 0.4f, 0.3f);
+    spotLight3Comp.intensity    = 10.0f;
+    spotLight3Comp.range        = 5.0f;
+    spotLight3Comp.castsShadow  = false; // demonstrates a non-shadow-casting spot light
+
+    auto DrawSpotLightUI = [](const char* label, Osiris::Entity entity) {
+        auto& transform = entity.GetComponent<Osiris::TransformComponent>();
+        auto& light      = entity.GetComponent<Osiris::SpotLightComponent>();
+        if (ImGui::TreeNode(label)) {
+            ImGui::SliderFloat3("Position", &transform.position.x, -6.0f, 6.0f);
+            ImGui::SliderFloat3("Rotation", &transform.rotation.x, -180.0f, 180.0f);
+            ImGui::ColorEdit3("Color", &light.color.x);
+            ImGui::SliderFloat("Intensity", &light.intensity, 0.0f, 50.0f);
+            ImGui::SliderFloat("Inner Cone", &light.innerCone, 1.0f, 89.0f);
+            ImGui::SliderFloat("Outer Cone", &light.outerCone, 1.0f, 89.0f);
+            if (light.outerCone < light.innerCone) light.outerCone = light.innerCone;
+            ImGui::SliderFloat("Range", &light.range, 1.0f, 50.0f);
+            ImGui::Checkbox("Enabled", &light.enabled);
+            ImGui::Checkbox("Casts Shadow", &light.castsShadow);
+            ImGui::TreePop();
+        }
+    };
+
     Osiris::Camera camera(
         glm::vec3(0.0f, 1.5f, 4.0f),
         glm::vec3(0.0f, 0.0f, -1.0f)
@@ -104,9 +148,8 @@ int main() {
 
         camera.Update(*engine.GetInput(), deltaTime);
 
-        auto& spotLight = engine.GetRHI()->GetSpotLight();
-        spotLight.position  = camera.GetPosition() + camera.GetFront() * 0.5f;
-        spotLight.direction = camera.GetFront();
+        auto activeSpotLights = scene.GatherSpotLights(camera.GetPosition());
+        engine.GetRHI()->UpdateSpotLights(activeSpotLights);
 
         glm::mat4 lightView, lightProj;
         engine.GetRHI()->UpdateCamera(camera.GetViewMatrix(), camera.GetProjectionMatrix(), glm::vec4(camera.GetPosition(), 0.0f), camera.GetFront());
@@ -126,10 +169,13 @@ int main() {
             engine.GetRHI()->EndShadowPass(i);
         }
 
-        // Spot light shadow pass
-        engine.GetRHI()->BeginSpotShadowPass();
-        scene.RenderShadows(engine.GetRHI());
-        engine.GetRHI()->EndSpotShadowPass();
+        // Spot light shadow passes (all slots render, even unclaimed ones, to
+        // keep every shadow map's layout valid for the descriptor set).
+        for (uint32_t i = 0; i < Osiris::MAX_SPOT_SHADOW_CASTERS; i++) {
+            engine.GetRHI()->BeginSpotShadowPass(i);
+            scene.RenderShadows(engine.GetRHI());
+            engine.GetRHI()->EndSpotShadowPass(i);
+        }
 
         // Forward pass
         engine.GetRHI()->BeginForwardPass();
@@ -159,18 +205,15 @@ int main() {
         ImGui::SliderFloat("Light Intensity", &light.intensity, 0.0f, 5.0f);
         ImGui::Separator();
 
-        ImGui::Text("Spot Position: %.2f %.2f %.2f",
-            spotLight.position.x, spotLight.position.y, spotLight.position.z);
-        ImGui::Text("Spot Direction: %.2f %.2f %.2f",
-            spotLight.direction.x, spotLight.direction.y, spotLight.direction.z);
-        ImGui::ColorEdit3("Spot Color", &spotLight.color.x);
-        ImGui::SliderFloat("Spot Intensity", &spotLight.intensity, 0.0f, 50.0f);
-        ImGui::SliderFloat("Spot Inner Cone", &spotLight.innerConeDegrees, 1.0f, 89.0f);
-        ImGui::SliderFloat("Spot Outer Cone", &spotLight.outerConeDegrees, 1.0f, 89.0f);
-        if (spotLight.outerConeDegrees < spotLight.innerConeDegrees) {
-            spotLight.outerConeDegrees = spotLight.innerConeDegrees;
+        int activeShadowCasters = 0;
+        for (const auto& sl : activeSpotLights) {
+            if (sl.shadowIndex >= 0) activeShadowCasters++;
         }
-        ImGui::SliderFloat("Spot Range", &spotLight.range, 1.0f, 50.0f);
+        ImGui::Text("Active spot lights: %d (shadow casters: %d / %d)",
+            static_cast<int>(activeSpotLights.size()), activeShadowCasters, Osiris::MAX_SPOT_SHADOW_CASTERS);
+        DrawSpotLightUI("Spot Light 1 (Ceiling)", spotLight1);
+        DrawSpotLightUI("Spot Light 2 (Corner)", spotLight2);
+        DrawSpotLightUI("Spot Light 3 (Accent, no shadow)", spotLight3);
         ImGui::Separator();
 
         auto& shadowSettings = engine.GetRHI()->GetShadowSettings();

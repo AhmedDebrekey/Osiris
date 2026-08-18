@@ -10,7 +10,7 @@ layout(location = 4) in vec4 inShadowCoord1;
 layout(location = 5) in vec4 inShadowCoord2;
 layout(location = 6) in vec3 inTangent;
 layout(location = 7) in vec3 inBitangent;
-layout(location = 8) in vec4 inShadowCoordSpot;
+layout(location = 8) in vec4 inShadowCoordSpot[3];
 
 layout(set = 0, binding = 0) uniform CameraUBO {
     mat4 view;
@@ -19,17 +19,29 @@ layout(set = 0, binding = 0) uniform CameraUBO {
     vec4 cascadeSplits;
     vec4 lightDirection;
     vec4 cameraPosition;
-    mat4 spotLightSpaceMatrix;
-    vec4 spotPosition;
-    vec4 spotDirection;
-    vec4 spotParams; // x = cos(inner), y = cos(outer), z = range, w = intensity
-    vec4 spotColor;  // rgb = color
 } camera;
 
 layout(set = 0, binding = 1) uniform sampler2DShadow shadowMap0;
 layout(set = 0, binding = 2) uniform sampler2DShadow shadowMap1;
 layout(set = 0, binding = 3) uniform sampler2DShadow shadowMap2;
-layout(set = 0, binding = 4) uniform sampler2DShadow shadowMapSpot;
+layout(set = 0, binding = 4) uniform sampler2DShadow shadowMapSpot[3];
+
+// Must stay in sync with MAX_SPOT_LIGHTS / MAX_SPOT_SHADOW_CASTERS in Light.h.
+const int MAX_SPOT_LIGHTS = 8;
+const int MAX_SPOT_SHADOW_CASTERS = 3;
+
+struct SpotLightGPU {
+    vec4 position;   // xyz = world position, w = range
+    vec4 direction;  // xyz = normalized direction, w = intensity
+    vec4 color;      // rgb = color
+    vec4 params;     // x = cos(inner), y = cos(outer), z = shadowIndex (-1 = none), w unused
+};
+
+layout(set = 0, binding = 5) uniform SpotLightUBO {
+    mat4 shadowMatrices[3];
+    SpotLightGPU lights[8];
+    ivec4 counts; // x = active light count
+} spotLights;
 
 layout(set = 1, binding = 0) uniform sampler2D albedoMap;
 layout(set = 1, binding = 1) uniform sampler2D normalMap;
@@ -152,41 +164,57 @@ void main() {
 
     Lo *= shadow;
 
-    // ── Spot light ────────────────────────────────────────────
-    vec3 toSpotLight  = camera.spotPosition.xyz - inWorldPos;
-    float spotDist    = length(toSpotLight);
-    vec3 Lspot         = toSpotLight / max(spotDist, 0.0001);
-    vec3 spotDir       = normalize(camera.spotDirection.xyz);
+    // ── Spot lights ───────────────────────────────────────────
+    int spotCount = min(spotLights.counts.x, MAX_SPOT_LIGHTS);
+    for (int i = 0; i < spotCount; i++) {
+        SpotLightGPU sl = spotLights.lights[i];
 
-    float cosInner = camera.spotParams.x;
-    float cosOuter = camera.spotParams.y;
-    float spotRange     = camera.spotParams.z;
-    float spotIntensity = camera.spotParams.w;
+        vec3 toSpotLight = sl.position.xyz - inWorldPos;
+        float spotDist    = length(toSpotLight);
+        vec3 Lspot         = toSpotLight / max(spotDist, 0.0001);
+        vec3 spotDir       = normalize(sl.direction.xyz);
 
-    float cosTheta  = dot(-Lspot, spotDir);
-    float coneAtten = clamp((cosTheta - cosOuter) / max(cosInner - cosOuter, 0.0001), 0.0, 1.0);
-    coneAtten *= coneAtten;
+        float cosInner = sl.params.x;
+        float cosOuter = sl.params.y;
+        int shadowIndex     = int(sl.params.z);
+        float spotRange     = sl.position.w;
+        float spotIntensity = sl.direction.w;
 
-    float distAtten = clamp(1.0 - (spotDist / max(spotRange, 0.0001)), 0.0, 1.0);
-    distAtten *= distAtten;
+        float cosTheta  = dot(-Lspot, spotDir);
+        float coneAtten = clamp((cosTheta - cosOuter) / max(cosInner - cosOuter, 0.0001), 0.0, 1.0);
+        coneAtten *= coneAtten;
 
-    vec3 Hspot      = normalize(V + Lspot);
-    float NdotLspot = max(dot(N, Lspot), 0.0);
-    float NdotHspot = max(dot(N, Hspot), 0.0);
-    float HdotVspot = max(dot(Hspot, V), 0.0);
+        float distAtten = clamp(1.0 - (spotDist / max(spotRange, 0.0001)), 0.0, 1.0);
+        distAtten *= distAtten;
 
-    float Dspot = D_GGX(NdotHspot, roughness);
-    float Gspot = G_Smith(NdotV, NdotLspot, roughness);
-    vec3  Fspot = F_Schlick(HdotVspot, F0);
+        if (coneAtten <= 0.0 || distAtten <= 0.0) continue;
 
-    vec3 specularSpot = (Dspot * Gspot * Fspot) / max(4.0 * NdotV * NdotLspot, 0.001);
-    vec3 kDspot        = (vec3(1.0) - Fspot) * (1.0 - metallic);
-    vec3 diffuseSpot    = kDspot * albedo / PI;
+        vec3 Hspot      = normalize(V + Lspot);
+        float NdotLspot = max(dot(N, Lspot), 0.0);
+        float NdotHspot = max(dot(N, Hspot), 0.0);
+        float HdotVspot = max(dot(Hspot, V), 0.0);
 
-    float spotShadow = SampleShadowPCF(shadowMapSpot, inShadowCoordSpot, NdotLspot);
+        float Dspot = D_GGX(NdotHspot, roughness);
+        float Gspot = G_Smith(NdotV, NdotLspot, roughness);
+        vec3  Fspot = F_Schlick(HdotVspot, F0);
 
-    vec3 spotLightColor = camera.spotColor.rgb * spotIntensity;
-    Lo += (diffuseSpot + specularSpot) * spotLightColor * NdotLspot * coneAtten * distAtten * spotShadow;
+        vec3 specularSpot = (Dspot * Gspot * Fspot) / max(4.0 * NdotV * NdotLspot, 0.001);
+        vec3 kDspot        = (vec3(1.0) - Fspot) * (1.0 - metallic);
+        vec3 diffuseSpot    = kDspot * albedo / PI;
+
+        // Constant-indexed to avoid dynamic sampler array indexing.
+        float spotShadow = 1.0;
+        if (shadowIndex == 0) {
+            spotShadow = SampleShadowPCF(shadowMapSpot[0], inShadowCoordSpot[0], NdotLspot);
+        } else if (shadowIndex == 1) {
+            spotShadow = SampleShadowPCF(shadowMapSpot[1], inShadowCoordSpot[1], NdotLspot);
+        } else if (shadowIndex == 2) {
+            spotShadow = SampleShadowPCF(shadowMapSpot[2], inShadowCoordSpot[2], NdotLspot);
+        }
+
+        vec3 spotLightColor = sl.color.rgb * spotIntensity;
+        Lo += (diffuseSpot + specularSpot) * spotLightColor * NdotLspot * coneAtten * distAtten * spotShadow;
+    }
 
     // ── Ambient ───────────────────────────────────────────────
     vec3 ambient = vec3(0.1) * albedo * ao;

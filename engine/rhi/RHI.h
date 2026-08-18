@@ -7,13 +7,11 @@
 
 #include "RHITypes.h"
 #include "renderer/MeshType.h"
+#include "renderer/Light.h"
 #include <glm/glm.hpp>
+#include <vector>
 
 namespace Osiris {
-    struct ShadowSettings;
-    struct DirectionalLight;
-    struct SpotLight;
-
     class IRHI {
         public:
         virtual ~IRHI() = default;
@@ -53,8 +51,10 @@ namespace Osiris {
         virtual void BeginForwardPass   ()                      = 0;
 
 
-        virtual void BeginSpotShadowPass() = 0;
-        virtual void EndSpotShadowPass()   = 0;
+        virtual void UpdateSpotLights(const std::vector<SpotLightRenderData>& lights) = 0;
+
+        virtual void BeginSpotShadowPass(uint32_t index) = 0;
+        virtual void EndSpotShadowPass(uint32_t index)   = 0;
 
         virtual void InitImGui()        = 0;
         virtual void ShutdownImGui()    = 0;
@@ -65,7 +65,6 @@ namespace Osiris {
         virtual glm::mat4 GetLightViewMatrix(uint32_t cascade) const = 0;
         virtual glm::mat4 GetLightProjMatrix(uint32_t cascade) const = 0;
         virtual ShadowSettings& GetShadowSettings() = 0;
-        virtual SpotLight& GetSpotLight() = 0;
 
         virtual void Dispatch (uint32_t x, uint32_t y, uint32_t z) = 0;
 

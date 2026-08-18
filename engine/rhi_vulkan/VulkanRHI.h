@@ -77,7 +77,8 @@ namespace Osiris {
         glm::mat4 GetLightViewMatrix(uint32_t cascade) const override { return m_LightViewMatrices[cascade]; }
         glm::mat4 GetLightProjMatrix(uint32_t cascade) const override { return m_LightProjMatrices[cascade]; }
         ShadowSettings& GetShadowSettings() override {return m_ShadowSettings;}
-        SpotLight& GetSpotLight() override { return m_SpotLight; }
+
+        void UpdateSpotLights(const std::vector<SpotLightRenderData>& lights) override;
 
         void UpdateCamera(const glm::mat4 &view, const glm::mat4 &projection, const glm::vec4& position, const glm::vec3& front) override;
         void SetCameraBuffer(const glm::mat4& view, const glm::mat4& projection, const glm::vec4& position) override;
@@ -90,9 +91,9 @@ namespace Osiris {
 
         void DrawShadowIndexed(uint32_t indexCount) override;
 
-        void BeginSpotShadowPass() override;
+        void BeginSpotShadowPass(uint32_t index) override;
 
-        void EndSpotShadowPass()   override;
+        void EndSpotShadowPass(uint32_t index)   override;
 
         void UpdateShadowDescriptors();
 
@@ -127,8 +128,6 @@ namespace Osiris {
         void RecreateSwapChain();
 
         void UpdateCascades(const glm::mat4& view, const glm::mat4& projection);
-
-        void UpdateSpotLight(const glm::vec3& position, const glm::vec3& direction, float outerConeDegrees, float range);
 
         TextureHandle CreateSolidColorTexture(uint32_t r, uint32_t g, uint32_t b, uint32_t a);
 
@@ -191,9 +190,10 @@ namespace Osiris {
         static constexpr uint32_t SHADOW_MAP_SIZE      = 2048;
         VulkanImage m_ShadowMaps[SHADOW_CASCADE_COUNT];
 
-        VulkanImage m_SpotShadowMap;
-        glm::mat4 m_SpotLightSpaceMatrix = glm::mat4(1.0f);
-        SpotLight m_SpotLight;
+        static constexpr uint32_t SPOT_SHADOW_MAP_SIZE = 1024;
+        VulkanImage m_SpotShadowMaps[MAX_SPOT_SHADOW_CASTERS];
+        glm::mat4   m_SpotShadowMatrices[MAX_SPOT_SHADOW_CASTERS];
+        BufferHandle m_SpotLightUniformBuffer;
 
         ShadowSettings m_ShadowSettings;
 

@@ -30,11 +30,21 @@ namespace Osiris {
         glm::vec4 cascadeSplits;
         glm::vec4 lightDirection;
         glm::vec4 cameraPosition;
-        glm::mat4 spotLightSpaceMatrix;
-        glm::vec4 spotPosition;   // xyz = world position
-        glm::vec4 spotDirection;  // xyz = normalized direction
-        glm::vec4 spotParams;     // x = cos(inner), y = cos(outer), z = range, w = intensity
-        glm::vec4 spotColor;      // rgb = color
+    };
+
+    // Mirrors the SpotLightGPU struct in triangle.vert / triangle.frag.
+    struct SpotLightGPU {
+        glm::vec4 position;   // xyz = world position, w = range
+        glm::vec4 direction;  // xyz = normalized direction, w = intensity
+        glm::vec4 color;      // rgb = color
+        glm::vec4 params;     // x = cos(inner), y = cos(outer), z = shadowIndex (-1 = none), w unused
+    };
+
+    // Mirrors the SpotLightUBO layout in triangle.vert / triangle.frag.
+    struct SpotLightBufferFull {
+        glm::mat4     shadowMatrices[MAX_SPOT_SHADOW_CASTERS];
+        SpotLightGPU  lights[MAX_SPOT_LIGHTS];
+        glm::ivec4    counts; // x = active light count
     };
 
     template<typename T>
@@ -250,10 +260,12 @@ namespace Osiris {
             }
         }
 
-        if (m_SpotShadowMap.image != VK_NULL_HANDLE) {
-            vkDestroySampler(m_Device.logicalDevice, m_SpotShadowMap.sampler, nullptr);
-            vkDestroyImageView(m_Device.logicalDevice, m_SpotShadowMap.imageView, nullptr);
-            vmaDestroyImage(m_Allocator, m_SpotShadowMap.image, m_SpotShadowMap.allocation);
+        for (auto& shadowMap : m_SpotShadowMaps) {
+            if (shadowMap.image != VK_NULL_HANDLE) {
+                vkDestroySampler(m_Device.logicalDevice, shadowMap.sampler, nullptr);
+                vkDestroyImageView(m_Device.logicalDevice, shadowMap.imageView, nullptr);
+                vmaDestroyImage(m_Allocator, shadowMap.image, shadowMap.allocation);
+            }
         }
 
         vkDestroyCommandPool(m_Device.logicalDevice, m_CommandPool, nullptr);
@@ -849,7 +861,6 @@ namespace Osiris {
 
     void VulkanRHI::UpdateCamera(const glm::mat4& view, const glm::mat4& projection, const glm::vec4& position, const glm::vec3& front) {
         UpdateCascades(view, projection);
-        UpdateSpotLight(m_SpotLight.position, m_SpotLight.direction, m_SpotLight.outerConeDegrees, m_SpotLight.range);
         SetCameraBuffer(view, projection, position);
     }
 
@@ -864,16 +875,6 @@ namespace Osiris {
             m_CascadeSplits[0], m_CascadeSplits[1], m_CascadeSplits[2], 0.0f);
         cameraBuffer.lightDirection = glm::vec4(-m_DirectionalLight.direction, 0.0f);
         cameraBuffer.cameraPosition = position;
-
-        cameraBuffer.spotLightSpaceMatrix = m_SpotLightSpaceMatrix;
-        cameraBuffer.spotPosition  = glm::vec4(m_SpotLight.position, 0.0f);
-        cameraBuffer.spotDirection = glm::vec4(glm::normalize(m_SpotLight.direction), 0.0f);
-        cameraBuffer.spotParams = glm::vec4(
-            glm::cos(glm::radians(m_SpotLight.innerConeDegrees)),
-            glm::cos(glm::radians(m_SpotLight.outerConeDegrees)),
-            m_SpotLight.range,
-            m_SpotLight.intensity);
-        cameraBuffer.spotColor = glm::vec4(m_SpotLight.color, 0.0f);
 
         UploadDynamicBuffer(m_CameraUniformBuffer, &cameraBuffer, sizeof(CameraBufferFull));
     }
@@ -1062,16 +1063,16 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
         }
     }
 
-    void VulkanRHI::BeginSpotShadowPass() {
+    void VulkanRHI::BeginSpotShadowPass(uint32_t index) {
         VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
-        m_ActiveLightSpaceMatrix = m_SpotLightSpaceMatrix;
+        m_ActiveLightSpaceMatrix = m_SpotShadowMatrices[index];
         VkImageMemoryBarrier barrier = {
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
             .srcAccessMask = 0,
             .dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
             .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
             .newLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-            .image = m_SpotShadowMap.image,
+            .image = m_SpotShadowMaps[index].image,
             .subresourceRange = {
                 .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
                 .baseMipLevel = 0,
@@ -1087,7 +1088,7 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
 
         VkRenderingAttachmentInfo depthAttachment = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView = m_SpotShadowMap.imageView,
+            .imageView = m_SpotShadowMaps[index].imageView,
             .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
             .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
             .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -1096,7 +1097,7 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
 
         VkRenderingInfo renderingInfo = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
-            .renderArea = {.offset = {0, 0}, .extent = {SHADOW_MAP_SIZE, SHADOW_MAP_SIZE}},
+            .renderArea = {.offset = {0, 0}, .extent = {SPOT_SHADOW_MAP_SIZE, SPOT_SHADOW_MAP_SIZE}},
             .layerCount = 1,
             .colorAttachmentCount = 0,
             .pDepthAttachment = &depthAttachment
@@ -1107,17 +1108,17 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
 
         VkViewport viewport = {
             .x = 0, .y = 0,
-            .width = (float)SHADOW_MAP_SIZE,
-            .height = (float)SHADOW_MAP_SIZE,
+            .width = (float)SPOT_SHADOW_MAP_SIZE,
+            .height = (float)SPOT_SHADOW_MAP_SIZE,
             .minDepth = 0.0f, .maxDepth = 1.0f
         };
         vkCmdSetViewport(cmd, 0, 1, &viewport);
 
-        VkRect2D scissor = { .offset = {0, 0}, .extent = {SHADOW_MAP_SIZE, SHADOW_MAP_SIZE} };
+        VkRect2D scissor = { .offset = {0, 0}, .extent = {SPOT_SHADOW_MAP_SIZE, SPOT_SHADOW_MAP_SIZE} };
         vkCmdSetScissor(cmd, 0, 1, &scissor);
     }
 
-    void VulkanRHI::EndSpotShadowPass() {
+    void VulkanRHI::EndSpotShadowPass(uint32_t index) {
         VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
 
         vkCmdEndRendering(cmd);
@@ -1128,7 +1129,7 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
             .dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
             .oldLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
             .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            .image = m_SpotShadowMap.image,
+            .image = m_SpotShadowMaps[index].image,
             .subresourceRange = {
                 .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
                 .baseMipLevel = 0,
@@ -1701,14 +1702,20 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
             {
                 .binding         = 4,
                 .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                .descriptorCount = 1,
+                .descriptorCount = MAX_SPOT_SHADOW_CASTERS,
                 .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
+            {
+                .binding         = 5,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags      = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
             },
         };
 
         VkDescriptorSetLayoutCreateInfo frameLayoutInfo = {
             .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-            .bindingCount = 5,
+            .bindingCount = 6,
             .pBindings    = frameBindings,
         };
         VK_CHECK(vkCreateDescriptorSetLayout(m_Device.logicalDevice, &frameLayoutInfo, nullptr, &m_FrameDescriptorLayout));
@@ -1758,7 +1765,7 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
 
     bool VulkanRHI::CreateDescriptorPool() {
         VkDescriptorPoolSize poolSizes[] = {
-            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         1 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         2 },
             { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 5003  },
         };
         const VkDescriptorPoolCreateInfo descriptorPoolInfo = {
@@ -1803,17 +1810,42 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
             .range  = sizeof(CameraBufferFull),
         };
 
-        const VkWriteDescriptorSet writeDescriptorSet = {
-            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet          = m_DescriptorSet,
-            .dstBinding      = 0,
-            .dstArrayElement = 0,
-            .descriptorCount = 1,
-            .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .pBufferInfo     = &bufferInfo,
+        BufferDesc spotLightUniformBufferDesc = {
+            .size       = sizeof(SpotLightBufferFull),
+            .usage      = BufferUsage::Uniform,
+            .cpuVisible = true,
         };
 
-        vkUpdateDescriptorSets(m_Device.logicalDevice, 1, &writeDescriptorSet, 0, nullptr);
+        m_SpotLightUniformBuffer = CreateBuffer(spotLightUniformBufferDesc);
+
+        VkDescriptorBufferInfo spotLightBufferInfo = {
+            .buffer = m_Buffers.at(m_SpotLightUniformBuffer.id).buffer,
+            .offset = 0,
+            .range  = sizeof(SpotLightBufferFull),
+        };
+
+        const VkWriteDescriptorSet writeDescriptorSets[] = {
+            {
+                .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet          = m_DescriptorSet,
+                .dstBinding      = 0,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .pBufferInfo     = &bufferInfo,
+            },
+            {
+                .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet          = m_DescriptorSet,
+                .dstBinding      = 5,
+                .dstArrayElement = 0,
+                .descriptorCount = 1,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .pBufferInfo     = &spotLightBufferInfo,
+            },
+        };
+
+        vkUpdateDescriptorSets(m_Device.logicalDevice, 2, writeDescriptorSets, 0, nullptr);
 
         return true;
     }
@@ -1874,31 +1906,35 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
             VK_CHECK(vkCreateSampler(m_Device.logicalDevice, &samplerInfo, nullptr, &map.sampler));
         }
 
-        m_SpotShadowMap.format = VK_FORMAT_D32_SFLOAT;
-        VK_CHECK(vmaCreateImage(m_Allocator, &imageCreateInfo, &allocationCreateInfo,
-            &m_SpotShadowMap.image, &m_SpotShadowMap.allocation, nullptr));
+        VkImageCreateInfo spotImageCreateInfo = imageCreateInfo;
+        spotImageCreateInfo.extent = {SPOT_SHADOW_MAP_SIZE, SPOT_SHADOW_MAP_SIZE, 1};
 
-        VkImageViewCreateInfo viewCreateInfo = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .image = m_SpotShadowMap.image,
-            .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format = VK_FORMAT_D32_SFLOAT,
+        for (auto& map : m_SpotShadowMaps) {
+            map.format = VK_FORMAT_D32_SFLOAT;
+            VK_CHECK(vmaCreateImage(m_Allocator, &spotImageCreateInfo, &allocationCreateInfo, &map.image, &map.allocation, nullptr));
 
-            .subresourceRange = {
-                .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer= 0,
-                .layerCount = 1
+            VkImageViewCreateInfo viewCreateInfo = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                .image = map.image,
+                .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                .format = VK_FORMAT_D32_SFLOAT,
+
+                .subresourceRange = {
+                    .aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer= 0,
+                    .layerCount = 1
+                }
+            };
+            const VkResult result = vkCreateImageView(m_Device.logicalDevice, &viewCreateInfo, nullptr, &map.imageView);
+            if (result != VK_SUCCESS) {
+                OSIRIS_ERROR("Failed to create image view for spot shadow map!");
+                return false;
             }
-        };
-        const VkResult result = vkCreateImageView(m_Device.logicalDevice, &viewCreateInfo, nullptr, &m_SpotShadowMap.imageView);
-        if (result != VK_SUCCESS) {
-            OSIRIS_ERROR("Failed to create image view for depth buffer!");
-            return false;
-        }
-        VK_CHECK(vkCreateSampler(m_Device.logicalDevice, &samplerInfo, nullptr, &m_SpotShadowMap.sampler));
 
+            VK_CHECK(vkCreateSampler(m_Device.logicalDevice, &samplerInfo, nullptr, &map.sampler));
+        }
 
         return true;
     }
@@ -2083,20 +2119,50 @@ void VulkanRHI::UpdateCascades(const glm::mat4& view, const glm::mat4& projectio
     }
 }
 
-    void VulkanRHI::UpdateSpotLight(const glm::vec3& position, const glm::vec3& direction, float outerConeDegrees, float range) {
-        float fov    = glm::radians(outerConeDegrees * 2.0f);
-        float aspect = 1.0f;
-        float nearZ  = 0.1f;
-        float farZ   = range;
+    void VulkanRHI::UpdateSpotLights(const std::vector<SpotLightRenderData>& lights) {
+        SpotLightBufferFull buffer{};
+        for (auto& matrix : buffer.shadowMatrices) matrix = glm::mat4(1.0f);
 
-        glm::vec3 up = glm::abs(glm::dot(direction, glm::vec3(0, 1, 0))) > 0.9f
-                     ? glm::vec3(1, 0, 0)
-                     : glm::vec3(0, 1, 0);
+        uint32_t count = static_cast<uint32_t>(lights.size());
+        if (count > MAX_SPOT_LIGHTS) count = MAX_SPOT_LIGHTS;
 
-        glm::mat4 lightView = glm::lookAt(position, position + direction, up);
-        glm::mat4 lightProj = glm::perspective(fov, aspect, nearZ, farZ);
+        for (uint32_t i = 0; i < count; i++) {
+            const SpotLightRenderData& light = lights[i];
+            const glm::vec3 direction = glm::normalize(light.direction);
 
-        m_SpotLightSpaceMatrix = lightProj * lightView;
+            SpotLightGPU gpu{};
+            gpu.position  = glm::vec4(light.position, light.range);
+            gpu.direction = glm::vec4(direction, light.intensity);
+            gpu.color     = glm::vec4(light.color, 0.0f);
+            gpu.params    = glm::vec4(
+                glm::cos(glm::radians(light.innerConeDegrees)),
+                glm::cos(glm::radians(light.outerConeDegrees)),
+                static_cast<float>(light.shadowIndex),
+                0.0f);
+            buffer.lights[i] = gpu;
+
+            if (light.shadowIndex >= 0 && static_cast<uint32_t>(light.shadowIndex) < MAX_SPOT_SHADOW_CASTERS) {
+                const uint32_t slot = static_cast<uint32_t>(light.shadowIndex);
+
+                float fov    = glm::radians(light.outerConeDegrees * 2.0f);
+                float aspect = 1.0f;
+                float nearZ  = 0.1f;
+                float farZ   = light.range;
+
+                glm::vec3 up = glm::abs(glm::dot(direction, glm::vec3(0, 1, 0))) > 0.9f
+                             ? glm::vec3(1, 0, 0)
+                             : glm::vec3(0, 1, 0);
+
+                glm::mat4 lightView = glm::lookAt(light.position, light.position + direction, up);
+                glm::mat4 lightProj = glm::perspective(fov, aspect, nearZ, farZ);
+
+                m_SpotShadowMatrices[slot] = lightProj * lightView;
+                buffer.shadowMatrices[slot] = m_SpotShadowMatrices[slot];
+            }
+        }
+        buffer.counts.x = static_cast<int32_t>(count);
+
+        UploadDynamicBuffer(m_SpotLightUniformBuffer, &buffer, sizeof(SpotLightBufferFull));
     }
 
 TextureHandle VulkanRHI::CreateSolidColorTexture(uint32_t r, uint32_t g, uint32_t b, uint32_t a) {
@@ -2137,19 +2203,22 @@ TextureHandle VulkanRHI::CreateSolidColorTexture(uint32_t r, uint32_t g, uint32_
             vkUpdateDescriptorSets(m_Device.logicalDevice, 1, &write, 0, nullptr);
         }
 
-        VkDescriptorImageInfo spotImageInfo = {
-            .sampler     = m_SpotShadowMap.sampler,
-            .imageView   = m_SpotShadowMap.imageView,
-            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        };
+        VkDescriptorImageInfo spotImageInfos[MAX_SPOT_SHADOW_CASTERS];
+        for (uint32_t i = 0; i < MAX_SPOT_SHADOW_CASTERS; i++) {
+            spotImageInfos[i] = {
+                .sampler     = m_SpotShadowMaps[i].sampler,
+                .imageView   = m_SpotShadowMaps[i].imageView,
+                .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            };
+        }
         VkWriteDescriptorSet spotWrite = {
             .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .dstSet          = m_DescriptorSet,
             .dstBinding      = 4,
             .dstArrayElement = 0,
-            .descriptorCount = 1,
+            .descriptorCount = MAX_SPOT_SHADOW_CASTERS,
             .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo      = &spotImageInfo,
+            .pImageInfo      = spotImageInfos,
         };
         vkUpdateDescriptorSets(m_Device.logicalDevice, 1, &spotWrite, 0, nullptr);
 

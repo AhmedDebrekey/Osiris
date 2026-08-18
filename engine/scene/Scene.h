@@ -5,10 +5,12 @@
 #ifndef OSIRIS_SCENE_H
 #define OSIRIS_SCENE_H
 #include <string>
+#include <vector>
 #include <entt/entt.hpp>
 #include "Entity.h"
 #include "Components.h"
 #include "core/Engine.h"
+#include "renderer/Light.h"
 
 namespace Osiris {
     class Camera;
@@ -21,6 +23,8 @@ namespace Osiris {
         void Update(float deltaTime);
         void Render(IRHI* rhi, const Camera& camera);
         void RenderShadows(IRHI* rhi);
+
+        std::vector<SpotLightRenderData> GatherSpotLights(const glm::vec3& cameraPosition);
 
         void PreRender(IRHI * irhi);
 

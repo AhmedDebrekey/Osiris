@@ -19,4 +19,12 @@ namespace Osiris {
         return model;
     }
 
+    glm::vec3 TransformComponent::GetForward() const {
+        glm::mat4 rot = glm::mat4(1.0f);
+        rot = glm::rotate(rot, glm::radians(rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+        rot = glm::rotate(rot, glm::radians(rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
+        rot = glm::rotate(rot, glm::radians(rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+        return glm::normalize(glm::vec3(rot * glm::vec4(0.0f, -1.0f, 0.0f, 0.0f)));
+    }
+
 }

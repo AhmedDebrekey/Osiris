@@ -16,6 +16,8 @@ namespace Osiris {
         glm::vec3 rotation = {0,0,0}; // euler angles
         glm::vec3 scale    = {1,1,1};
         glm::mat4 GetModelMatrix() const;
+
+        glm::vec3 GetForward() const; // rotation-only; rest direction is (0,-1,0)
     };
 
     struct MeshComponent {

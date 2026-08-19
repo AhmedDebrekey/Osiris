@@ -8,6 +8,7 @@
 #include "platform/Input.h"
 #include "physics/IPhysics.h"
 #include "audio/IAudio.h"
+#include "scripting/IScripting.h"
 namespace Osiris {
     class Engine {
     public:
@@ -25,6 +26,7 @@ namespace Osiris {
         IRHI* GetRHI() const { return m_RHI.get(); }
         IPhysics* GetPhysics() const { return m_Physics.get(); }
         IAudio* GetAudio() const { return m_Audio.get(); }
+        IScripting* GetScripting() const { return m_Scripting.get(); }
 
         Input* GetInput() { return &m_Input; }
 
@@ -49,6 +51,7 @@ namespace Osiris {
         std::unique_ptr<IRHI> m_RHI;
         std::unique_ptr<IPhysics> m_Physics;
         std::unique_ptr<IAudio> m_Audio;
+        std::unique_ptr<IScripting> m_Scripting;
     };
 }
 

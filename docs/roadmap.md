@@ -21,7 +21,7 @@ This document is the authoritative phase plan. Status: ✅ done · 🔶 partial 
 | Graphics | Vulkan 1.4 SDK (1.4.350.0), VMA, dynamic rendering (no `VkRenderPass`) |
 | Platform / math | SDL2, GLM |
 | Engine | EnTT (ECS) |
-| Physics / audio / scripting | Jolt Physics *(integrated, Phase 7A)* · OpenAL Soft, Lua + Sol3 *(not yet — see Phase 7B)* |
+| Physics / audio / scripting | Jolt Physics *(integrated, Phase 7A)* · OpenAL Soft *(integrated, Phase 7B)* · Lua + Sol3 *(integrated, Phase 7D)* |
 | Assets | fastgltf, ufbx, stb_image, nlohmann/json |
 | Tools | Dear ImGui (docking branch), spdlog, Tracy *(not yet integrated)* |
 
@@ -43,8 +43,10 @@ Core → Platform → RHI → Renderer → ECS/Scene → Game
 | `engine/rhi_vulkan/` | `VulkanRHI`, `VulkanTypes.h`, `PipelineManager` |
 | `engine/renderer/` | `Camera`, `RenderGraph`, `Frustum`, `MeshType.h`, `Light.h` |
 | `engine/scene/` | `Scene`, `Entity`, `Components.h` (EnTT-based ECS) |
-| `engine/assets/` | `MeshLoader`, `TextureLoader`, `SceneLoader` |
+| `engine/assets/` | `MeshLoader`, `TextureLoader`, `SceneLoader`, `AudioLoader` |
 | `engine/physics/` | `IPhysics` interface, `PhysicsTypes.h`; `physics/jolt/JoltPhysics` is the only backend |
+| `engine/audio/` | `IAudio` interface, `AudioTypes.h`; `audio/openal/OpenALAudio` is the only backend |
+| `engine/scripting/` | `IScripting` interface, `ScriptTypes.h`, `ScriptTemplate`; `scripting/lua/LuaScripting` (sol2) is the only backend |
 | `engine/editor/` | `SceneInspectorPanel` — ImGui entity list + per-component editor |
 | `assets/shaders/` | `triangle.vert/frag`, `shadow.vert`, `skybox.vert/frag`, `brdf_lut.comp`, `equirect_to_cubemap.comp`, `irradiance_convolve.comp`, `prefilter_env.comp` |
 | `assets/scenes/` | JSON scene files |
@@ -179,11 +181,20 @@ Twice in this project, a find-and-replace across similarly-named variables (`m_A
 - ⬜ **OGG support** — WAV only so far; `stb_vorbis` (already available via the `stb` dependency) not wired up yet.
 - ⬜ **Reverb zones** — needs OpenAL's EFX extension (auxiliary effect slots), not touched.
 - ⬜ **Audio occlusion through geometry** — needs a raycast against the Jolt collision world per source per frame to attenuate/muffle occluded emitters; physics (7A) now provides what this would need, but it isn't wired up.
-- ⬜ `SceneInspectorPanel` doesn't have an `AudioSourceComponent` editor section yet (would be a one-line addition following the existing `DrawComponentSection<T>` pattern).
+- ✅ `SceneInspectorPanel` now has an `AudioSourceComponent` editor section (gain/pitch/loop/autoplay/reference-max distance/rolloff, clip/sourceHandle shown read-only).
 
 **7C — Player System 🔶** First-person controller (distinct from the free-fly debug `Camera`) is effectively done as a side effect of 7A's `CharacterVirtual` work. Still missing: interaction system, simple inventory.
 
-Audio can run in parallel with anything else — it doesn't depend on physics or the render graph being finished.
+**7D — Lua Scripting 🔶** Full integration behind an `IScripting`/`LuaScripting` split mirroring `IRHI`/`IPhysics`/`IAudio` — no raw sol2/`lua_State` types outside `engine/scripting/lua/`.
+- ✅ **Checkpoint 1 — lifecycle + component access.** `ScriptComponent` (path + instance handle); `Scene::CreateScriptInstances` auto-writes an `OnStart()/OnUpdate(dt)/OnFixedUpdate(fixedDt)` stub file via `CreateScriptFileIfMissing` if the path doesn't exist yet, then loads it. Each script instance gets its own sandboxed `sol::environment` (falls back to the shared globals table for lookups) so two entities' scripts can both define `OnUpdate` without clobbering each other. `OnFixedUpdate` runs its own internal 60Hz accumulator — same cadence as `IPhysics`'s, kept as an independent constant rather than shared, matching the project's established small-local-duplication convention. Every current component (`TransformComponent`/`TagComponent`/`SpotLightComponent`/`ColliderComponent`/`RigidBodyComponent`/`AudioSourceComponent`) is bound as a live reference — editing a field from Lua writes straight into the ECS storage — via the *same* template instantiations the C++ side calls (e.g. `&Entity::GetComponent<TransformComponent>`), not a separate reflection layer. `scene:FindEntityByName`/`scene:CreateEntity` let a script reach entities other than its own `self`.
+- ✅ **Checkpoint 2 — physics/audio/input access.** `physics`, `audio`, `input` bound as true Lua globals (shared across every script instance, set once in `LuaScripting::Init`) — nearly the full `IPhysics`/`IAudio` interfaces (skipping only `CreateBuffer`/`DestroyBuffer`, which take raw PCM bytes a script has no legitimate way to construct), plus a `Key`/`MouseButton` constants table so scripts don't need raw `SDL_Scancode` numbers. `RigidBodyComponent.bodyHandle` and `AudioSourceComponent.clip`/`sourceHandle` are exposed so a script can hand a component's handle straight to `physics:GetBodyPosition(handle)`/`audio:PlaySource(handle)`, etc.
+- Needed an MSVC `/bigobj` compile flag on `OsirisEngine` — sol2's `new_usertype<>` calls in `LuaScripting.cpp` are template-heavy enough to exceed the default object-file section limit (`C1128`).
+- **Hard rule (see CLAUDE.md)**: any field added/renamed/removed on a component in `Components.h` must be reflected in both `LuaScripting.cpp`'s `BindAPI()` and `SceneInspectorPanel.cpp`'s `DrawComponents()`.
+- Full API reference: `docs/scripting_api.html` (local, searchable). Hard rule (see CLAUDE.md) also covers it now: any relevant `BindAPI()` change must update the doc.
+- ✅ **Add/Remove Component UI** in `SceneInspectorPanel` — a button + popup offering Spot Light/Collider/Rigid Body/Audio Source/Script (whichever the selected entity doesn't already have; Mesh/Material excluded, no sensible default without asset loading), plus a per-section "Remove" button for every component except Tag/Transform (both guaranteed present by `Scene::CreateEntity`, and other code depends on that). Adding one mid-session doesn't retroactively spawn a live Jolt body/OpenAL source/script instance — same caveat as editing an existing Collider/RigidBody/AudioSource/Script field. Removing a RigidBody/AudioSource/Script that *does* own one destroys it first (`DestroyBody`/`DestroySource`/`DestroyInstance`) rather than orphaning it, which is why `SceneInspectorPanel::Draw` now takes `IPhysics*`/`IAudio*`/`IScripting*`.
+- ⬜ **Hot-reload** — a script loads once at `Scene::CreateScriptInstances` time; editing the `.lua` file mid-session has no effect until the next run.
+
+Audio and scripting can both run in parallel with anything else — neither depends on physics or the render graph being finished.
 
 ## Phase 8 — Editor & Tools ⬜
 
@@ -210,6 +221,7 @@ Deliberately small scope — proving the full stack end-to-end, not a full game:
 
 ## Suggested session priority from here
 
-1. Rest of **7C** (interaction system, inventory) now that both physics (7A) and core positional audio (7B) are done — there's finally something worth interacting with and hearing. **Or** **Bloom + SSAO** (rest of 6D) if visual polish is wanted first.
+1. Rest of **7C** (interaction system, inventory) — physics (7A), audio (7B), and scripting (7D) are all in place now, plus the Scene Inspector can build a test entity's component set entirely by hand (Add Component), so there's finally the full toolkit for a real interaction (a door script that plays a sound and locks a rigid body, etc). **Or** **Bloom + SSAO** (rest of 6D) if visual polish is wanted first.
 2. Round out **7B**'s remaining scope (OGG, reverb zones, occlusion) whenever audio needs more than a looping test emitter — none of it blocks anything else.
-3. **8A** (docked editor) whenever panel-based iteration starts feeling cramped — `SceneInspectorPanel` already covers basic inspection in the meantime.
+3. **8A** (docked editor) whenever panel-based iteration starts feeling cramped — `SceneInspectorPanel` already covers basic inspection (plus Add Component) in the meantime.
+4. Script hot-reload — smaller follow-up to the scripting work above; doesn't block anything.

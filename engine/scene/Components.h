@@ -11,6 +11,7 @@
 #include "rhi/RHITypes.h"
 #include "physics/PhysicsTypes.h"
 #include "audio/AudioTypes.h"
+#include "scripting/ScriptTypes.h"
 
 namespace Osiris {
     struct TransformComponent {
@@ -72,6 +73,15 @@ namespace Osiris {
         float maxDistance       = 30.0f;
         float rolloffFactor     = 1.0f;
         AudioSourceHandle sourceHandle;
+    };
+
+    // Attaches Lua behavior to an entity. Scene::CreateScriptInstances loads scriptPath (writing
+    // a fresh OnStart/OnUpdate/OnFixedUpdate stub there first if the file doesn't exist yet) and
+    // fills in instanceHandle at scene setup time — same pattern as RigidBodyComponent/
+    // AudioSourceComponent's bodyHandle/sourceHandle.
+    struct ScriptComponent {
+        std::string scriptPath;
+        ScriptInstanceHandle instanceHandle;
     };
 }
 

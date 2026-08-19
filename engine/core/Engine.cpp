@@ -4,6 +4,7 @@
 #include "rhi_vulkan/VulkanRHI.h"
 #include "physics/jolt/JoltPhysics.h"
 #include "audio/openal/OpenALAudio.h"
+#include "scripting/lua/LuaScripting.h"
 
 namespace Osiris {
     bool Engine::Initialize() {
@@ -50,6 +51,12 @@ namespace Osiris {
             return false;
         }
 
+        m_Scripting = std::make_unique<LuaScripting>();
+        if (!m_Scripting->Init(m_Physics.get(), m_Audio.get(), &m_Input)) {
+            OSIRIS_ERROR("Failed to initialize scripting!");
+            return false;
+        }
+
         return true;
     }
 
@@ -65,6 +72,7 @@ namespace Osiris {
     }
 
     void Engine::Shutdown() {
+        m_Scripting->Shutdown();
         m_Audio->Shutdown();
         m_Physics->Shutdown();
         m_RHI->ShutdownImGui();

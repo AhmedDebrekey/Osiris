@@ -44,6 +44,12 @@ add_library(OsirisEngine STATIC
         audio/openal/OpenALAudio.cpp
         assets/AudioLoader.h
         assets/AudioLoader.cpp
+        scripting/ScriptTypes.h
+        scripting/IScripting.h
+        scripting/ScriptTemplate.h
+        scripting/ScriptTemplate.cpp
+        scripting/lua/LuaScripting.h
+        scripting/lua/LuaScripting.cpp
 )
 
 target_include_directories(OsirisEngine PUBLIC
@@ -52,7 +58,15 @@ target_include_directories(OsirisEngine PUBLIC
 
 target_compile_definitions(OsirisEngine PUBLIC
         GLM_FORCE_DEPTH_ZERO_TO_ONE
+        SOL_ALL_SAFETIES_ON=1
 )
+
+# sol2's new_usertype<> calls expand into enough template instantiation that MSVC's default
+# object-file format runs out of sections in scripting/lua/LuaScripting.cpp (C1128) — /bigobj
+# raises that limit. MSVC-only flag, harmless to apply PRIVATE regardless of who else links this.
+if (MSVC)
+    target_compile_options(OsirisEngine PRIVATE /bigobj)
+endif()
 
 target_link_libraries(OsirisEngine PUBLIC
     glm

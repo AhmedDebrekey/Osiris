@@ -71,6 +71,11 @@ int main() {
         audioSrc.gain              = 0.6f;
         audioSrc.referenceDistance = 1.5f;
         audioSrc.maxDistance       = 15.0f;
+
+        // Scripting checkpoint 2: proves the input/audio globals by toggling this same emitter
+        // from Lua (press E) instead of the hardcoded 'P' key below.
+        audioTestEntity.AddComponent<Osiris::ScriptComponent>().scriptPath =
+            Osiris::AssetManager::GetPath("scripts/audio_trigger.lua");
     }
 
 
@@ -111,6 +116,13 @@ int main() {
             obstacle.AddComponent<Osiris::MaterialComponent>(greyMaterial);
             obstacle.AddComponent<Osiris::ColliderComponent>(obstacles[i].halfExtents);
             obstacle.AddComponent<Osiris::RigidBodyComponent>(Osiris::BodyMotionType::Static);
+
+            // Scripting checkpoint 1: attach a self-manipulating script to the first obstacle to
+            // prove out OnStart/OnUpdate/OnFixedUpdate + live TransformComponent mutation from Lua.
+            if (i == 0) {
+                obstacle.AddComponent<Osiris::ScriptComponent>().scriptPath =
+                    Osiris::AssetManager::GetPath("scripts/spin_cube.lua");
+            }
         }
 
         // A few dynamic boxes dropped above the obstacles, to check that bodies actually fall,
@@ -235,6 +247,14 @@ int main() {
     spotLight3Comp.range        = 5.0f;
     spotLight3Comp.castsShadow  = false; // demonstrates a non-shadow-casting spot light
 
+    // Scripting checkpoint 1: a headless (no mesh) controller entity whose script reaches into
+    // SpotLight_Accent above via scene:FindEntityByName — proves cross-entity component access.
+    Osiris::Entity scriptController = scene.CreateEntity("ScriptController");
+    scriptController.AddComponent<Osiris::ScriptComponent>().scriptPath =
+        Osiris::AssetManager::GetPath("scripts/pulse_light.lua");
+
+    scene.CreateScriptInstances(engine.GetScripting());
+
     Osiris::Camera camera(
         glm::vec3(0.0f, 1.5f, 4.0f),
         glm::vec3(0.0f, 0.0f, -1.0f)
@@ -290,6 +310,12 @@ int main() {
         } else {
             camera.Update(*engine.GetInput(), deltaTime);
         }
+
+        // Scripting: OnUpdate every frame, OnFixedUpdate on its own internal 60Hz accumulator —
+        // run after physics/transform sync so scripts see up-to-date positions, and before the
+        // spotlight gather/render below so e.g. pulse_light's intensity change lands this frame.
+        engine.GetScripting()->Update(deltaTime);
+        engine.GetScripting()->FixedUpdate(deltaTime);
 
         // Listener tracks whichever camera is actually driving the view, in either scene mode.
         engine.GetAudio()->SetListenerTransform(camera.GetPosition(), camera.GetFront(), glm::vec3(0.0f, 1.0f, 0.0f));
@@ -394,7 +420,7 @@ int main() {
         }
         ImGui::End();
 
-        sceneInspector.Draw(scene);
+        sceneInspector.Draw(scene, engine.GetPhysics(), engine.GetAudio(), engine.GetScripting());
 
         engine.GetRHI()->RenderImGui();
         engine.EndFrame();

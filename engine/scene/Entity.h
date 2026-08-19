@@ -23,9 +23,13 @@ namespace Osiris {
         template<typename T>
         bool HasComponent() const;
 
+        template<typename T>
+        void RemoveComponent();
+
         bool IsValid() const { return m_Handle != entt::null; }
 
         entt::entity GetHandle() const { return m_Handle; }
+        Scene* GetScene() const { return m_Scene; }
         bool operator==(const Entity& other) const { return m_Handle == other.m_Handle && m_Scene == other.m_Scene; }
 
     private:

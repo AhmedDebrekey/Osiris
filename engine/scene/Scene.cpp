@@ -11,6 +11,8 @@
 #include "rhi/RHI.h"
 #include "physics/IPhysics.h"
 #include "audio/IAudio.h"
+#include "scripting/IScripting.h"
+#include "scripting/ScriptTemplate.h"
 
 namespace Osiris {
     Entity Scene::CreateEntity(const std::string& name) {
@@ -191,6 +193,15 @@ namespace Osiris {
             auto& transform = view.get<TransformComponent>(entity);
             auto& audioSrc  = view.get<AudioSourceComponent>(entity);
             audio->SetSourcePosition(audioSrc.sourceHandle, transform.position);
+        }
+    }
+
+    void Scene::CreateScriptInstances(IScripting* scripting) {
+        const auto view = m_Registry.view<ScriptComponent>();
+        for (auto entity : view) {
+            auto& script = view.get<ScriptComponent>(entity);
+            CreateScriptFileIfMissing(script.scriptPath);
+            script.instanceHandle = scripting->CreateInstance(Entity(entity, this), script.scriptPath);
         }
     }
 

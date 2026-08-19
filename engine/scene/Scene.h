@@ -17,6 +17,7 @@ namespace Osiris {
     class IRHI;
     class IPhysics;
     class IAudio;
+    class IScripting;
 
     class Scene {
     public:
@@ -43,6 +44,11 @@ namespace Osiris {
 
         // Keeps each audio source's 3D position current — call once per frame.
         void SyncAudioSources(IAudio* audio);
+
+        // Creates a script instance for every entity with a ScriptComponent — call once after
+        // the scene's entities are set up. Per-frame OnUpdate/OnFixedUpdate dispatch happens
+        // directly through IScripting::Update/FixedUpdate (same as IPhysics::Update), not here.
+        void CreateScriptInstances(IScripting* scripting);
 
         std::vector<SpotLightRenderData> GatherSpotLights(const glm::vec3& cameraPosition);
 
@@ -72,6 +78,11 @@ namespace Osiris {
     template<typename T>
     bool Entity::HasComponent() const {
         return m_Scene->m_Registry.all_of<T>(m_Handle);
+    }
+
+    template<typename T>
+    void Entity::RemoveComponent() {
+        m_Scene->m_Registry.remove<T>(m_Handle);
     }
 } // Osiris
 

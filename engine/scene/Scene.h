@@ -32,6 +32,15 @@ namespace Osiris {
         // RigidBodyComponent — call once after the scene's entities are set up.
         void CreatePhysicsBodies(IPhysics* physics);
 
+        // Destroys (if valid) and recreates a single entity's physics body from its current
+        // Transform/Collider/RigidBody values. Jolt has no in-place "resize this body's shape" or
+        // "change this body's motion type" — destroy-and-recreate is the direct fix, not a
+        // shortcut. No-op if the entity is missing either ColliderComponent or RigidBodyComponent.
+        // CreatePhysicsBodies itself is just this called once per matching entity; SceneInspector
+        // Panel calls it again whenever the user edits ColliderComponent::halfExtents or
+        // RigidBodyComponent::motionType so the live body actually reflects the edit.
+        void RebuildPhysicsBody(Entity entity, IPhysics* physics);
+
         // Writes each Dynamic/Kinematic body's live position + rotation back into
         // TransformComponent — call once per frame, after IPhysics::Update(). Static bodies
         // never move, so they're skipped.

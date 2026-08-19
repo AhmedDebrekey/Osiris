@@ -124,27 +124,37 @@ namespace Osiris {
             entity.RemoveComponent<SpotLightComponent>();
         }
 
-        if (DrawComponentSection<ColliderComponent>(entity, "Collider", [](ColliderComponent& collider) {
-            ImGui::DragFloat3("Half Extents", &collider.halfExtents.x, 0.05f, 0.01f, 100.0f);
-            ImGui::TextDisabled("Box only. Physics bodies are created once at scene setup —\nediting this here doesn't resize the live Jolt body.");
+        bool colliderChanged = false;
+        if (DrawComponentSection<ColliderComponent>(entity, "Collider", [&](ColliderComponent& collider) {
+            if (ImGui::DragFloat3("Half Extents", &collider.halfExtents.x, 0.05f, 0.01f, 100.0f)) {
+                colliderChanged = true;
+            }
+            ImGui::TextDisabled("Box only. Editing this rebuilds the live Jolt body (destroy +\nrecreate) if a Rigid Body is also present.");
         })) {
             entity.RemoveComponent<ColliderComponent>();
+        } else if (colliderChanged) {
+            entity.GetScene()->RebuildPhysicsBody(entity, physics);
         }
 
-        if (DrawComponentSection<RigidBodyComponent>(entity, "Rigid Body", [](RigidBodyComponent& rigidBody) {
+        bool motionTypeChanged = false;
+        if (DrawComponentSection<RigidBodyComponent>(entity, "Rigid Body", [&](RigidBodyComponent& rigidBody) {
             const char* motionTypeNames[] = { "Static", "Kinematic", "Dynamic" };
             int motionType = static_cast<int>(rigidBody.motionType);
             if (ImGui::Combo("Motion Type", &motionType, motionTypeNames, 3)) {
                 rigidBody.motionType = static_cast<BodyMotionType>(motionType);
+                motionTypeChanged = true;
             }
             ImGui::Text("Body handle: %s", rigidBody.bodyHandle.IsValid() ? "valid" : "invalid");
-            ImGui::TextDisabled("Physics bodies are created once at scene setup — changing\nmotion type here doesn't re-create the live Jolt body.");
+            ImGui::TextDisabled("Changing motion type rebuilds the live Jolt body (destroy +\nrecreate) — needs a Collider on this entity too.");
         })) {
             // The component only owns a live Jolt body if it made it through
-            // Scene::CreatePhysicsBodies — one added via "Add Component" mid-session never did.
+            // Scene::CreatePhysicsBodies (or a prior RebuildPhysicsBody) — one added via
+            // "Add Component" mid-session and never edited since never did.
             PhysicsBodyHandle bodyHandle = entity.GetComponent<RigidBodyComponent>().bodyHandle;
             if (bodyHandle.IsValid()) physics->DestroyBody(bodyHandle);
             entity.RemoveComponent<RigidBodyComponent>();
+        } else if (motionTypeChanged) {
+            entity.GetScene()->RebuildPhysicsBody(entity, physics);
         }
 
         if (DrawComponentSection<AudioSourceComponent>(entity, "Audio Source", [](AudioSourceComponent& audioSrc) {
@@ -220,10 +230,11 @@ namespace Osiris {
 
             ImGui::Separator();
             ImGui::TextDisabled(
-                "Collider/Rigid Body/Audio Source/Script only spawn a live\n"
-                "Jolt body/OpenAL source/script instance if present before\n"
-                "Scene::CreateX runs at scene setup — adding one here\n"
-                "mid-session updates the component data only.");
+                "Collider + Rigid Body get a live Jolt body once both are\n"
+                "present and a field on either is edited afterward (that\n"
+                "rebuilds it). Audio Source/Script still need a fresh\n"
+                "Scene::CreateX pass — adding one here mid-session updates\n"
+                "the component data only.");
 
             ImGui::EndPopup();
         }

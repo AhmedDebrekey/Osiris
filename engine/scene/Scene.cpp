@@ -139,19 +139,33 @@ namespace Osiris {
 
     void Scene::CreatePhysicsBodies(IPhysics* physics) {
         const auto view = m_Registry.view<TransformComponent, ColliderComponent, RigidBodyComponent>();
-        for (auto entity : view) {
-            auto& transform  = view.get<TransformComponent>(entity);
-            auto& collider   = view.get<ColliderComponent>(entity);
-            auto& rigidBody  = view.get<RigidBodyComponent>(entity);
-
-            RigidBodyDesc desc{};
-            desc.collider.halfExtents = collider.halfExtents;
-            desc.motionType    = rigidBody.motionType;
-            desc.position       = transform.position;
-            desc.rotationEuler  = transform.rotation;
-
-            rigidBody.bodyHandle = physics->CreateBody(desc);
+        for (auto entityHandle : view) {
+            RebuildPhysicsBody(Entity(entityHandle, this), physics);
         }
+    }
+
+    void Scene::RebuildPhysicsBody(Entity entity, IPhysics* physics) {
+        if (!entity.HasComponent<ColliderComponent>() || !entity.HasComponent<RigidBodyComponent>()) return;
+
+        auto& transform  = entity.GetComponent<TransformComponent>();
+        auto& collider   = entity.GetComponent<ColliderComponent>();
+        auto& rigidBody  = entity.GetComponent<RigidBodyComponent>();
+
+        // Destroying an invalid handle would be a no-op guard failure inside JoltPhysics anyway,
+        // but checking here makes the "first body for this entity" case (e.g. RigidBody added
+        // via the inspector's Add Component, never through CreatePhysicsBodies) explicit rather
+        // than relying on that guard.
+        if (rigidBody.bodyHandle.IsValid()) {
+            physics->DestroyBody(rigidBody.bodyHandle);
+        }
+
+        RigidBodyDesc desc{};
+        desc.collider.halfExtents = collider.halfExtents;
+        desc.motionType    = rigidBody.motionType;
+        desc.position       = transform.position;
+        desc.rotationEuler  = transform.rotation;
+
+        rigidBody.bodyHandle = physics->CreateBody(desc);
     }
 
     void Scene::SyncPhysicsTransforms(IPhysics* physics) {

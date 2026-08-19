@@ -10,12 +10,8 @@ namespace Osiris {
     class IAudio;
     class IScripting;
 
-    // Debug-only ImGui panel: lists every entity in a Scene and lets you inspect/edit/add/remove
-    // whichever known component types it has. Self-contained — the caller only needs to keep one
-    // of these around and call Draw() once per frame; no drawing logic belongs at the call site.
-    // physics/audio/scripting are needed only so Remove can destroy the live backend resource a
-    // RigidBody/AudioSource/Script component owns (Jolt body/OpenAL source/Lua instance) instead
-    // of orphaning it — pass whatever Engine::GetPhysics()/GetAudio()/GetScripting() return.
+    // Debug-only ImGui panel: entity list + inspect/edit/add/remove components. physics/audio/
+    // scripting let Remove destroy the live backend resource instead of orphaning it.
     class SceneInspectorPanel {
     public:
         void Draw(Scene& scene, IPhysics* physics, IAudio* audio, IScripting* scripting);

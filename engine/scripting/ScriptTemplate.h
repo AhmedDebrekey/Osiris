@@ -4,9 +4,7 @@
 #include <string>
 
 namespace Osiris {
-    // Writes a fresh OnStart/OnUpdate/OnFixedUpdate stub to scriptPath if no file exists there
-    // yet — called whenever a ScriptComponent is set up, so an entity always has something
-    // loadable instead of erroring on a missing file. Never overwrites an existing script.
+    // Writes a fresh OnStart/OnUpdate/OnFixedUpdate stub if scriptPath doesn't exist yet.
     void CreateScriptFileIfMissing(const std::string& scriptPath);
 }
 

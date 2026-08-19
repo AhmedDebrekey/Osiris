@@ -12,22 +12,15 @@
 
 namespace Osiris {
     namespace {
-        // Draws drawFn's fields inside a CollapsingHeader plus a "Remove" button, but only if the
-        // entity actually has component T. Each component type gets one call here — adding a new
-        // one to the panel means adding a line, not touching a hardcoded switch/if-chain. Returns
-        // true the one frame "Remove" is clicked; the caller (not this helper) is responsible for
-        // actually removing the component, since some component types need backend cleanup first
-        // (see DrawComponents' RigidBody/AudioSource/Script call sites).
+        // Draws drawFn's fields plus a "Remove" button, only if the entity has component T.
+        // Returns true the frame "Remove" is clicked — caller does the actual removal, since
+        // some component types need backend cleanup first.
         template<typename T, typename DrawFn>
         bool DrawComponentSection(Entity entity, const char* label, DrawFn&& drawFn) {
             if (!entity.HasComponent<T>()) return false;
             ImGui::PushID(label);
 
-            // AllowOverlap is required — CollapsingHeader's hit-rect otherwise spans the entire
-            // row width, so the Remove button drawn via SameLine() on the same row never
-            // receives the click; the header just toggles instead. (Renamed from
-            // ImGuiTreeNodeFlags_AllowItemOverlap in ImGui 1.89.7 — this repo tracks the docking
-            // branch, which is past that rename.)
+            // AllowOverlap: without it CollapsingHeader's hit-rect eats the Remove button's click.
             bool open = ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
             ImGui::SameLine();
             bool remove = ImGui::SmallButton("Remove");
@@ -79,9 +72,7 @@ namespace Osiris {
     }
 
     void SceneInspectorPanel::DrawComponents(Entity entity, IPhysics* physics, IAudio* audio, IScripting* scripting) {
-        // Tag/Transform aren't offered Remove — Scene::CreateEntity guarantees every entity has
-        // both, and other code leans on that (e.g. DrawEntityList's Tag lookup, Scene::Render's
-        // Transform+Mesh+Material view). DrawComponentSection's return value is ignored here.
+        // Tag/Transform aren't offered Remove — every entity is guaranteed to have both.
         DrawComponentSection<TagComponent>(entity, "Tag", [](TagComponent& tag) {
             char buffer[256] = {};
             strncpy_s(buffer, tag.name.c_str(), sizeof(buffer) - 1);
@@ -147,14 +138,35 @@ namespace Osiris {
             ImGui::Text("Body handle: %s", rigidBody.bodyHandle.IsValid() ? "valid" : "invalid");
             ImGui::TextDisabled("Changing motion type rebuilds the live Jolt body (destroy +\nrecreate) — needs a Collider on this entity too.");
         })) {
-            // The component only owns a live Jolt body if it made it through
-            // Scene::CreatePhysicsBodies (or a prior RebuildPhysicsBody) — one added via
-            // "Add Component" mid-session and never edited since never did.
             PhysicsBodyHandle bodyHandle = entity.GetComponent<RigidBodyComponent>().bodyHandle;
             if (bodyHandle.IsValid()) physics->DestroyBody(bodyHandle);
             entity.RemoveComponent<RigidBodyComponent>();
         } else if (motionTypeChanged) {
             entity.GetScene()->RebuildPhysicsBody(entity, physics);
+        }
+
+        if (DrawComponentSection<CameraComponent>(entity, "Camera", [](CameraComponent& cam) {
+            ImGui::DragFloat("Eye Height", &cam.eyeHeight, 0.05f, 0.0f, 5.0f);
+            ImGui::Checkbox("Primary", &cam.isPrimary);
+            ImGui::TextDisabled("Play mode's camera follows the primary Camera entity\n(Scene::FindCameraEntity) — position + eyeHeight above it.\nIf more than one is marked primary, first-found wins.");
+        })) {
+            entity.RemoveComponent<CameraComponent>();
+        }
+
+        bool characterChanged = false;
+        if (DrawComponentSection<CharacterComponent>(entity, "Character", [&](CharacterComponent& character) {
+            if (ImGui::DragFloat("Radius", &character.radius, 0.01f, 0.05f, 2.0f)) characterChanged = true;
+            if (ImGui::DragFloat("Height", &character.height, 0.05f, 0.1f, 5.0f)) characterChanged = true;
+            if (ImGui::DragFloat("Max Slope Angle", &character.maxSlopeAngleDeg, 0.5f, 0.0f, 89.0f)) characterChanged = true;
+            if (ImGui::DragFloat("Mass", &character.mass, 1.0f, 1.0f, 500.0f)) characterChanged = true;
+            ImGui::Text("Character handle: %s", character.characterHandle.IsValid() ? "valid" : "invalid");
+            ImGui::TextDisabled("Editing these rebuilds the live Jolt character (destroy +\nrecreate), same as Collider/Rigid Body.");
+        })) {
+            CharacterHandle characterHandle = entity.GetComponent<CharacterComponent>().characterHandle;
+            if (characterHandle.IsValid()) physics->DestroyCharacter(characterHandle);
+            entity.RemoveComponent<CharacterComponent>();
+        } else if (characterChanged) {
+            entity.GetScene()->RebuildCharacter(entity, physics);
         }
 
         if (DrawComponentSection<AudioSourceComponent>(entity, "Audio Source", [](AudioSourceComponent& audioSrc) {
@@ -200,9 +212,7 @@ namespace Osiris {
         if (ImGui::BeginPopup("AddComponentPopup")) {
             bool anyOffered = false;
 
-            // Tag/Transform are added automatically by Scene::CreateEntity, so every entity
-            // already has them. Mesh/Material aren't offered — they need real GPU resources
-            // (asset loading), not a sensible default a button click could construct.
+            // Tag/Transform always present. Mesh/Material need real GPU resources, not offered.
             if (!entity.HasComponent<SpotLightComponent>()) {
                 anyOffered = true;
                 if (ImGui::MenuItem("Spot Light")) entity.AddComponent<SpotLightComponent>();
@@ -214,6 +224,14 @@ namespace Osiris {
             if (!entity.HasComponent<RigidBodyComponent>()) {
                 anyOffered = true;
                 if (ImGui::MenuItem("Rigid Body")) entity.AddComponent<RigidBodyComponent>();
+            }
+            if (!entity.HasComponent<CameraComponent>()) {
+                anyOffered = true;
+                if (ImGui::MenuItem("Camera")) entity.AddComponent<CameraComponent>();
+            }
+            if (!entity.HasComponent<CharacterComponent>()) {
+                anyOffered = true;
+                if (ImGui::MenuItem("Character")) entity.AddComponent<CharacterComponent>();
             }
             if (!entity.HasComponent<AudioSourceComponent>()) {
                 anyOffered = true;
@@ -230,11 +248,9 @@ namespace Osiris {
 
             ImGui::Separator();
             ImGui::TextDisabled(
-                "Collider + Rigid Body get a live Jolt body once both are\n"
-                "present and a field on either is edited afterward (that\n"
-                "rebuilds it). Audio Source/Script still need a fresh\n"
-                "Scene::CreateX pass — adding one here mid-session updates\n"
-                "the component data only.");
+                "Collider + Rigid Body get a live body once both are present\n"
+                "and edited. Character/Audio Source/Script need a fresh\n"
+                "scene setup pass. Camera is just a marker, no setup needed.");
 
             ImGui::EndPopup();
         }

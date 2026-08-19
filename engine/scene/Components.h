@@ -46,23 +46,18 @@ namespace Osiris {
         bool castsShadow    = true;
     };
 
-    // Box shape only for now — extend once a second concrete shape (sphere/capsule
-    // props) actually needs it. Half-extents match BoxColliderDesc's units (meters).
+    // Box shape only for now. Half-extents match BoxColliderDesc's units (meters).
     struct ColliderComponent {
         glm::vec3 halfExtents = {0.5f, 0.5f, 0.5f};
     };
 
-    // Paired with ColliderComponent; split into two components (rather than one) to mirror
-    // the existing MeshComponent/MaterialComponent split. Scene::CreatePhysicsBodies fills in
-    // bodyHandle from the entity's TransformComponent + ColliderComponent at scene setup time.
+    // Paired with ColliderComponent; Scene::CreatePhysicsBodies fills in bodyHandle.
     struct RigidBodyComponent {
         BodyMotionType    motionType = BodyMotionType::Static;
         PhysicsBodyHandle bodyHandle;
     };
 
-    // Position comes from the entity's TransformComponent (same pattern as SpotLightComponent
-    // not storing its own position). Scene::CreateAudioSources fills in sourceHandle at scene
-    // setup time; Scene::SyncAudioSources keeps the live OpenAL source's position current.
+    // Position comes from the entity's TransformComponent, same as SpotLightComponent.
     struct AudioSourceComponent {
         AudioBufferHandle clip;
         float gain              = 1.0f;
@@ -75,13 +70,26 @@ namespace Osiris {
         AudioSourceHandle sourceHandle;
     };
 
-    // Attaches Lua behavior to an entity. Scene::CreateScriptInstances loads scriptPath (writing
-    // a fresh OnStart/OnUpdate/OnFixedUpdate stub there first if the file doesn't exist yet) and
-    // fills in instanceHandle at scene setup time — same pattern as RigidBodyComponent/
-    // AudioSourceComponent's bodyHandle/sourceHandle.
+    // Attaches Lua behavior to an entity. Scene::CreateScriptInstances loads scriptPath, writing
+    // a fresh OnStart/OnUpdate/OnFixedUpdate stub if the file doesn't exist yet.
     struct ScriptComponent {
         std::string scriptPath;
         ScriptInstanceHandle instanceHandle;
+    };
+
+    // Marks an entity Play mode's camera can follow. Scene::FindCameraEntity() prefers isPrimary=true.
+    struct CameraComponent {
+        float eyeHeight  = 1.5f;
+        bool  isPrimary  = true;
+    };
+
+    // Gives this entity a Jolt CharacterVirtual (Scene::CreateCharacters), distinct from RigidBodyComponent.
+    struct CharacterComponent {
+        float radius           = 0.3f;
+        float height            = 1.8f; // capsule cylinder height, excluding the two hemispherical caps
+        float maxSlopeAngleDeg = 45.0f;
+        float mass              = 70.0f;
+        CharacterHandle characterHandle;
     };
 }
 

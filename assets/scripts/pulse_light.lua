@@ -1,7 +1,4 @@
--- Cross-entity manipulation test: this script lives on its own "ScriptController" entity
--- (no mesh, just Tag+Transform) and reaches into a *different* entity's SpotLightComponent
--- every frame via scene:FindEntityByName — proves a script can grab a handle to another
--- entity and manipulate its components, not just its own.
+-- Pulses SpotLight_Accent's intensity, reached via scene:FindEntityByName.
 
 local t = 0
 

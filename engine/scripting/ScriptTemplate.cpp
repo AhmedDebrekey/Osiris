@@ -7,6 +7,7 @@
 
 namespace Osiris {
     namespace {
+        // Keep in sync with docs/scripting_api.html's "Auto-generated template" example.
         constexpr const char* kTemplate =
             "function OnStart()\n"
             "end\n"

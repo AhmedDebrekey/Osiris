@@ -5,6 +5,7 @@
 #ifndef OSIRIS_SCENE_H
 #define OSIRIS_SCENE_H
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <entt/entt.hpp>
 #include "Entity.h"
@@ -28,36 +29,50 @@ namespace Osiris {
         void Render(IRHI* rhi, const Camera& camera);
         void RenderShadows(IRHI* rhi);
 
-        // Spawns a physics body for every entity that has both a ColliderComponent and a
-        // RigidBodyComponent — call once after the scene's entities are set up.
+        // Spawns a physics body for every entity with both ColliderComponent and RigidBodyComponent.
         void CreatePhysicsBodies(IPhysics* physics);
 
-        // Destroys (if valid) and recreates a single entity's physics body from its current
-        // Transform/Collider/RigidBody values. Jolt has no in-place "resize this body's shape" or
-        // "change this body's motion type" — destroy-and-recreate is the direct fix, not a
-        // shortcut. No-op if the entity is missing either ColliderComponent or RigidBodyComponent.
-        // CreatePhysicsBodies itself is just this called once per matching entity; SceneInspector
-        // Panel calls it again whenever the user edits ColliderComponent::halfExtents or
-        // RigidBodyComponent::motionType so the live body actually reflects the edit.
+        // Destroys (if valid) and recreates one entity's physics body — Jolt has no in-place
+        // shape/motion-type change. CreatePhysicsBodies is this called once per matching entity.
         void RebuildPhysicsBody(Entity entity, IPhysics* physics);
 
-        // Writes each Dynamic/Kinematic body's live position + rotation back into
-        // TransformComponent — call once per frame, after IPhysics::Update(). Static bodies
-        // never move, so they're skipped.
+        // Writes each non-Static body's live position + rotation back into TransformComponent.
         void SyncPhysicsTransforms(IPhysics* physics);
 
-        // Creates a live OpenAL source for every entity with a TransformComponent +
-        // AudioSourceComponent — call once after the scene's entities are set up. Auto-plays
-        // any source with autoPlay=true.
+        // Creates a live OpenAL source per AudioSourceComponent entity; auto-plays if autoPlay=true.
         void CreateAudioSources(IAudio* audio);
 
         // Keeps each audio source's 3D position current — call once per frame.
         void SyncAudioSources(IAudio* audio);
 
-        // Creates a script instance for every entity with a ScriptComponent — call once after
-        // the scene's entities are set up. Per-frame OnUpdate/OnFixedUpdate dispatch happens
-        // directly through IScripting::Update/FixedUpdate (same as IPhysics::Update), not here.
+        // Starts every autoPlay=true source — call when Play mode starts.
+        void PlayAutoPlayAudioSources(IAudio* audio);
+
+        // Stops every source unconditionally — call when Play mode ends.
+        void StopAllAudioSources(IAudio* audio);
+
+        // Creates a script instance per ScriptComponent entity.
         void CreateScriptInstances(IScripting* scripting);
+
+        // Spawns a Jolt CharacterVirtual per CharacterComponent entity.
+        void CreateCharacters(IPhysics* physics);
+
+        // Destroys (if valid) and recreates one entity's character — CharacterComponent's
+        // equivalent of RebuildPhysicsBody.
+        void RebuildCharacter(Entity entity, IPhysics* physics);
+
+        // Writes each character's live position back into TransformComponent.
+        void SyncCharacterTransforms(IPhysics* physics);
+
+        // Play mode snapshot/restore — Transform only, not a full scene undo.
+        void CapturePlaySnapshot();
+        void RestorePlaySnapshot(IPhysics* physics);
+
+        // Destroys and recreates every script instance, so OnStart reruns fresh each Play session.
+        void ResetScriptInstances(IScripting* scripting);
+
+        // The entity Play mode's camera follows (prefers isPrimary=true), or an invalid Entity.
+        Entity FindCameraEntity();
 
         std::vector<SpotLightRenderData> GatherSpotLights(const glm::vec3& cameraPosition);
 
@@ -73,6 +88,9 @@ namespace Osiris {
 
         uint32_t m_DrawCallCount;
         uint32_t m_CulledCount;
+
+        // Play mode snapshot — see CapturePlaySnapshot/RestorePlaySnapshot.
+        std::unordered_map<entt::entity, TransformComponent> m_PlaySnapshot;
     };
     template<typename T, typename... Args>
     T& Entity::AddComponent(Args&&... args) {

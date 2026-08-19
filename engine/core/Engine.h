@@ -32,6 +32,10 @@ namespace Osiris {
 
         bool IsRunning() const { return m_IsRunning; }
 
+        // Edit mode (default) vs Play mode — main.cpp gates behavior on this.
+        bool IsPlaying() const { return m_IsPlaying; }
+        void TogglePlaying() { m_IsPlaying = !m_IsPlaying; }
+
         void BeginFrame();
         void EndFrame() const;
 
@@ -41,6 +45,7 @@ namespace Osiris {
         void Render();
         void Present();
         bool m_IsRunning = true;
+        bool m_IsPlaying = false;
 
         Window m_Window;
 

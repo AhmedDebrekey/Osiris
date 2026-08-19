@@ -38,8 +38,7 @@ namespace Osiris {
         std::vector<ScriptInstance> m_Instances;
         float m_Accumulator = 0.0f;
 
-        // Engine-wide singletons, bound once as true Lua globals in Init() (not per-instance
-        // like self/scene, which genuinely differ per script) — see BindAPI().
+        // Engine-wide singletons, bound as true Lua globals in Init() — see BindAPI().
         IPhysics* m_Physics = nullptr;
         IAudio*   m_Audio   = nullptr;
         Input*    m_Input   = nullptr;

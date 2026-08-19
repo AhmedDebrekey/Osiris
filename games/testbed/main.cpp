@@ -27,17 +27,14 @@ int main() {
         return -1;
     }
 
-    // Phase 7A checkpoint: a minimal cube-only scene to test static colliders + the character
-    // controller in isolation, without Sponza/DamagedHelmet's mesh weight in the way. Flip this
-    // back to false to restore the full room scene below.
+    // true = minimal physics test scene; false = full Sponza/DamagedHelmet room.
     constexpr bool kPhysicsTestScene = true;
 
     TextureHandle greyTexture = Osiris::TextureLoader::LoadFromFile(
         Osiris::AssetManager::GetPath("textures/grey.png"), engine.GetRHI());
     MaterialHandle greyMaterial = engine.GetRHI()->CreateMaterial({.albedo = greyTexture});
 
-    // IBL environment (Phase 6D). One-shot: builds the environment cubemap
-    // once at startup, not part of the per-frame loop.
+    // IBL environment — built once at startup, not part of the per-frame loop.
     Osiris::HDRImageData environmentHDR = Osiris::TextureLoader::LoadHDR(
         Osiris::AssetManager::GetPath("hdr/EveningRoad.hdr"));
     if (!environmentHDR.pixels.empty()) {
@@ -47,7 +44,7 @@ int main() {
             static_cast<uint32_t>(environmentHDR.height));
     }
 
-    // Audio (Phase 7B). Drop a test file at assets/audio/test.wav before building.
+    // Drop a test file at assets/audio/test.wav before building.
     Osiris::PCMAudioData testAudio = Osiris::AudioLoader::LoadWAV(
         Osiris::AssetManager::GetPath("audio/test.wav"));
     Osiris::AudioBufferHandle testSoundBuffer;
@@ -57,9 +54,7 @@ int main() {
 
     Osiris::Scene scene;
 
-    // Phase 7B checkpoint 2: a looping 3D emitter positioned away from the player's spawn, so
-    // walking toward/away from it is an easy way to hear distance attenuation/panning working.
-    // 'P' toggles it on/off during testing.
+    // Looping 3D emitter; 'P' or Lua ('E') toggles it during testing.
     Osiris::Entity audioTestEntity;
     if (testSoundBuffer.IsValid()) {
         audioTestEntity = scene.CreateEntity("AudioTest_Emitter");
@@ -72,23 +67,20 @@ int main() {
         audioSrc.referenceDistance = 1.5f;
         audioSrc.maxDistance       = 15.0f;
 
-        // Scripting checkpoint 2: proves the input/audio globals by toggling this same emitter
-        // from Lua (press E) instead of the hardcoded 'P' key below.
         audioTestEntity.AddComponent<Osiris::ScriptComponent>().scriptPath =
             Osiris::AssetManager::GetPath("scripts/audio_trigger.lua");
     }
 
 
-    // Player character (Phase 7A). Feet start a little above the ground box so it's visibly
-    // dropped and settled by gravity/collision on the first few frames, not just spawned resting.
-    Osiris::CharacterHandle playerCharacter;
-    constexpr float kPlayerEyeHeight = 1.5f;
+    // Feet start above the ground box so it visibly drops and settles on the first few frames.
+    Osiris::Entity player;
     if (kPhysicsTestScene) {
-        playerCharacter = engine.GetPhysics()->CreateCharacter({
-            .radius = 0.3f,
-            .height = 1.6f,
-            .position = glm::vec3(0.0f, 1.0f, 3.0f),
-        });
+        player = scene.CreateEntity("Player");
+        player.GetComponent<Osiris::TransformComponent>().position = glm::vec3(0.0f, 1.0f, 3.0f);
+        player.AddComponent<Osiris::CameraComponent>().eyeHeight = 1.5f;
+        auto& character = player.AddComponent<Osiris::CharacterComponent>();
+        character.radius = 0.3f;
+        character.height = 1.6f;
     }
 
     if (kPhysicsTestScene) {
@@ -117,8 +109,6 @@ int main() {
             obstacle.AddComponent<Osiris::ColliderComponent>(obstacles[i].halfExtents);
             obstacle.AddComponent<Osiris::RigidBodyComponent>(Osiris::BodyMotionType::Static);
 
-            // Scripting checkpoint 1: attach a self-manipulating script to the first obstacle to
-            // prove out OnStart/OnUpdate/OnFixedUpdate + live TransformComponent mutation from Lua.
             if (i == 0) {
                 obstacle.AddComponent<Osiris::ScriptComponent>().scriptPath =
                     Osiris::AssetManager::GetPath("scripts/spin_cube.lua");
@@ -218,7 +208,10 @@ int main() {
     }
 
     scene.CreatePhysicsBodies(engine.GetPhysics());
+    scene.CreateCharacters(engine.GetPhysics());
     scene.CreateAudioSources(engine.GetAudio());
+    // Engine starts in Edit mode — silence whatever CreateAudioSources just autoplayed.
+    scene.StopAllAudioSources(engine.GetAudio());
 
     // Spotlights: TransformComponent + SpotLightComponent.
     Osiris::Entity spotLight1 = scene.CreateEntity("SpotLight_Ceiling");
@@ -247,8 +240,7 @@ int main() {
     spotLight3Comp.range        = 5.0f;
     spotLight3Comp.castsShadow  = false; // demonstrates a non-shadow-casting spot light
 
-    // Scripting checkpoint 1: a headless (no mesh) controller entity whose script reaches into
-    // SpotLight_Accent above via scene:FindEntityByName — proves cross-entity component access.
+    // Headless controller entity whose script drives SpotLight_Accent via scene:FindEntityByName.
     Osiris::Entity scriptController = scene.CreateEntity("ScriptController");
     scriptController.AddComponent<Osiris::ScriptComponent>().scriptPath =
         Osiris::AssetManager::GetPath("scripts/pulse_light.lua");
@@ -275,7 +267,19 @@ int main() {
 
         engine.BeginFrame();
 
-        if (audioTestEntity.IsValid() && engine.GetInput()->IsKeyPressed(SDL_SCANCODE_P)) {
+        if (engine.GetInput()->IsKeyPressed(SDL_SCANCODE_F5)) {
+            if (engine.IsPlaying()) {
+                scene.RestorePlaySnapshot(engine.GetPhysics());
+                scene.StopAllAudioSources(engine.GetAudio());
+            } else {
+                scene.CapturePlaySnapshot();
+                scene.ResetScriptInstances(engine.GetScripting());
+                scene.PlayAutoPlayAudioSources(engine.GetAudio());
+            }
+            engine.TogglePlaying();
+        }
+
+        if (engine.IsPlaying() && audioTestEntity.IsValid() && engine.GetInput()->IsKeyPressed(SDL_SCANCODE_P)) {
             auto& audioSrc = audioTestEntity.GetComponent<Osiris::AudioSourceComponent>();
             if (engine.GetAudio()->IsSourcePlaying(audioSrc.sourceHandle)) {
                 engine.GetAudio()->StopSource(audioSrc.sourceHandle);
@@ -284,7 +288,12 @@ int main() {
             }
         }
 
-        if (kPhysicsTestScene) {
+        // Camera follows whatever Scene::FindCameraEntity() returns, not kPhysicsTestScene —
+        // only relevant while actually Playing.
+        Osiris::Entity cameraEntity = engine.IsPlaying() ? scene.FindCameraEntity() : Osiris::Entity{};
+        const bool characterControlled = cameraEntity.IsValid() && cameraEntity.HasComponent<Osiris::CharacterComponent>();
+
+        if (characterControlled) {
             // Mouse-look only — WASD drives the character controller's velocity below,
             // not the camera's own free-fly movement.
             camera.Update(*engine.GetInput(), deltaTime, false);
@@ -301,21 +310,29 @@ int main() {
             if (glm::length(desiredVelocity) > 0.0f) desiredVelocity = glm::normalize(desiredVelocity) * kWalkSpeed;
 
             bool jump = engine.GetInput()->IsKeyPressed(SDL_SCANCODE_SPACE);
-            engine.GetPhysics()->SetCharacterDesiredVelocity(playerCharacter, desiredVelocity, jump);
-            engine.GetPhysics()->Update(deltaTime);
-            scene.SyncPhysicsTransforms(engine.GetPhysics());
-
-            glm::vec3 feet = engine.GetPhysics()->GetCharacterPosition(playerCharacter);
-            camera.SetPosition(feet + glm::vec3(0.0f, kPlayerEyeHeight, 0.0f));
+            auto& character = cameraEntity.GetComponent<Osiris::CharacterComponent>();
+            engine.GetPhysics()->SetCharacterDesiredVelocity(character.characterHandle, desiredVelocity, jump);
         } else {
             camera.Update(*engine.GetInput(), deltaTime);
         }
 
+        if (engine.IsPlaying()) {
+            engine.GetPhysics()->Update(deltaTime);
+            scene.SyncPhysicsTransforms(engine.GetPhysics());
+            scene.SyncCharacterTransforms(engine.GetPhysics());
+
+            if (cameraEntity.IsValid()) {
+                float eyeHeight = cameraEntity.GetComponent<Osiris::CameraComponent>().eyeHeight;
+                camera.SetPosition(cameraEntity.GetComponent<Osiris::TransformComponent>().position + glm::vec3(0.0f, eyeHeight, 0.0f));
+            }
+        }
+
         // Scripting: OnUpdate every frame, OnFixedUpdate on its own internal 60Hz accumulator —
-        // run after physics/transform sync so scripts see up-to-date positions, and before the
-        // spotlight gather/render below so e.g. pulse_light's intensity change lands this frame.
-        engine.GetScripting()->Update(deltaTime);
-        engine.GetScripting()->FixedUpdate(deltaTime);
+        // run after physics/transform sync so scripts see up-to-date positions.
+        if (engine.IsPlaying()) {
+            engine.GetScripting()->Update(deltaTime);
+            engine.GetScripting()->FixedUpdate(deltaTime);
+        }
 
         // Listener tracks whichever camera is actually driving the view, in either scene mode.
         engine.GetAudio()->SetListenerTransform(camera.GetPosition(), camera.GetFront(), glm::vec3(0.0f, 1.0f, 0.0f));
@@ -354,73 +371,76 @@ int main() {
         engine.GetRHI()->BeginForwardPass();
         scene.Render(engine.GetRHI(), camera);
 
-        // ImGui
-        ImGui::Begin("Osiris Engine");
-        ImGui::Text("FPS: %.1f", deltaTime > 0.0f ? 1.0f / deltaTime : 0.0f);
-        ImGui::Text("Frame time: %.3f ms", deltaTime * 1000.0f);
-        ImGui::Separator();
-        ImGui::Text("Camera: %.2f %.2f %.2f",
-            camera.GetPosition().x, camera.GetPosition().y, camera.GetPosition().z);
-        ImGui::SliderFloat("Camera Speed", &camera.GetSpeed(), 0.1f, 20.0f);
-        ImGui::Separator();
-
-        if (kPhysicsTestScene) {
-            glm::vec3 feet = engine.GetPhysics()->GetCharacterPosition(playerCharacter);
-            ImGui::Text("Character feet: %.2f %.2f %.2f", feet.x, feet.y, feet.z);
-            ImGui::Text("Grounded: %s", engine.GetPhysics()->IsCharacterGrounded(playerCharacter) ? "yes" : "no");
-            ImGui::Text("WASD to move, Space to jump, mouse (RMB held) to look");
+        // All ImGui hidden in Play mode (Phase 8G).
+        if (!engine.IsPlaying()) {
+            ImGui::Begin("Osiris Engine");
+            ImGui::Text("FPS: %.1f", deltaTime > 0.0f ? 1.0f / deltaTime : 0.0f);
+            ImGui::Text("Frame time: %.3f ms", deltaTime * 1000.0f);
             ImGui::Separator();
-        }
-        ImGui::Text("Draw calls: %d", scene.GetDrawCallCount());
-        ImGui::Text("Culled: %d", scene.GetCulledCount());
-        ImGui::Separator();
+            ImGui::Text("Camera: %.2f %.2f %.2f",
+                camera.GetPosition().x, camera.GetPosition().y, camera.GetPosition().z);
+            ImGui::SliderFloat("Camera Speed", &camera.GetSpeed(), 0.1f, 20.0f);
+            ImGui::Separator();
 
-        auto& light = engine.GetRHI()->GetDirectionalLight();
-        ImGui::SliderFloat3("Light Direction", &light.direction.x, -1.0f, 1.0f);
-        light.direction = glm::normalize(light.direction);
-        if (glm::abs(light.direction.y) > 0.999f) {
-            light.direction.y = glm::sign(light.direction.y) * 0.999f;
-            light.direction = glm::normalize(light.direction);
-        }
-        ImGui::ColorEdit3("Light Color", &light.color.x);
-        ImGui::SliderFloat("Light Intensity", &light.intensity, 0.0f, 5.0f);
-        ImGui::Separator();
-
-        ImGui::SliderFloat("Environment Exposure", &engine.GetRHI()->GetEnvironmentExposure(),
-            0.001f, 4.0f, "%.4f", ImGuiSliderFlags_Logarithmic);
-
-        ImGui::Separator();
-        int activeShadowCasters = 0;
-        for (const auto& sl : activeSpotLights) {
-            if (sl.shadowIndex >= 0) activeShadowCasters++;
-        }
-        ImGui::Separator();
-
-        auto& shadowSettings = engine.GetRHI()->GetShadowSettings();
-        ImGui::SliderFloat("Shadow Near", &shadowSettings.nearClip, 0.01f, 5.0f);
-        ImGui::SliderFloat("Shadow Far", &shadowSettings.farClip, 5.0f, 50.0f);
-        ImGui::SliderFloat("Cascade Lambda", &shadowSettings.cascadeSplitLambda, 0.0f, 1.0f);
-        ImGui::Separator();
-
-        ImGui::Checkbox("Debug: Light View", &debugLightView);
-        if (debugLightView) {
-            ImGui::SliderInt("Cascade", &debugCascade, 0, 2);
-        }
-
-        if (ImGui::CollapsingHeader("Shadow Debug")) {
-            for (int cascade = 0; cascade < 3; cascade++) {
-                glm::mat4 m = engine.GetRHI()->GetLightSpaceMatrix(cascade);
-                ImGui::Text("Cascade %d Light Space Matrix:", cascade);
-                for (int row = 0; row < 4; row++) {
-                    ImGui::Text("%.3f %.3f %.3f %.3f",
-                        m[0][row], m[1][row], m[2][row], m[3][row]);
-                }
+            if (kPhysicsTestScene && player.IsValid() && player.HasComponent<Osiris::CharacterComponent>()) {
+                auto& character = player.GetComponent<Osiris::CharacterComponent>();
+                glm::vec3 feet = player.GetComponent<Osiris::TransformComponent>().position;
+                ImGui::Text("Character feet: %.2f %.2f %.2f", feet.x, feet.y, feet.z);
+                ImGui::Text("Grounded: %s", engine.GetPhysics()->IsCharacterGrounded(character.characterHandle) ? "yes" : "no");
+                ImGui::Text("WASD to move, Space to jump, mouse (RMB held) to look");
                 ImGui::Separator();
             }
-        }
-        ImGui::End();
+            ImGui::Text("Draw calls: %d", scene.GetDrawCallCount());
+            ImGui::Text("Culled: %d", scene.GetCulledCount());
+            ImGui::Separator();
 
-        sceneInspector.Draw(scene, engine.GetPhysics(), engine.GetAudio(), engine.GetScripting());
+            auto& light = engine.GetRHI()->GetDirectionalLight();
+            ImGui::SliderFloat3("Light Direction", &light.direction.x, -1.0f, 1.0f);
+            light.direction = glm::normalize(light.direction);
+            if (glm::abs(light.direction.y) > 0.999f) {
+                light.direction.y = glm::sign(light.direction.y) * 0.999f;
+                light.direction = glm::normalize(light.direction);
+            }
+            ImGui::ColorEdit3("Light Color", &light.color.x);
+            ImGui::SliderFloat("Light Intensity", &light.intensity, 0.0f, 5.0f);
+            ImGui::Separator();
+
+            ImGui::SliderFloat("Environment Exposure", &engine.GetRHI()->GetEnvironmentExposure(),
+                0.001f, 4.0f, "%.4f", ImGuiSliderFlags_Logarithmic);
+
+            ImGui::Separator();
+            int activeShadowCasters = 0;
+            for (const auto& sl : activeSpotLights) {
+                if (sl.shadowIndex >= 0) activeShadowCasters++;
+            }
+            ImGui::Separator();
+
+            auto& shadowSettings = engine.GetRHI()->GetShadowSettings();
+            ImGui::SliderFloat("Shadow Near", &shadowSettings.nearClip, 0.01f, 5.0f);
+            ImGui::SliderFloat("Shadow Far", &shadowSettings.farClip, 5.0f, 50.0f);
+            ImGui::SliderFloat("Cascade Lambda", &shadowSettings.cascadeSplitLambda, 0.0f, 1.0f);
+            ImGui::Separator();
+
+            ImGui::Checkbox("Debug: Light View", &debugLightView);
+            if (debugLightView) {
+                ImGui::SliderInt("Cascade", &debugCascade, 0, 2);
+            }
+
+            if (ImGui::CollapsingHeader("Shadow Debug")) {
+                for (int cascade = 0; cascade < 3; cascade++) {
+                    glm::mat4 m = engine.GetRHI()->GetLightSpaceMatrix(cascade);
+                    ImGui::Text("Cascade %d Light Space Matrix:", cascade);
+                    for (int row = 0; row < 4; row++) {
+                        ImGui::Text("%.3f %.3f %.3f %.3f",
+                            m[0][row], m[1][row], m[2][row], m[3][row]);
+                    }
+                    ImGui::Separator();
+                }
+            }
+            ImGui::End();
+
+            sceneInspector.Draw(scene, engine.GetPhysics(), engine.GetAudio(), engine.GetScripting());
+        }
 
         engine.GetRHI()->RenderImGui();
         engine.EndFrame();

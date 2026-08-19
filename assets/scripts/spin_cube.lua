@@ -1,6 +1,4 @@
--- Self-manipulation test: rotates the entity this script is attached to.
--- Proves OnStart/OnUpdate/OnFixedUpdate all run and that self:GetTransform()
--- returns a live reference back into the entity's own TransformComponent.
+-- Spins the entity this script is attached to.
 
 function OnStart()
     print("spin_cube: started on " .. self:GetTag().name)

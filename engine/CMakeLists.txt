@@ -61,9 +61,7 @@ target_compile_definitions(OsirisEngine PUBLIC
         SOL_ALL_SAFETIES_ON=1
 )
 
-# sol2's new_usertype<> calls expand into enough template instantiation that MSVC's default
-# object-file format runs out of sections in scripting/lua/LuaScripting.cpp (C1128) — /bigobj
-# raises that limit. MSVC-only flag, harmless to apply PRIVATE regardless of who else links this.
+# sol2's new_usertype<> calls hit MSVC's object-file section limit (C1128) without this.
 if (MSVC)
     target_compile_options(OsirisEngine PRIVATE /bigobj)
 endif()

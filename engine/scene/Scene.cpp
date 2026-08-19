@@ -151,10 +151,6 @@ namespace Osiris {
         auto& collider   = entity.GetComponent<ColliderComponent>();
         auto& rigidBody  = entity.GetComponent<RigidBodyComponent>();
 
-        // Destroying an invalid handle would be a no-op guard failure inside JoltPhysics anyway,
-        // but checking here makes the "first body for this entity" case (e.g. RigidBody added
-        // via the inspector's Add Component, never through CreatePhysicsBodies) explicit rather
-        // than relying on that guard.
         if (rigidBody.bodyHandle.IsValid()) {
             physics->DestroyBody(rigidBody.bodyHandle);
         }
@@ -210,6 +206,26 @@ namespace Osiris {
         }
     }
 
+    void Scene::PlayAutoPlayAudioSources(IAudio* audio) {
+        const auto view = m_Registry.view<AudioSourceComponent>();
+        for (auto entity : view) {
+            auto& audioSrc = view.get<AudioSourceComponent>(entity);
+            if (audioSrc.autoPlay && audioSrc.sourceHandle.IsValid()) {
+                audio->PlaySource(audioSrc.sourceHandle);
+            }
+        }
+    }
+
+    void Scene::StopAllAudioSources(IAudio* audio) {
+        const auto view = m_Registry.view<AudioSourceComponent>();
+        for (auto entity : view) {
+            auto& audioSrc = view.get<AudioSourceComponent>(entity);
+            if (audioSrc.sourceHandle.IsValid()) {
+                audio->StopSource(audioSrc.sourceHandle);
+            }
+        }
+    }
+
     void Scene::CreateScriptInstances(IScripting* scripting) {
         const auto view = m_Registry.view<ScriptComponent>();
         for (auto entity : view) {
@@ -217,6 +233,101 @@ namespace Osiris {
             CreateScriptFileIfMissing(script.scriptPath);
             script.instanceHandle = scripting->CreateInstance(Entity(entity, this), script.scriptPath);
         }
+    }
+
+    void Scene::CreateCharacters(IPhysics* physics) {
+        const auto view = m_Registry.view<TransformComponent, CharacterComponent>();
+        for (auto entityHandle : view) {
+            RebuildCharacter(Entity(entityHandle, this), physics);
+        }
+    }
+
+    void Scene::RebuildCharacter(Entity entity, IPhysics* physics) {
+        if (!entity.HasComponent<CharacterComponent>()) return;
+
+        auto& transform = entity.GetComponent<TransformComponent>();
+        auto& character = entity.GetComponent<CharacterComponent>();
+
+        if (character.characterHandle.IsValid()) {
+            physics->DestroyCharacter(character.characterHandle);
+        }
+
+        CharacterDesc desc{};
+        desc.radius           = character.radius;
+        desc.height            = character.height;
+        desc.maxSlopeAngleDeg  = character.maxSlopeAngleDeg;
+        desc.mass              = character.mass;
+        desc.position          = transform.position;
+
+        character.characterHandle = physics->CreateCharacter(desc);
+    }
+
+    void Scene::SyncCharacterTransforms(IPhysics* physics) {
+        const auto view = m_Registry.view<TransformComponent, CharacterComponent>();
+        for (auto entity : view) {
+            auto& transform = view.get<TransformComponent>(entity);
+            auto& character = view.get<CharacterComponent>(entity);
+            if (!character.characterHandle.IsValid()) continue;
+
+            transform.position = physics->GetCharacterPosition(character.characterHandle);
+        }
+    }
+
+    void Scene::CapturePlaySnapshot() {
+        m_PlaySnapshot.clear();
+
+        // Static bodies never move, so there's nothing to restore for them.
+        const auto rbView = m_Registry.view<TransformComponent, RigidBodyComponent>();
+        for (auto entity : rbView) {
+            if (rbView.get<RigidBodyComponent>(entity).motionType == BodyMotionType::Static) continue;
+            m_PlaySnapshot[entity] = rbView.get<TransformComponent>(entity);
+        }
+
+        const auto charView = m_Registry.view<TransformComponent, CharacterComponent>();
+        for (auto entity : charView) {
+            m_PlaySnapshot[entity] = charView.get<TransformComponent>(entity);
+        }
+    }
+
+    void Scene::RestorePlaySnapshot(IPhysics* physics) {
+        for (auto& [entityHandle, transform] : m_PlaySnapshot) {
+            if (!m_Registry.valid(entityHandle) || !m_Registry.all_of<TransformComponent>(entityHandle)) continue;
+
+            m_Registry.get<TransformComponent>(entityHandle) = transform;
+
+            Entity entity(entityHandle, this);
+            if (entity.HasComponent<RigidBodyComponent>()) {
+                RebuildPhysicsBody(entity, physics);
+            }
+            if (entity.HasComponent<CharacterComponent>()) {
+                RebuildCharacter(entity, physics);
+            }
+        }
+        m_PlaySnapshot.clear();
+    }
+
+    void Scene::ResetScriptInstances(IScripting* scripting) {
+        const auto view = m_Registry.view<ScriptComponent>();
+        for (auto entity : view) {
+            auto& script = view.get<ScriptComponent>(entity);
+            if (script.instanceHandle.IsValid()) {
+                scripting->DestroyInstance(script.instanceHandle);
+            }
+        }
+        CreateScriptInstances(scripting);
+    }
+
+    Entity Scene::FindCameraEntity() {
+        auto view = m_Registry.view<CameraComponent>();
+        entt::entity firstFound = entt::null;
+        for (auto entity : view) {
+            if (firstFound == entt::null) firstFound = entity;
+            if (view.get<CameraComponent>(entity).isPrimary) {
+                return Entity(entity, this);
+            }
+        }
+        if (firstFound != entt::null) return Entity(firstFound, this);
+        return Entity{};
     }
 
     int Scene::GetEntityCount() {

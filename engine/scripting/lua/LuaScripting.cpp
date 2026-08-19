@@ -8,10 +8,7 @@
 #include "platform/Input.h"
 
 namespace {
-    // Same slot-reuse pattern as VulkanRHI's AllocateSlot / JoltPhysics' and OpenALAudio's local
-    // copies — duplicated locally rather than shared since it's a five-line helper (see
-    // OpenALAudio.cpp's comment). Takes by value + moves into the slot since ScriptInstance owns
-    // a std::string and several sol2 handles, unlike the trivially-copyable slot types elsewhere.
+    // Same slot-reuse pattern as OpenALAudio/JoltPhysics, duplicated locally (see OpenALAudio.cpp).
     template<typename T>
     uint32_t AllocateSlot(std::vector<T>& slots, T item, auto isNull) {
         for (uint32_t i = 0; i < slots.size(); i++) {
@@ -24,9 +21,7 @@ namespace {
         return static_cast<uint32_t>(slots.size() - 1);
     }
 
-    // Same fixed cadence as JoltPhysics::kFixedTimeStep (JoltPhysics.cpp) — kept as an
-    // independent constant here rather than shared across modules, matching this project's
-    // established small-local-duplication-over-cross-module-coupling convention.
+    // Same cadence as JoltPhysics::kFixedTimeStep, kept independent per the project's convention.
     constexpr float kFixedTimeStep = 1.0f / 60.0f;
 }
 
@@ -39,8 +34,6 @@ namespace Osiris {
         m_Lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::string, sol::lib::table, sol::lib::os);
         BindAPI();
 
-        // Engine-wide singletons — true Lua globals (not per-environment like self/scene),
-        // since every script instance shares the same physics/audio/input systems.
         m_Lua["physics"] = m_Physics;
         m_Lua["audio"]   = m_Audio;
         m_Lua["input"]   = m_Input;
@@ -67,7 +60,7 @@ namespace Osiris {
 
         m_Lua.new_usertype<TransformComponent>("Transform",
             "position",    &TransformComponent::position,
-            "rotation",    &TransformComponent::rotation, // euler degrees, same convention as C++
+            "rotation",    &TransformComponent::rotation, // euler degrees
             "scale",       &TransformComponent::scale,
             "GetForward",  &TransformComponent::GetForward);
 
@@ -83,9 +76,7 @@ namespace Osiris {
             "enabled",     &SpotLightComponent::enabled,
             "castsShadow", &SpotLightComponent::castsShadow);
 
-        // Box only, same as the C++ side — see ColliderComponent's own comment. Editing
-        // halfExtents from a script doesn't resize the live Jolt body (same caveat as the
-        // scene inspector's editor); only meaningful before Scene::CreatePhysicsBodies runs.
+        // Editing halfExtents alone doesn't resize the live Jolt body — use entity:SetColliderHalfExtents.
         m_Lua.new_usertype<ColliderComponent>("Collider",
             "halfExtents", &ColliderComponent::halfExtents);
 
@@ -94,17 +85,11 @@ namespace Osiris {
             "Kinematic", BodyMotionType::Kinematic,
             "Dynamic",   BodyMotionType::Dynamic);
 
-        // Just IsValid() — these handles exist so a script can pull one off a component
-        // (RigidBodyComponent.bodyHandle, AudioSourceComponent.clip/sourceHandle) and pass it
-        // straight to the physics/audio globals below (physics:GetBodyPosition(handle), etc).
         m_Lua.new_usertype<PhysicsBodyHandle>("PhysicsBodyHandle", "IsValid", &PhysicsBodyHandle::IsValid);
         m_Lua.new_usertype<CharacterHandle>("CharacterHandle", "IsValid", &CharacterHandle::IsValid);
         m_Lua.new_usertype<AudioBufferHandle>("AudioBufferHandle", "IsValid", &AudioBufferHandle::IsValid);
         m_Lua.new_usertype<AudioSourceHandle>("AudioSourceHandle", "IsValid", &AudioSourceHandle::IsValid);
 
-        // Desc structs for the physics global's CreateBody/CreateCharacter below — default
-        // constructible with the same defaults as the C++ side (PhysicsTypes.h), so a script
-        // only has to set the fields it cares about.
         m_Lua.new_usertype<BoxColliderDesc>("BoxColliderDesc",
             sol::constructors<BoxColliderDesc()>(),
             "halfExtents", &BoxColliderDesc::halfExtents);
@@ -124,19 +109,12 @@ namespace Osiris {
             "mass",            &CharacterDesc::mass,
             "position",        &CharacterDesc::position);
 
-        // motionType is read/write, but — same caveat as ColliderComponent — the live Jolt body
-        // was already created with whatever motion type it had at Scene::CreatePhysicsBodies
-        // time; changing it here doesn't re-type the body. bodyHandle is read-only informational
-        // unless you pass it into the physics global below (e.g. physics:GetBodyPosition(handle)).
+        // Changing motionType alone doesn't re-type the live Jolt body — use entity:SetRigidBodyMotionType.
         m_Lua.new_usertype<RigidBodyComponent>("RigidBody",
             "motionType", &RigidBodyComponent::motionType,
             "bodyHandle", &RigidBodyComponent::bodyHandle);
 
-        // Playback parameters are read/write here, but only take effect if you also call the
-        // matching audio: function below (e.g. set gain then audio:PlaySource(source.sourceHandle)
-        // — this component alone doesn't push changes to the live OpenAL source, Scene::
-        // SyncAudioSources only keeps position current). clip/sourceHandle are what you pass
-        // into audio:PlaySound/PlaySource/StopSource/IsSourcePlaying.
+        // Fields don't push to the live OpenAL source on their own — call the matching audio: function.
         m_Lua.new_usertype<AudioSourceComponent>("AudioSource",
             "clip",              &AudioSourceComponent::clip,
             "gain",              &AudioSourceComponent::gain,
@@ -158,10 +136,19 @@ namespace Osiris {
             "maxDistance",       &AudioSourceDesc::maxDistance,
             "rolloffFactor",     &AudioSourceDesc::rolloffFactor);
 
-        // Each accessor binds a specific template instantiation directly (e.g.
-        // &Entity::GetComponent<TransformComponent>) — the same function the C++ side calls,
-        // not a separate reflection layer. GetX returns a live reference into the ECS storage,
-        // so `entity:GetTransform().position = vec3.new(...)` mutates the real component.
+        m_Lua.new_usertype<CameraComponent>("Camera",
+            "eyeHeight", &CameraComponent::eyeHeight,
+            "isPrimary", &CameraComponent::isPrimary);
+
+        // Editing fields alone doesn't recreate the live Jolt character (no rebuild helper bound yet).
+        m_Lua.new_usertype<CharacterComponent>("Character",
+            "radius",           &CharacterComponent::radius,
+            "height",           &CharacterComponent::height,
+            "maxSlopeAngleDeg", &CharacterComponent::maxSlopeAngleDeg,
+            "mass",             &CharacterComponent::mass,
+            "characterHandle",  &CharacterComponent::characterHandle);
+
+        // Each accessor binds a specific template instantiation directly, not a reflection layer.
         m_Lua.new_usertype<Entity>("Entity",
             "IsValid", &Entity::IsValid,
 
@@ -182,21 +169,36 @@ namespace Osiris {
             "GetRigidBody", &Entity::GetComponent<RigidBodyComponent>,
             "HasRigidBody", &Entity::HasComponent<RigidBodyComponent>,
 
-            "GetAudioSource", &Entity::GetComponent<AudioSourceComponent>,
-            "HasAudioSource", &Entity::HasComponent<AudioSourceComponent>);
+            // Field assignment can't trigger a rebuild on its own — these do what
+            // Scene::RebuildPhysicsBody does in C++ (set + destroy/recreate) in one call.
+            "SetColliderHalfExtents", [this](Entity& entity, glm::vec3 halfExtents) {
+                if (!entity.HasComponent<ColliderComponent>()) return;
+                entity.GetComponent<ColliderComponent>().halfExtents = halfExtents;
+                entity.GetScene()->RebuildPhysicsBody(entity, m_Physics);
+            },
+            "SetRigidBodyMotionType", [this](Entity& entity, BodyMotionType motionType) {
+                if (!entity.HasComponent<RigidBodyComponent>()) return;
+                entity.GetComponent<RigidBodyComponent>().motionType = motionType;
+                entity.GetScene()->RebuildPhysicsBody(entity, m_Physics);
+            },
 
-        // Lets a script reach entities other than its own `self` — e.g.
-        // `scene:FindEntityByName("Door"):GetTransform()`. CreateEntity is exposed too, but a
-        // script-spawned entity only ever gets what Scene::CreateEntity itself gives it
-        // (Tag+Transform) — it has no mesh/physics body/audio source, since those are created
-        // once from Scene::CreateXXX passes at scene setup, before scripts run.
+            "GetAudioSource", &Entity::GetComponent<AudioSourceComponent>,
+            "HasAudioSource", &Entity::HasComponent<AudioSourceComponent>,
+
+            "GetCamera", &Entity::GetComponent<CameraComponent>,
+            "HasCamera", &Entity::HasComponent<CameraComponent>,
+            "AddCamera", &Entity::AddComponent<CameraComponent>,
+
+            // No AddCharacter — needs a Scene::CreateCharacters pass to get a live body.
+            "GetCharacter", &Entity::GetComponent<CharacterComponent>,
+            "HasCharacter", &Entity::HasComponent<CharacterComponent>);
+
+        // Script-created entities only get Tag+Transform — no mesh/body/source until scene setup.
         m_Lua.new_usertype<Scene>("Scene",
             "FindEntityByName", &Scene::FindEntityByName,
-            "CreateEntity",     &Scene::CreateEntity);
+            "CreateEntity",     &Scene::CreateEntity,
+            "FindCameraEntity", &Scene::FindCameraEntity);
 
-        // Bound wholesale — the same interface engine/scene and games/testbed call, minus
-        // Init/Shutdown/Update which are engine-internal lifecycle, not gameplay. Set as a true
-        // Lua global (not per-instance) in Init(), since every script shares the one IPhysics.
         m_Lua.new_usertype<IPhysics>("IPhysics",
             "CreateBody",  &IPhysics::CreateBody,
             "DestroyBody", &IPhysics::DestroyBody,
@@ -208,9 +210,7 @@ namespace Osiris {
             "GetCharacterPosition",        &IPhysics::GetCharacterPosition,
             "IsCharacterGrounded",         &IPhysics::IsCharacterGrounded);
 
-        // CreateBuffer/DestroyBuffer are deliberately not bound — they take raw decoded PCM
-        // bytes, which scripts have no legitimate way to construct (that's AudioLoader's job in
-        // C++). Everything else scripts can reasonably drive is here.
+        // CreateBuffer/DestroyBuffer not bound — raw PCM bytes, no legitimate way to construct from Lua.
         m_Lua.new_usertype<IAudio>("IAudio",
             "PlaySound",   &IAudio::PlaySound,
             "CreateSource",  &IAudio::CreateSource,
@@ -221,8 +221,7 @@ namespace Osiris {
             "IsSourcePlaying", &IAudio::IsSourcePlaying,
             "SetListenerTransform", &IAudio::SetListenerTransform);
 
-        // IsKeyHeld/IsKeyPressed take SDL_Scancode, which Lua has no direct concept of — wrapped
-        // as plain-int overloads so a script passes a number from the Key table below instead.
+        // Wrapped to take a plain int — Lua has no SDL_Scancode concept; pass a Key table value.
         m_Lua.new_usertype<Input>("Input",
             "IsKeyHeld",    [](Input& input, int key) { return input.IsKeyHeld(static_cast<SDL_Scancode>(key)); },
             "IsKeyPressed", [](Input& input, int key) { return input.IsKeyPressed(static_cast<SDL_Scancode>(key)); },
@@ -230,7 +229,6 @@ namespace Osiris {
             "GetMousePosition", &Input::GetMousePosition,
             "IsMouseButtonHeld", &Input::IsMouseButtonHeld);
 
-        // A modest starter set, not the full SDL_Scancode table — extend as scripts need more.
         sol::table keyTable = m_Lua.create_table();
         keyTable["W"] = SDL_SCANCODE_W;
         keyTable["A"] = SDL_SCANCODE_A;
@@ -256,8 +254,7 @@ namespace Osiris {
         mouseButtonTable["Middle"] = SDL_BUTTON_MIDDLE;
         m_Lua["MouseButton"] = mouseButtonTable;
 
-        // Routed through spdlog (the same sink as engine logs) rather than raw stdout, so
-        // script output doesn't get lost in a windowed build.
+        // Routed through spdlog so script output doesn't get lost in a windowed build.
         sol::function tostring = m_Lua["tostring"];
         m_Lua.set_function("print", [tostring](sol::variadic_args args) {
             std::string line;
@@ -275,8 +272,7 @@ namespace Osiris {
             return ScriptInstanceHandle{};
         }
 
-        // Each instance gets its own environment (falls back to the shared globals for lookups)
-        // so two entities' scripts can both define OnUpdate without clobbering each other.
+        // Own environment per instance so two entities' scripts don't clobber each other's OnUpdate.
         sol::environment env(m_Lua, sol::create, m_Lua.globals());
         env["self"]  = entity;
         env["scene"] = entity.GetScene();
@@ -288,10 +284,6 @@ namespace Osiris {
             return ScriptInstanceHandle{};
         }
 
-        // Standard sol2 "optional callback" idiom: assigning a table entry directly into a
-        // protected_function works whether or not the entry exists — .valid() reports false
-        // for a missing/non-function OnStart/OnUpdate/OnFixedUpdate rather than throwing, so a
-        // script that only defines some of the three lifecycle functions is still fine.
         ScriptInstance instance;
         instance.entity        = entity;
         instance.scriptPath    = scriptPath;

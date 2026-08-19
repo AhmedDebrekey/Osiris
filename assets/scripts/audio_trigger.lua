@@ -1,6 +1,4 @@
--- Checkpoint 2 test: proves the input/audio globals and self:GetAudioSource() all work
--- together. Press E to toggle this entity's own looping emitter on/off — an alternative,
--- script-driven path to the same thing the hardcoded 'P' key does in main.cpp.
+-- Press E to toggle this entity's own looping emitter on/off.
 
 function OnStart()
     print("audio_trigger: press E to toggle " .. self:GetTag().name)

@@ -44,6 +44,10 @@ add_library(OsirisEngine STATIC
         audio/openal/OpenALAudio.cpp
         assets/AudioLoader.h
         assets/AudioLoader.cpp
+        assets/AssetCatalog.h
+        assets/AssetCatalog.cpp
+        editor/AssetBrowserPanel.h
+        editor/AssetBrowserPanel.cpp
         scripting/ScriptTypes.h
         scripting/IScripting.h
         scripting/ScriptTemplate.h

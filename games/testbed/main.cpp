@@ -10,6 +10,7 @@
 #include "scene/Scene.h"
 #include "physics/IPhysics.h"
 #include "editor/SceneInspectorPanel.h"
+#include "editor/AssetBrowserPanel.h"
 #include "audio/IAudio.h"
 #include "assets/AudioLoader.h"
 
@@ -248,6 +249,7 @@ int main() {
     );
 
     Osiris::SceneInspectorPanel sceneInspector;
+    Osiris::AssetBrowserPanel assetBrowser;
 
     uint64_t lastCounter = SDL_GetPerformanceCounter();
     const double frequency = static_cast<double>(SDL_GetPerformanceFrequency());
@@ -286,6 +288,7 @@ int main() {
             if (viewportTexture != 0) {
                 ImGui::Image(viewportTexture,
                     ImVec2(static_cast<float>(viewportWidth), static_cast<float>(viewportHeight)));
+                assetBrowser.DrawViewportDropTarget(scene, camera, engine.GetRHI());
             }
             viewportHovered = ImGui::IsWindowHovered();
             ImGui::End();
@@ -386,6 +389,8 @@ int main() {
 
         // All ImGui hidden in Play mode (Phase 8G).
         if (!engine.IsPlaying()) {
+            assetBrowser.Draw(scene, camera, engine.GetRHI());
+
             ImGui::Begin("Stats");
             ImGui::Text("FPS: %.1f", deltaTime > 0.0f ? 1.0f / deltaTime : 0.0f);
             ImGui::Text("Frame time: %.3f ms", deltaTime * 1000.0f);

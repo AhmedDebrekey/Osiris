@@ -81,6 +81,7 @@ target_link_libraries(OsirisEngine PUBLIC
     spdlog::spdlog
     nlohmann_json::nlohmann_json
     imgui
+    imguizmo
     Jolt
     OpenAL::OpenAL
     liblua

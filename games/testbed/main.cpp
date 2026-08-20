@@ -15,9 +15,13 @@
 #include "audio/IAudio.h"
 #include "assets/AudioLoader.h"
 
+#include <cmath>
 #include <iostream>
+#include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include "imgui.h"
+#include "ImGuizmo.h"
 #include "renderer/Light.h"
 
 int main() {
@@ -266,12 +270,18 @@ int main() {
         lastCounter = currentCounter;
 
         engine.BeginFrame();
+        ImGuizmo::BeginFrame();
 
         if (engine.GetInput()->IsKeyPressed(SDL_SCANCODE_F5)) {
             if (engine.IsPlaying()) {
                 scene.RestorePlaySnapshot(engine.GetPhysics());
                 scene.StopAllAudioSources(engine.GetAudio());
             } else {
+                // Edit-mode Transform edits (gizmo, Inspector) never touch the live physics body/
+                // character, only TransformComponent — rebuild both from the current Transform so
+                // Play doesn't start from whatever pose they were created/last-simulated at.
+                scene.CreatePhysicsBodies(engine.GetPhysics());
+                scene.CreateCharacters(engine.GetPhysics());
                 scene.CapturePlaySnapshot();
                 scene.ResetScriptInstances(engine.GetScripting());
                 scene.PlayAutoPlayAudioSources(engine.GetAudio());
@@ -288,17 +298,81 @@ int main() {
 
             ImGui::DockSpaceOverViewport();
             ImGui::Begin("Viewport");
+            static ImGuizmo::OPERATION gizmoOperation = ImGuizmo::TRANSLATE;
+            if (ImGui::RadioButton("Translate", gizmoOperation == ImGuizmo::TRANSLATE)) {
+                gizmoOperation = ImGuizmo::TRANSLATE;
+            }
+            ImGui::SameLine();
+            if (ImGui::RadioButton("Rotate", gizmoOperation == ImGuizmo::ROTATE)) {
+                gizmoOperation = ImGuizmo::ROTATE;
+            }
+            ImGui::SameLine();
+            if (ImGui::RadioButton("Scale", gizmoOperation == ImGuizmo::SCALE)) {
+                gizmoOperation = ImGuizmo::SCALE;
+            }
             const ImVec2 viewportSize = ImGui::GetContentRegionAvail();
             const uint32_t viewportWidth = static_cast<uint32_t>(glm::max(viewportSize.x, 1.0f));
             const uint32_t viewportHeight = static_cast<uint32_t>(glm::max(viewportSize.y, 1.0f));
             engine.SetEditorViewportSize(viewportWidth, viewportHeight);
+            viewportHovered = ImGui::IsWindowHovered();
+            camera.Update(*engine.GetInput(), deltaTime, true, viewportHovered);
+            engine.UpdateCameraAspect(camera);
             const uint64_t viewportTexture = engine.GetEditorViewportTextureID();
             if (viewportTexture != 0) {
                 ImGui::Image(viewportTexture,
                     ImVec2(static_cast<float>(viewportWidth), static_cast<float>(viewportHeight)));
+                const ImVec2 viewportMin = ImGui::GetItemRectMin();
+                const ImVec2 viewportMax = ImGui::GetItemRectMax();
+                ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
+                ImGuizmo::SetRect(viewportMin.x, viewportMin.y,
+                    viewportMax.x - viewportMin.x, viewportMax.y - viewportMin.y);
+                const entt::entity selectedHandle = sceneInspector.GetSelectedEntity();
+                if (selectedHandle != entt::null) {
+                    Osiris::Entity selectedEntity(selectedHandle, &scene);
+                    if (selectedEntity.HasComponent<Osiris::TransformComponent>()) {
+                        auto& transform = selectedEntity.GetComponent<Osiris::TransformComponent>();
+                        glm::mat4 model = transform.GetModelMatrix();
+                        const glm::mat4 view = camera.GetViewMatrix();
+                        glm::mat4 projection = camera.GetProjectionMatrix();
+                        // ImGuizmo applies the screen-space Y flip itself.
+                        projection[1][1] *= -1.0f;
+                        const ImGuizmo::MODE gizmoMode = gizmoOperation == ImGuizmo::TRANSLATE
+                            ? ImGuizmo::WORLD : ImGuizmo::LOCAL;
+                        if (ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection),
+                            gizmoOperation, gizmoMode, glm::value_ptr(model))) {
+                            const glm::vec3 previousRotation = transform.rotation;
+                            glm::vec3 ignoredRotation;
+                            ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(model),
+                                &transform.position.x, &ignoredRotation.x, &transform.scale.x);
+
+                            // ImGuizmo decomposes Rz*Ry*Rx, while TransformComponent uses Rx*Ry*Rz.
+                            glm::mat3 rotationMatrix(model);
+                            rotationMatrix[0] = glm::normalize(rotationMatrix[0]);
+                            rotationMatrix[1] = glm::normalize(rotationMatrix[1]);
+                            rotationMatrix[2] = glm::normalize(rotationMatrix[2]);
+                            const float ry = std::asin(glm::clamp(rotationMatrix[2][0], -1.0f, 1.0f));
+                            const float rx = std::atan2(-rotationMatrix[2][1], rotationMatrix[2][2]);
+                            const float rz = std::atan2(-rotationMatrix[1][0], rotationMatrix[0][0]);
+
+                            auto unwrapDegrees = [](float angle, float reference) {
+                                return reference + std::remainder(angle - reference, 360.0f);
+                            };
+                            glm::vec3 primary = glm::degrees(glm::vec3(rx, ry, rz));
+                            glm::vec3 alternate = glm::degrees(glm::vec3(
+                                rx + glm::pi<float>(), glm::pi<float>() - ry, rz + glm::pi<float>()));
+                            for (int axis = 0; axis < 3; ++axis) {
+                                primary[axis] = unwrapDegrees(primary[axis], previousRotation[axis]);
+                                alternate[axis] = unwrapDegrees(alternate[axis], previousRotation[axis]);
+                            }
+                            const glm::vec3 primaryDelta = primary - previousRotation;
+                            const glm::vec3 alternateDelta = alternate - previousRotation;
+                            transform.rotation = glm::dot(primaryDelta, primaryDelta)
+                                <= glm::dot(alternateDelta, alternateDelta) ? primary : alternate;
+                        }
+                    }
+                }
                 assetBrowser.DrawViewportDropTarget(scene, camera, engine.GetRHI());
             }
-            viewportHovered = ImGui::IsWindowHovered();
             ImGui::End();
         }
 
@@ -335,7 +409,7 @@ int main() {
             bool jump = engine.GetInput()->IsKeyPressed(SDL_SCANCODE_SPACE);
             auto& character = cameraEntity.GetComponent<Osiris::CharacterComponent>();
             engine.GetPhysics()->SetCharacterDesiredVelocity(character.characterHandle, desiredVelocity, jump);
-        } else {
+        } else if (engine.IsPlaying()) {
             camera.Update(*engine.GetInput(), deltaTime, true, engine.IsPlaying() || viewportHovered);
         }
 
@@ -361,7 +435,8 @@ int main() {
         engine.GetAudio()->SetListenerTransform(camera.GetPosition(), camera.GetFront(), glm::vec3(0.0f, 1.0f, 0.0f));
         scene.SyncAudioSources(engine.GetAudio());
 
-        engine.UpdateCameraAspect(camera);
+        // Edit mode already did this once above, before the gizmo needed it this frame.
+        if (engine.IsPlaying()) engine.UpdateCameraAspect(camera);
 
         auto activeSpotLights = scene.GatherSpotLights(camera.GetPosition());
         engine.GetRHI()->UpdateSpotLights(activeSpotLights);

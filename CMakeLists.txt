@@ -97,6 +97,17 @@ target_include_directories(imgui PUBLIC
 target_link_libraries(imgui PUBLIC SDL2::SDL2 Vulkan::Vulkan)
 
 # ------------------------------------------------------------
+# ImGuizmo — Transform gizmos
+# ------------------------------------------------------------
+FetchContent_Declare(
+    imguizmo
+    GIT_REPOSITORY https://github.com/CedricGuillemet/ImGuizmo.git
+    GIT_TAG        18cef5e031d8c6973d80284c67f60549fafd78c1
+)
+FetchContent_MakeAvailable(imguizmo)
+target_link_libraries(imguizmo PUBLIC imgui)
+
+# ------------------------------------------------------------
 # Vulkan — must be installed on system
 # ------------------------------------------------------------
 find_package(Vulkan REQUIRED)

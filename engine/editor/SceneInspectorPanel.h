@@ -16,6 +16,8 @@ namespace Osiris {
     public:
         void Draw(Scene& scene, IPhysics* physics, IAudio* audio, IScripting* scripting);
 
+        entt::entity GetSelectedEntity() const { return m_SelectedEntity; }
+
         // Call after Scene::Clear (or any other bulk teardown) — the previously-selected handle
         // may now be stale or, worse, silently point at an unrelated recycled entity.
         void ClearSelection() { m_SelectedEntity = entt::null; }

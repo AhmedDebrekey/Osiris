@@ -37,6 +37,10 @@ namespace Osiris {
         // too rather than reimplementing the load-and-spawn loop a third time.
         std::vector<Entity> SpawnModel(const std::string& name, const std::string& relativePath, IRHI* rhi);
 
+        // Destroys every entity currently in the scene, same per-component teardown as
+        // DestroyEntity, one at a time — used before loading a new scene on top of a running one.
+        void Clear(IPhysics* physics, IAudio* audio, IScripting* scripting);
+
         Entity FindEntityByName(const std::string& name);
         std::vector<Entity> GetAllEntities();
         void Update(float deltaTime);

@@ -60,6 +60,7 @@ namespace Osiris {
     // Position comes from the entity's TransformComponent, same as SpotLightComponent.
     struct AudioSourceComponent {
         AudioBufferHandle clip;
+        std::string clipPath; // relative to AssetManager's root — clip itself has no provenance
         float gain              = 1.0f;
         float pitch             = 1.0f;
         bool  loop               = false;
@@ -90,6 +91,14 @@ namespace Osiris {
         float maxSlopeAngleDeg = 45.0f;
         float mass              = 70.0f;
         CharacterHandle characterHandle;
+    };
+
+    // Records which glTF an entity's Mesh/Material came from — Mesh/MaterialComponent only hold
+    // opaque GPU handles, so without this SceneLoader::Save has no way to write a "mesh" path back
+    // out for anything Scene::SpawnModel created. Attached automatically by SpawnModel; not meant
+    // to be hand-added (there's nothing meaningful to point it at without a real spawn call).
+    struct ModelSourceComponent {
+        std::string relativePath;
     };
 }
 

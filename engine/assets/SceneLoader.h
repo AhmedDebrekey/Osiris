@@ -8,12 +8,26 @@
 #include <string>
 #include "scene/Scene.h"
 #include "rhi/RHI.h"
+#include "audio/IAudio.h"
 
 namespace Osiris {
 
     class SceneLoader {
     public:
-        static void Load(const std::string& path, Scene& scene, IRHI* rhi);
+        // Populates scene from a JSON file — mesh entities go through Scene::SpawnModel (the
+        // same path Lua/the Asset Browser use), everything else is a plain CreateEntity with
+        // whichever component blocks the JSON has. Doesn't create live physics bodies/characters/
+        // audio sources/script instances — call Scene::CreatePhysicsBodies/CreateCharacters/
+        // CreateAudioSources/CreateScriptInstances afterward, same as scene setup already does.
+        static void Load(const std::string& path, Scene& scene, IRHI* rhi, IAudio* audio);
+
+        // Writes scene back out to a JSON file matching Load's format. Entities with a
+        // ModelSourceComponent (i.e. spawned via Scene::SpawnModel) are grouped back into a
+        // single "mesh" entry per spawn call. Entities with a MeshComponent but no
+        // ModelSourceComponent (procedurally-generated meshes — MeshLoader::CreateBox/CreatePlane)
+        // have no source path to write, so their mesh/material is silently skipped; their other
+        // components (Collider, RigidBody, etc.) are still saved.
+        static void Save(const std::string& path, Scene& scene);
     };
 
 } // Osiris

@@ -11,6 +11,7 @@
 #include "physics/IPhysics.h"
 #include "editor/SceneInspectorPanel.h"
 #include "editor/AssetBrowserPanel.h"
+#include "editor/SceneFileMenu.h"
 #include "audio/IAudio.h"
 #include "assets/AudioLoader.h"
 
@@ -62,6 +63,7 @@ int main() {
         audioTestEntity.GetComponent<Osiris::TransformComponent>().position = glm::vec3(0.0f, 1.0f, -2.0f);
         auto& audioSrc = audioTestEntity.AddComponent<Osiris::AudioSourceComponent>();
         audioSrc.clip              = testSoundBuffer;
+        audioSrc.clipPath          = "audio/test.wav";
         audioSrc.loop              = true;
         audioSrc.autoPlay          = true;
         audioSrc.gain              = 0.6f;
@@ -250,6 +252,7 @@ int main() {
 
     Osiris::SceneInspectorPanel sceneInspector;
     Osiris::AssetBrowserPanel assetBrowser;
+    Osiris::SceneFileMenu sceneFileMenu;
 
     uint64_t lastCounter = SDL_GetPerformanceCounter();
     const double frequency = static_cast<double>(SDL_GetPerformanceFrequency());
@@ -278,6 +281,11 @@ int main() {
 
         bool viewportHovered = false;
         if (!engine.IsPlaying()) {
+            if (ImGui::BeginMainMenuBar()) {
+                sceneFileMenu.Draw(scene, engine.GetRHI(), engine.GetPhysics(), engine.GetAudio(), engine.GetScripting(), sceneInspector);
+                ImGui::EndMainMenuBar();
+            }
+
             ImGui::DockSpaceOverViewport();
             ImGui::Begin("Viewport");
             const ImVec2 viewportSize = ImGui::GetContentRegionAvail();

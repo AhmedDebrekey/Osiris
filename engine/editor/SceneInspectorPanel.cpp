@@ -102,6 +102,13 @@ namespace Osiris {
             entity.RemoveComponent<MaterialComponent>();
         }
 
+        if (DrawComponentSection<ModelSourceComponent>(entity, "Model Source", [](ModelSourceComponent& source) {
+            ImGui::Text("Path: %s", source.relativePath.c_str());
+            ImGui::TextDisabled("Read-only — set once by Scene::SpawnModel. This is what\nlets Save Scene write a \"mesh\" path back out for this entity.");
+        })) {
+            entity.RemoveComponent<ModelSourceComponent>();
+        }
+
         if (DrawComponentSection<SpotLightComponent>(entity, "Spot Light", [](SpotLightComponent& light) {
             ImGui::ColorEdit3("Color", &light.color.x);
             ImGui::DragFloat("Intensity", &light.intensity, 0.1f, 0.0f, 100.0f);
@@ -170,6 +177,12 @@ namespace Osiris {
         }
 
         if (DrawComponentSection<AudioSourceComponent>(entity, "Audio Source", [](AudioSourceComponent& audioSrc) {
+            char clipPathBuffer[256] = {};
+            strncpy_s(clipPathBuffer, audioSrc.clipPath.c_str(), sizeof(clipPathBuffer) - 1);
+            if (ImGui::InputText("Clip Path", clipPathBuffer, sizeof(clipPathBuffer))) {
+                audioSrc.clipPath = clipPathBuffer;
+            }
+            ImGui::TextDisabled("Just a label Save Scene writes out — editing it here doesn't\nreload the clip. Set clip/sourceHandle via a fresh scene setup.");
             ImGui::DragFloat("Gain", &audioSrc.gain, 0.01f, 0.0f, 2.0f);
             ImGui::DragFloat("Pitch", &audioSrc.pitch, 0.01f, 0.1f, 4.0f);
             ImGui::Checkbox("Loop", &audioSrc.loop);

@@ -48,6 +48,12 @@ namespace Osiris {
         m_Registry.destroy(entity.GetHandle());
     }
 
+    void Scene::Clear(IPhysics* physics, IAudio* audio, IScripting* scripting) {
+        for (Entity entity : GetAllEntities()) {
+            DestroyEntity(entity, physics, audio, scripting);
+        }
+    }
+
     std::vector<Entity> Scene::SpawnModel(const std::string& name, const std::string& relativePath, IRHI* rhi) {
         std::vector<MeshPrimitive> primitives = MeshLoader::LoadFromGLTF(AssetManager::GetPath(relativePath), rhi);
 
@@ -57,6 +63,7 @@ namespace Osiris {
             Entity entity = CreateEntity(name + "_" + std::to_string(i));
             entity.AddComponent<MeshComponent>(primitives[i].mesh);
             entity.AddComponent<MaterialComponent>(primitives[i].material);
+            entity.AddComponent<ModelSourceComponent>(relativePath);
             entities.push_back(entity);
         }
         return entities;
@@ -220,6 +227,7 @@ namespace Osiris {
         for (auto entity : view) {
             auto& transform = view.get<TransformComponent>(entity);
             auto& audioSrc  = view.get<AudioSourceComponent>(entity);
+            if (!audioSrc.clip.IsValid()) continue; // no clip assigned yet — nothing to create a source from
 
             AudioSourceDesc desc{};
             desc.buffer           = audioSrc.clip;

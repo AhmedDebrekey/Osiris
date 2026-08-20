@@ -9,7 +9,7 @@
 
 namespace Osiris {
     namespace {
-        constexpr const char* kModelAssetPayload = "OSIRIS_MODEL_ASSET";
+        constexpr const char* kAssetEntryPayload = "OSIRIS_MODEL_ASSET";
         constexpr float kSpawnDistance = 3.0f;
     }
 
@@ -24,7 +24,7 @@ namespace Osiris {
             ImGui::TextDisabled("No .gltf models found under assets/models/.");
         }
 
-        for (const ModelAsset& model : m_Models) {
+        for (const AssetEntry& model : m_Models) {
             ImGui::PushID(model.relativePath.c_str());
             ImGui::Selectable(model.name.c_str());
             if (ImGui::IsItemHovered()) {
@@ -35,7 +35,7 @@ namespace Osiris {
             }
             if (ImGui::BeginDragDropSource()) {
                 ImGui::SetDragDropPayload(
-                    kModelAssetPayload,
+                    kAssetEntryPayload,
                     model.relativePath.c_str(),
                     model.relativePath.size() + 1);
                 ImGui::TextUnformatted(model.name.c_str());
@@ -50,9 +50,9 @@ namespace Osiris {
     void AssetBrowserPanel::DrawViewportDropTarget(Scene& scene, const Camera& camera, IRHI* rhi) const {
         if (!ImGui::BeginDragDropTarget()) return;
 
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kModelAssetPayload)) {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kAssetEntryPayload)) {
             const char* relativePath = static_cast<const char*>(payload->Data);
-            const auto model = std::ranges::find(m_Models, relativePath, &ModelAsset::relativePath);
+            const auto model = std::ranges::find(m_Models, relativePath, &AssetEntry::relativePath);
             if (model != m_Models.end()) {
                 SpawnModel(*model, scene, camera, rhi);
             }
@@ -62,7 +62,7 @@ namespace Osiris {
     }
 
     void AssetBrowserPanel::SpawnModel(
-        const ModelAsset& model, Scene& scene, const Camera& camera, IRHI* rhi) {
+        const AssetEntry& model, Scene& scene, const Camera& camera, IRHI* rhi) {
         const glm::vec3 spawnPosition = camera.GetPosition() + camera.GetFront() * kSpawnDistance;
         for (Entity entity : scene.SpawnModel(model.name, model.relativePath, rhi)) {
             entity.GetComponent<TransformComponent>().position = spawnPosition;

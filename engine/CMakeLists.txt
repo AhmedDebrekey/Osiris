@@ -48,6 +48,8 @@ add_library(OsirisEngine STATIC
         assets/AssetCatalog.cpp
         editor/AssetBrowserPanel.h
         editor/AssetBrowserPanel.cpp
+        editor/SceneFileMenu.h
+        editor/SceneFileMenu.cpp
         scripting/ScriptTypes.h
         scripting/IScripting.h
         scripting/ScriptTemplate.h

@@ -17,9 +17,9 @@ namespace Osiris {
         void DrawViewportDropTarget(Scene& scene, const Camera& camera, IRHI* rhi) const;
 
     private:
-        static void SpawnModel(const ModelAsset& model, Scene& scene, const Camera& camera, IRHI* rhi);
+        static void SpawnModel(const AssetEntry& model, Scene& scene, const Camera& camera, IRHI* rhi);
 
-        std::vector<ModelAsset> m_Models;
+        std::vector<AssetEntry> m_Models;
     };
 }
 

@@ -129,6 +129,7 @@ namespace Osiris {
         // Fields don't push to the live OpenAL source on their own — call the matching audio: function.
         m_Lua.new_usertype<AudioSourceComponent>("AudioSource",
             "clip",              &AudioSourceComponent::clip,
+            "clipPath",          &AudioSourceComponent::clipPath,
             "gain",              &AudioSourceComponent::gain,
             "pitch",             &AudioSourceComponent::pitch,
             "loop",              &AudioSourceComponent::loop,
@@ -159,6 +160,11 @@ namespace Osiris {
             "maxSlopeAngleDeg", &CharacterComponent::maxSlopeAngleDeg,
             "mass",             &CharacterComponent::mass,
             "characterHandle",  &CharacterComponent::characterHandle);
+
+        // Attached automatically by Scene::SpawnModel — read-only, no Add (nothing meaningful to
+        // point it at without a real spawn call).
+        m_Lua.new_usertype<ModelSourceComponent>("ModelSource",
+            "relativePath", &ModelSourceComponent::relativePath);
 
         // Each accessor binds a specific template instantiation directly, not a reflection layer.
         m_Lua.new_usertype<Entity>("Entity",
@@ -204,6 +210,9 @@ namespace Osiris {
             // No AddCharacter — needs a Scene::CreateCharacters pass to get a live body.
             "GetCharacter", &Entity::GetComponent<CharacterComponent>,
             "HasCharacter", &Entity::HasComponent<CharacterComponent>,
+
+            "GetModelSource", &Entity::GetComponent<ModelSourceComponent>,
+            "HasModelSource", &Entity::HasComponent<ModelSourceComponent>,
 
             "HasMesh", &Entity::HasComponent<MeshComponent>,
             // Procedural shapes only — same two primitives MeshLoader offers in C++. A script

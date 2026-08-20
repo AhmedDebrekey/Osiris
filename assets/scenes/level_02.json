@@ -1,14 +1,84 @@
 {
   "entities": [
     {
-      "name": "ModelSpawnController",
+      "audioSource": {
+        "autoPlay": true,
+        "clipPath": "audio/test.wav",
+        "gain": 0.6000000238418579,
+        "loop": true,
+        "maxDistance": 15.0,
+        "pitch": 1.0,
+        "referenceDistance": 1.5,
+        "rolloffFactor": 1.0
+      },
+      "name": "AudioTest_Emitter",
       "script": {
-        "path": "assets/scripts/spawn_model.lua"
+        "path": "assets/scripts/audio_trigger.lua"
       },
       "transform": {
         "position": [
           0.0,
+          1.0,
+          -2.0
+        ],
+        "rotation": [
           0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "camera": {
+        "eyeHeight": 1.5,
+        "isPrimary": true
+      },
+      "character": {
+        "height": 1.600000023841858,
+        "mass": 70.0,
+        "maxSlopeAngleDeg": 45.0,
+        "radius": 0.30000001192092896
+      },
+      "name": "Player",
+      "transform": {
+        "position": [
+          0.0,
+          1.0,
+          3.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "collider": {
+        "halfExtents": [
+          10.0,
+          0.5,
+          10.0
+        ]
+      },
+      "name": "Ground",
+      "rigidBody": {
+        "motionType": "Static"
+      },
+      "transform": {
+        "position": [
+          0.0,
+          -0.5,
           0.0
         ],
         "rotation": [
@@ -24,15 +94,25 @@
       }
     },
     {
-      "name": "ScriptController",
+      "collider": {
+        "halfExtents": [
+          0.5,
+          0.5,
+          0.5
+        ]
+      },
+      "name": "Obstacle_0",
+      "rigidBody": {
+        "motionType": "Static"
+      },
       "script": {
-        "path": "assets/scripts/pulse_light.lua"
+        "path": "assets/scripts/spin_cube.lua"
       },
       "transform": {
         "position": [
-          0.0,
-          0.0,
-          0.0
+          -2.0,
+          0.5,
+          -2.0
         ],
         "rotation": [
           0.0,
@@ -47,94 +127,55 @@
       }
     },
     {
-      "name": "SpotLight_Accent",
-      "spotLight": {
-        "castsShadow": false,
-        "color": [
+      "collider": {
+        "halfExtents": [
+          0.75,
+          0.75,
+          0.75
+        ]
+      },
+      "name": "Obstacle_1",
+      "rigidBody": {
+        "motionType": "Static"
+      },
+      "transform": {
+        "position": [
+          2.0,
+          0.75,
+          -1.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "collider": {
+        "halfExtents": [
           1.0,
           0.4000000059604645,
-          0.30000001192092896
-        ],
-        "enabled": true,
-        "innerCone": 12.5,
-        "intensity": 10.0,
-        "outerCone": 17.5,
-        "range": 5.0
-      },
-      "transform": {
-        "position": [
-          1.5,
-          2.9000000953674316,
-          0.5
-        ],
-        "rotation": [
-          0.0,
-          0.0,
-          0.0
-        ],
-        "scale": [
-          1.0,
-          1.0,
-          1.0
+          0.4000000059604645
         ]
-      }
-    },
-    {
-      "name": "SpotLight_Corner",
-      "spotLight": {
-        "castsShadow": true,
-        "color": [
-          0.699999988079071,
-          0.8500000238418579,
-          1.0
-        ],
-        "enabled": true,
-        "innerCone": 12.5,
-        "intensity": 15.0,
-        "outerCone": 17.5,
-        "range": 7.0
+      },
+      "name": "Obstacle_2",
+      "rigidBody": {
+        "motionType": "Static"
       },
       "transform": {
         "position": [
-          4.0,
-          2.9000000953674316,
-          4.0
+          0.0,
+          0.4000000059604645,
+          2.5
         ],
         "rotation": [
           0.0,
-          0.0,
-          20.0
-        ],
-        "scale": [
-          1.0,
-          1.0,
-          1.0
-        ]
-      }
-    },
-    {
-      "name": "SpotLight_Ceiling",
-      "spotLight": {
-        "castsShadow": true,
-        "color": [
-          1.0,
-          0.8999999761581421,
-          0.75
-        ],
-        "enabled": true,
-        "innerCone": 12.5,
-        "intensity": 30.0,
-        "outerCone": 17.5,
-        "range": 10.0
-      },
-      "transform": {
-        "position": [
-          -2.5,
-          5.0,
-          1.5
-        ],
-        "rotation": [
-          25.0,
           0.0,
           0.0
         ],
@@ -153,15 +194,15 @@
           0.3499999940395355
         ]
       },
-      "name": "DropBox_2",
+      "name": "DropBox_0",
       "rigidBody": {
         "motionType": "Dynamic"
       },
       "transform": {
         "position": [
-          -0.20000000298023224,
-          6.0,
-          -0.10000000149011612
+          0.0,
+          4.0,
+          0.0
         ],
         "rotation": [
           0.0,
@@ -213,15 +254,15 @@
           0.3499999940395355
         ]
       },
-      "name": "DropBox_0",
+      "name": "DropBox_2",
       "rigidBody": {
         "motionType": "Dynamic"
       },
       "transform": {
         "position": [
-          0.0,
-          4.0,
-          0.0
+          -0.20000000298023224,
+          6.0,
+          -0.10000000149011612
         ],
         "rotation": [
           0.0,
@@ -236,55 +277,28 @@
       }
     },
     {
-      "collider": {
-        "halfExtents": [
+      "name": "SpotLight_Ceiling",
+      "spotLight": {
+        "castsShadow": true,
+        "color": [
           1.0,
-          0.4000000059604645,
-          0.4000000059604645
-        ]
-      },
-      "name": "Obstacle_2",
-      "rigidBody": {
-        "motionType": "Static"
-      },
-      "transform": {
-        "position": [
-          0.0,
-          0.4000000059604645,
-          2.5
-        ],
-        "rotation": [
-          0.0,
-          0.0,
-          0.0
-        ],
-        "scale": [
-          1.0,
-          1.0,
-          1.0
-        ]
-      }
-    },
-    {
-      "collider": {
-        "halfExtents": [
-          0.75,
-          0.75,
+          0.8999999761581421,
           0.75
-        ]
-      },
-      "name": "Obstacle_1",
-      "rigidBody": {
-        "motionType": "Static"
+        ],
+        "enabled": true,
+        "innerCone": 12.5,
+        "intensity": 30.0,
+        "outerCone": 17.5,
+        "range": 10.0
       },
       "transform": {
         "position": [
-          2.0,
-          0.75,
-          -1.0
+          -2.5,
+          5.0,
+          1.5
         ],
         "rotation": [
-          0.0,
+          25.0,
           0.0,
           0.0
         ],
@@ -296,54 +310,80 @@
       }
     },
     {
-      "collider": {
-        "halfExtents": [
-          0.5,
-          0.5,
+      "name": "SpotLight_Corner",
+      "spotLight": {
+        "castsShadow": true,
+        "color": [
+          0.699999988079071,
+          0.8500000238418579,
+          1.0
+        ],
+        "enabled": true,
+        "innerCone": 12.5,
+        "intensity": 15.0,
+        "outerCone": 17.5,
+        "range": 7.0
+      },
+      "transform": {
+        "position": [
+          4.0,
+          2.9000000953674316,
+          4.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          20.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "name": "SpotLight_Accent",
+      "spotLight": {
+        "castsShadow": false,
+        "color": [
+          1.0,
+          0.4000000059604645,
+          0.30000001192092896
+        ],
+        "enabled": true,
+        "innerCone": 12.5,
+        "intensity": 10.0,
+        "outerCone": 17.5,
+        "range": 5.0
+      },
+      "transform": {
+        "position": [
+          1.5,
+          2.9000000953674316,
           0.5
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
         ]
-      },
-      "name": "Obstacle_0",
-      "rigidBody": {
-        "motionType": "Static"
-      },
+      }
+    },
+    {
+      "name": "ScriptController",
       "script": {
-        "path": "assets/scripts/spin_cube.lua"
-      },
-      "transform": {
-        "position": [
-          -2.0,
-          0.5,
-          -2.0
-        ],
-        "rotation": [
-          0.0,
-          0.0,
-          0.0
-        ],
-        "scale": [
-          1.0,
-          1.0,
-          1.0
-        ]
-      }
-    },
-    {
-      "collider": {
-        "halfExtents": [
-          10.0,
-          0.5,
-          10.0
-        ]
-      },
-      "name": "Ground",
-      "rigidBody": {
-        "motionType": "Static"
+        "path": "assets/scripts/pulse_light.lua"
       },
       "transform": {
         "position": [
           0.0,
-          -0.5,
+          0.0,
           0.0
         ],
         "rotation": [
@@ -359,55 +399,15 @@
       }
     },
     {
-      "camera": {
-        "eyeHeight": 1.5,
-        "isPrimary": true
-      },
-      "character": {
-        "height": 1.600000023841858,
-        "mass": 70.0,
-        "maxSlopeAngleDeg": 45.0,
-        "radius": 0.30000001192092896
-      },
-      "name": "Player",
-      "transform": {
-        "position": [
-          0.0,
-          1.0,
-          3.0
-        ],
-        "rotation": [
-          0.0,
-          0.0,
-          0.0
-        ],
-        "scale": [
-          1.0,
-          1.0,
-          1.0
-        ]
-      }
-    },
-    {
-      "audioSource": {
-        "autoPlay": true,
-        "clipPath": "audio/test.wav",
-        "gain": 0.6000000238418579,
-        "loop": true,
-        "maxDistance": 15.0,
-        "pitch": 1.0,
-        "referenceDistance": 1.5,
-        "rolloffFactor": 1.0
-      },
-      "name": "AudioTest_Emitter",
+      "name": "ModelSpawnController",
       "script": {
-        "path": "assets/scripts/audio_trigger.lua"
+        "path": "assets/scripts/spawn_model.lua"
       },
       "transform": {
         "position": [
           0.0,
-          1.0,
-          -2.0
+          0.0,
+          0.0
         ],
         "rotation": [
           0.0,
@@ -427,8 +427,29 @@
       "transform": {
         "position": [
           -5.547941207885742,
-          4.871617317199707,
+          11.371999740600586,
           6.682620048522949
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "mesh": "models/sponza/Sponza.gltf",
+      "name": "Sponza",
+      "transform": {
+        "position": [
+          -14.28414535522461,
+          7.110657691955566,
+          7.166844367980957
         ],
         "rotation": [
           0.0,

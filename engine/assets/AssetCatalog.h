@@ -5,14 +5,15 @@
 #include <vector>
 
 namespace Osiris {
-    struct ModelAsset {
+    struct AssetEntry {
         std::string name;
         std::string relativePath;
     };
 
     class AssetCatalog {
     public:
-        static std::vector<ModelAsset> ListModels();
+        static std::vector<AssetEntry> ListModels();
+        static std::vector<AssetEntry> ListScenes();
     };
 }
 

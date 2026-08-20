@@ -855,6 +855,104 @@ namespace Osiris {
         }
     }
 
+    // Dark charcoal + warm amber accent, sharp-ish corners — reserves the accent color for actual
+    // selection/active-state feedback (checkmarks, sliders, selected rows, the focused dock tab's
+    // overline) rather than tinting every hover, so it doesn't wash the whole editor orange.
+    void VulkanRHI::ApplyEditorTheme() {
+        ImGuiStyle& style = ImGui::GetStyle();
+
+        style.WindowRounding    = 3.0f;
+        style.ChildRounding     = 3.0f;
+        style.FrameRounding     = 2.0f;
+        style.PopupRounding     = 3.0f;
+        style.ScrollbarRounding = 3.0f;
+        style.GrabRounding      = 2.0f;
+        style.TabRounding       = 2.0f;
+
+        style.WindowBorderSize = 1.0f;
+        style.FrameBorderSize  = 1.0f;
+        style.PopupBorderSize  = 1.0f;
+
+        style.WindowPadding    = ImVec2(8.0f, 8.0f);
+        style.FramePadding     = ImVec2(6.0f, 4.0f);
+        style.ItemSpacing      = ImVec2(6.0f, 6.0f);
+        style.ItemInnerSpacing = ImVec2(6.0f, 4.0f);
+        style.IndentSpacing    = 16.0f;
+        style.ScrollbarSize    = 14.0f;
+        style.GrabMinSize      = 10.0f;
+        style.WindowTitleAlign = ImVec2(0.0f, 0.5f);
+
+        const ImVec4 bgDarkest    = ImVec4(0.07f, 0.07f, 0.075f, 1.00f);
+        const ImVec4 bg           = ImVec4(0.122f, 0.122f, 0.130f, 1.00f);
+        const ImVec4 bgLight      = ImVec4(0.16f, 0.16f, 0.17f, 1.00f);
+        const ImVec4 frameBg      = ImVec4(0.16f, 0.16f, 0.17f, 1.00f);
+        const ImVec4 frameHovered = ImVec4(0.23f, 0.23f, 0.24f, 1.00f);
+        const ImVec4 border       = ImVec4(0.05f, 0.05f, 0.05f, 0.50f);
+        const ImVec4 text         = ImVec4(0.88f, 0.88f, 0.88f, 1.00f);
+        const ImVec4 textDisabled = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
+        const ImVec4 accent       = ImVec4(0.92f, 0.55f, 0.10f, 1.00f);
+        const ImVec4 accentHovered= ImVec4(1.00f, 0.65f, 0.20f, 1.00f);
+
+        ImVec4* colors = style.Colors;
+        colors[ImGuiCol_Text]                  = text;
+        colors[ImGuiCol_TextDisabled]          = textDisabled;
+        colors[ImGuiCol_WindowBg]              = bg;
+        colors[ImGuiCol_ChildBg]               = ImVec4(0, 0, 0, 0);
+        colors[ImGuiCol_PopupBg]               = ImVec4(bgLight.x, bgLight.y, bgLight.z, 0.98f);
+        colors[ImGuiCol_Border]                = border;
+        colors[ImGuiCol_BorderShadow]          = ImVec4(0, 0, 0, 0);
+        colors[ImGuiCol_FrameBg]               = frameBg;
+        colors[ImGuiCol_FrameBgHovered]        = frameHovered;
+        colors[ImGuiCol_FrameBgActive]         = ImVec4(0.30f, 0.24f, 0.16f, 1.00f);
+        colors[ImGuiCol_TitleBg]               = bgDarkest;
+        colors[ImGuiCol_TitleBgActive]         = bgDarkest;
+        colors[ImGuiCol_TitleBgCollapsed]      = ImVec4(bgDarkest.x, bgDarkest.y, bgDarkest.z, 0.75f);
+        colors[ImGuiCol_MenuBarBg]             = ImVec4(0.09f, 0.09f, 0.095f, 1.00f);
+        colors[ImGuiCol_ScrollbarBg]           = ImVec4(0.09f, 0.09f, 0.095f, 1.00f);
+        colors[ImGuiCol_ScrollbarGrab]         = ImVec4(0.25f, 0.25f, 0.26f, 1.00f);
+        colors[ImGuiCol_ScrollbarGrabHovered]  = ImVec4(0.32f, 0.32f, 0.33f, 1.00f);
+        colors[ImGuiCol_ScrollbarGrabActive]   = accent;
+        colors[ImGuiCol_CheckMark]             = accent;
+        colors[ImGuiCol_SliderGrab]            = ImVec4(0.85f, 0.50f, 0.10f, 1.00f);
+        colors[ImGuiCol_SliderGrabActive]      = accentHovered;
+        colors[ImGuiCol_Button]                = ImVec4(0.18f, 0.18f, 0.19f, 1.00f);
+        colors[ImGuiCol_ButtonHovered]         = frameHovered;
+        colors[ImGuiCol_ButtonActive]          = accent;
+        colors[ImGuiCol_Header]                = ImVec4(accent.x, accent.y, accent.z, 0.35f);
+        colors[ImGuiCol_HeaderHovered]         = ImVec4(accent.x, accent.y, accent.z, 0.20f);
+        colors[ImGuiCol_HeaderActive]          = ImVec4(accent.x, accent.y, accent.z, 0.55f);
+        colors[ImGuiCol_Separator]             = border;
+        colors[ImGuiCol_SeparatorHovered]      = ImVec4(accent.x, accent.y, accent.z, 0.50f);
+        colors[ImGuiCol_SeparatorActive]       = accent;
+        colors[ImGuiCol_ResizeGrip]            = ImVec4(0.30f, 0.30f, 0.31f, 0.30f);
+        colors[ImGuiCol_ResizeGripHovered]     = ImVec4(accent.x, accent.y, accent.z, 0.50f);
+        colors[ImGuiCol_ResizeGripActive]      = ImVec4(accent.x, accent.y, accent.z, 0.80f);
+        colors[ImGuiCol_Tab]                   = ImVec4(0.10f, 0.10f, 0.105f, 1.00f);
+        colors[ImGuiCol_TabHovered]            = ImVec4(accent.x, accent.y, accent.z, 0.40f);
+        colors[ImGuiCol_TabSelected]           = bgLight;
+        colors[ImGuiCol_TabSelectedOverline]   = accent;
+        colors[ImGuiCol_TabDimmed]             = ImVec4(0.08f, 0.08f, 0.085f, 1.00f);
+        colors[ImGuiCol_TabDimmedSelected]     = ImVec4(0.12f, 0.12f, 0.13f, 1.00f);
+        colors[ImGuiCol_TabDimmedSelectedOverline] = ImVec4(0.50f, 0.30f, 0.08f, 1.00f);
+        colors[ImGuiCol_DockingPreview]        = ImVec4(accent.x, accent.y, accent.z, 0.40f);
+        colors[ImGuiCol_DockingEmptyBg]        = bgDarkest;
+        colors[ImGuiCol_PlotLines]             = ImVec4(0.60f, 0.60f, 0.60f, 1.00f);
+        colors[ImGuiCol_PlotLinesHovered]      = accent;
+        colors[ImGuiCol_PlotHistogram]         = ImVec4(0.80f, 0.50f, 0.15f, 1.00f);
+        colors[ImGuiCol_PlotHistogramHovered]  = accentHovered;
+        colors[ImGuiCol_TableHeaderBg]         = ImVec4(0.14f, 0.14f, 0.15f, 1.00f);
+        colors[ImGuiCol_TableBorderStrong]     = ImVec4(0.05f, 0.05f, 0.05f, 1.00f);
+        colors[ImGuiCol_TableBorderLight]      = ImVec4(0.09f, 0.09f, 0.09f, 1.00f);
+        colors[ImGuiCol_TableRowBg]            = ImVec4(0, 0, 0, 0);
+        colors[ImGuiCol_TableRowBgAlt]         = ImVec4(1.00f, 1.00f, 1.00f, 0.02f);
+        colors[ImGuiCol_TextSelectedBg]        = ImVec4(accent.x, accent.y, accent.z, 0.35f);
+        colors[ImGuiCol_DragDropTarget]        = ImVec4(accent.x, accent.y, accent.z, 0.90f);
+        colors[ImGuiCol_NavCursor]             = accent;
+        colors[ImGuiCol_NavWindowingHighlight] = ImVec4(1.00f, 1.00f, 1.00f, 0.70f);
+        colors[ImGuiCol_NavWindowingDimBg]     = ImVec4(0.20f, 0.20f, 0.20f, 0.50f);
+        colors[ImGuiCol_ModalWindowDimBg]      = ImVec4(0.05f, 0.05f, 0.05f, 0.60f);
+    }
+
     void VulkanRHI::InitImGui() {
         const VkDescriptorPoolSize pool_sizes[] = { { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
         { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
@@ -880,6 +978,7 @@ namespace Osiris {
 
         ImGui::CreateContext();
         ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+        ApplyEditorTheme();
 
         // this initializes imgui for SDL
         ImGui_ImplSDL2_InitForVulkan(m_Desc.windowHandle);

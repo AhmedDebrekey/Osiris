@@ -111,6 +111,7 @@ namespace Osiris {
 
     private:
         bool SetupDebugMessenger();
+        static void ApplyEditorTheme();
 
         VkDebugUtilsMessengerEXT m_DebugMessenger = VK_NULL_HANDLE;
 

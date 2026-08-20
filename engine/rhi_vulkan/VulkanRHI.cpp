@@ -338,6 +338,8 @@ namespace Osiris {
             vkDestroyImageView(m_Device.logicalDevice, mipView, nullptr); // already null in the normal path
         }
 
+        DestroyViewportResources();
+
         vkDestroyCommandPool(m_Device.logicalDevice, m_CommandPool, nullptr);
 
         vkDestroyDescriptorPool(m_Device.logicalDevice, m_DescriptorPool, nullptr);
@@ -877,6 +879,7 @@ namespace Osiris {
         VK_CHECK(vkCreateDescriptorPool(m_Device.logicalDevice, &pool_info, nullptr, &m_ImGuiDescriptorPool));
 
         ImGui::CreateContext();
+        ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
         // this initializes imgui for SDL
         ImGui_ImplSDL2_InitForVulkan(m_Desc.windowHandle);
@@ -912,6 +915,10 @@ namespace Osiris {
 
     void VulkanRHI::ShutdownImGui() {
         vkDeviceWaitIdle(m_Device.logicalDevice);
+        if (m_ViewportTextureID != 0) {
+            ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(m_ViewportTextureID));
+            m_ViewportTextureID = 0;
+        }
         ImGui_ImplVulkan_Shutdown();
         ImGui_ImplSDL2_Shutdown();
         ImGui::DestroyContext();
@@ -924,8 +931,60 @@ namespace Osiris {
         ImGui::NewFrame();
     }
 
-    void VulkanRHI::RenderImGui() {
+    void VulkanRHI::RenderImGui(bool separatePass) {
         ImGui::Render();
+
+        if (separatePass && m_RenderingViewport) {
+            VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
+            vkCmdEndRendering(cmd);
+
+            m_RenderGraph.Reset();
+            m_RenderGraph.ImportTexture(m_ColorBufferRG, m_ViewportColorImage.image, ResourceState::ColorWrite);
+            m_RenderGraph.AddPass("ViewportSamplePass", PassType::Graphics)
+                .Read({m_ColorBufferRG, ResourceState::ShaderRead})
+                .SetExecute(nullptr);
+            m_RenderGraph.Compile();
+            m_RenderGraph.Execute(cmd);
+            m_ViewportImageInitialized = true;
+
+            m_RenderGraph.Reset();
+            m_RenderGraph.ImportTexture(m_ColorBufferRG,
+                m_SwapChain.swapChainImages[m_ImageIndex], ResourceState::Undefined);
+            m_RenderGraph.ImportTexture(m_DepthBufferRG, m_DepthImage.image, ResourceState::Undefined);
+            m_RenderGraph.AddPass("EditorUIPass", PassType::Graphics)
+                .Write({m_ColorBufferRG, ResourceState::ColorWrite})
+                .Write({m_DepthBufferRG, ResourceState::DepthWrite})
+                .SetExecute(nullptr);
+            m_RenderGraph.Compile();
+            m_RenderGraph.Execute(cmd);
+
+            VkRenderingAttachmentInfo colorAttachment = {
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView = m_SwapChain.swapChainImageViews[m_ImageIndex],
+                .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                .clearValue = {.color = {0.05f, 0.05f, 0.05f, 1.0f}},
+            };
+            VkRenderingAttachmentInfo depthAttachment = {
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView = m_DepthImage.imageView,
+                .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            };
+            const VkRenderingInfo renderingInfo = {
+                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                .renderArea = {.offset = {0, 0}, .extent = m_SwapChain.swapChainExtent},
+                .layerCount = 1,
+                .colorAttachmentCount = 1,
+                .pColorAttachments = &colorAttachment,
+                .pDepthAttachment = &depthAttachment,
+            };
+            vkCmdBeginRendering(cmd, &renderingInfo);
+            m_RenderingViewport = false;
+        }
+
         ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(),
                                         m_Frames[m_CurrentFrame].commandBuffer);
     }
@@ -955,60 +1014,181 @@ namespace Osiris {
 
     void VulkanRHI::BeginForwardPass() {
         if (!m_FrameStarted) return;
+        m_RenderingViewport = false;
+        VulkanImage swapChainImage = {
+            .image = m_SwapChain.swapChainImages[m_ImageIndex],
+            .imageView = m_SwapChain.swapChainImageViews[m_ImageIndex],
+            .format = m_SwapChain.swapChainImageFormat,
+        };
+        BeginScenePass(swapChainImage, m_DepthImage, m_SwapChain.swapChainExtent, ResourceState::Undefined);
+    }
+
+    void VulkanRHI::BeginViewportForwardPass() {
+        if (!m_FrameStarted || m_ViewportColorImage.image == VK_NULL_HANDLE) return;
+        m_RenderingViewport = true;
+        BeginScenePass(m_ViewportColorImage, m_ViewportDepthImage, m_ViewportExtent,
+            m_ViewportImageInitialized ? ResourceState::ShaderRead : ResourceState::Undefined);
+    }
+
+    glm::uvec2 VulkanRHI::GetRenderExtent(bool viewport) const {
+        const VkExtent2D extent = viewport ? m_ViewportExtent : m_SwapChain.swapChainExtent;
+        return {extent.width, extent.height};
+    }
+
+    void VulkanRHI::ResizeViewport(uint32_t width, uint32_t height) {
+        if (width == 0 || height == 0) return;
+
+        const bool targetExists = m_ViewportColorImage.image != VK_NULL_HANDLE;
+        if (targetExists && m_ViewportExtent.width == width && m_ViewportExtent.height == height) {
+            m_PendingViewportExtent = {};
+            return;
+        }
+
+        if (targetExists) {
+            const auto now = std::chrono::steady_clock::now();
+            if (m_PendingViewportExtent.width != width || m_PendingViewportExtent.height != height) {
+                m_PendingViewportExtent = {width, height};
+                m_ViewportResizeRequestedAt = now;
+                return;
+            }
+
+            constexpr auto resizeDebounce = std::chrono::milliseconds(100);
+            if (now - m_ViewportResizeRequestedAt < resizeDebounce) return;
+        }
+
+        m_PendingViewportExtent = {};
+
+        vkDeviceWaitIdle(m_Device.logicalDevice);
+        if (m_ViewportTextureID != 0) {
+            ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(m_ViewportTextureID));
+            m_ViewportTextureID = 0;
+        }
+        DestroyViewportResources();
+
+        if (!CreateViewportResources(width, height)) {
+            OSIRIS_ERROR("Failed to create viewport resources on resize!");
+        }
+    }
+
+    bool VulkanRHI::CreateViewportResources(uint32_t width, uint32_t height) {
+        m_ViewportExtent = {width, height};
+
+        VkImageCreateInfo colorInfo = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .imageType = VK_IMAGE_TYPE_2D,
+            .format = m_SwapChain.swapChainImageFormat,
+            .extent = {width, height, 1},
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .samples = VK_SAMPLE_COUNT_1_BIT,
+            .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        };
+        VmaAllocationCreateInfo allocationInfo = {.usage = VMA_MEMORY_USAGE_GPU_ONLY};
+        VK_CHECK(vmaCreateImage(m_Allocator, &colorInfo, &allocationInfo,
+            &m_ViewportColorImage.image, &m_ViewportColorImage.allocation, nullptr));
+        m_ViewportColorImage.format = m_SwapChain.swapChainImageFormat;
+
+        VkImageViewCreateInfo colorViewInfo = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = m_ViewportColorImage.image,
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format = m_ViewportColorImage.format,
+            .subresourceRange = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+        };
+        VK_CHECK(vkCreateImageView(m_Device.logicalDevice, &colorViewInfo, nullptr,
+            &m_ViewportColorImage.imageView));
+
+        VkImageCreateInfo depthInfo = colorInfo;
+        depthInfo.format = VK_FORMAT_D32_SFLOAT;
+        depthInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        VK_CHECK(vmaCreateImage(m_Allocator, &depthInfo, &allocationInfo,
+            &m_ViewportDepthImage.image, &m_ViewportDepthImage.allocation, nullptr));
+        m_ViewportDepthImage.format = VK_FORMAT_D32_SFLOAT;
+
+        VkImageViewCreateInfo depthViewInfo = colorViewInfo;
+        depthViewInfo.image = m_ViewportDepthImage.image;
+        depthViewInfo.format = m_ViewportDepthImage.format;
+        depthViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        VK_CHECK(vkCreateImageView(m_Device.logicalDevice, &depthViewInfo, nullptr,
+            &m_ViewportDepthImage.imageView));
+
+        const VkDescriptorSet descriptorSet = ImGui_ImplVulkan_AddTexture(
+            m_ViewportColorImage.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        m_ViewportTextureID = reinterpret_cast<uint64_t>(descriptorSet);
+        m_ViewportImageInitialized = false;
+        return true;
+    }
+
+    void VulkanRHI::DestroyViewportResources() {
+        if (m_ViewportColorImage.imageView != VK_NULL_HANDLE)
+            vkDestroyImageView(m_Device.logicalDevice, m_ViewportColorImage.imageView, nullptr);
+        if (m_ViewportColorImage.image != VK_NULL_HANDLE)
+            vmaDestroyImage(m_Allocator, m_ViewportColorImage.image, m_ViewportColorImage.allocation);
+        if (m_ViewportDepthImage.imageView != VK_NULL_HANDLE)
+            vkDestroyImageView(m_Device.logicalDevice, m_ViewportDepthImage.imageView, nullptr);
+        if (m_ViewportDepthImage.image != VK_NULL_HANDLE)
+            vmaDestroyImage(m_Allocator, m_ViewportDepthImage.image, m_ViewportDepthImage.allocation);
+
+        m_ViewportColorImage = {};
+        m_ViewportDepthImage = {};
+        m_ViewportExtent = {};
+        m_ViewportImageInitialized = false;
+    }
+
+    void VulkanRHI::BeginScenePass(VulkanImage& colorImage, VulkanImage& depthImage, VkExtent2D extent,
+                                   ResourceState colorInitialState) {
         VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
 
         m_RenderGraph.Reset();
-        m_RenderGraph.ImportTexture(m_ColorBufferRG,
-            m_SwapChain.swapChainImages[m_ImageIndex], ResourceState::Undefined);
-        m_RenderGraph.ImportTexture(m_DepthBufferRG,
-            m_DepthImage.image, ResourceState::Undefined);
-
+        m_RenderGraph.ImportTexture(m_ColorBufferRG, colorImage.image, colorInitialState);
+        m_RenderGraph.ImportTexture(m_DepthBufferRG, depthImage.image, ResourceState::Undefined);
         m_RenderGraph.AddPass("ForwardPass", PassType::Graphics)
             .Write({m_ColorBufferRG, ResourceState::ColorWrite})
             .Write({m_DepthBufferRG, ResourceState::DepthWrite})
             .SetExecute(nullptr);
-
         m_RenderGraph.Compile();
         m_RenderGraph.Execute(cmd);
 
         VkRenderingAttachmentInfo colorAttachment = {
-            .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView   = m_SwapChain.swapChainImageViews[m_ImageIndex],
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView = colorImage.imageView,
             .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
-            .clearValue  = {.color = {0.0f, 0.0f, 0.0f, 1.0f}},
+            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+            .clearValue = {.color = {0.0f, 0.0f, 0.0f, 1.0f}},
         };
-
         VkRenderingAttachmentInfo depthAttachment = {
-            .sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-            .imageView   = m_DepthImage.imageView,
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView = depthImage.imageView,
             .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-            .loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR,
-            .storeOp     = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-            .clearValue  = {.depthStencil = {1.0f, 0}},
+            .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+            .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .clearValue = {.depthStencil = {1.0f, 0}},
         };
-
         const VkRenderingInfo renderingInfo = {
-            .sType                = VK_STRUCTURE_TYPE_RENDERING_INFO,
-            .renderArea           = {.offset = {0, 0}, .extent = m_SwapChain.swapChainExtent},
-            .layerCount           = 1,
+            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+            .renderArea = {.offset = {0, 0}, .extent = extent},
+            .layerCount = 1,
             .colorAttachmentCount = 1,
-            .pColorAttachments    = &colorAttachment,
-            .pDepthAttachment     = &depthAttachment,
+            .pColorAttachments = &colorAttachment,
+            .pDepthAttachment = &depthAttachment,
         };
-
         vkCmdBeginRendering(cmd, &renderingInfo);
 
         VkViewport viewport = {
             .x = 0.0f, .y = 0.0f,
-            .width    = static_cast<float>(m_SwapChain.swapChainExtent.width),
-            .height   = static_cast<float>(m_SwapChain.swapChainExtent.height),
+            .width = static_cast<float>(extent.width),
+            .height = static_cast<float>(extent.height),
             .minDepth = 0.0f, .maxDepth = 1.0f,
         };
         vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-        VkRect2D scissor = { .offset = {0, 0}, .extent = m_SwapChain.swapChainExtent };
+        VkRect2D scissor = {.offset = {0, 0}, .extent = extent};
         vkCmdSetScissor(cmd, 0, 1, &scissor);
 
         if (m_EnvironmentLoaded) {

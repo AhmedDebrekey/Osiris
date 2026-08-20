@@ -10,6 +10,9 @@
 #include "audio/IAudio.h"
 #include "scripting/IScripting.h"
 namespace Osiris {
+    class Camera;
+    class Scene;
+
     class Engine {
     public:
         Engine() = default;
@@ -38,6 +41,11 @@ namespace Osiris {
 
         void BeginFrame();
         void EndFrame() const;
+        void SetEditorViewportSize(uint32_t width, uint32_t height);
+        uint64_t GetEditorViewportTextureID() const;
+        void UpdateCameraAspect(Camera& camera) const;
+        void RenderScene(Scene& scene, Camera& camera);
+        void RenderImGui() const;
 
     private:
         void PollEvents();

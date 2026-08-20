@@ -39,9 +39,9 @@ namespace Osiris
         return m_Front;
     }
 
-    void Camera::Update(const Input& input, float deltaTime, bool applyMovement) {
+    void Camera::Update(const Input& input, float deltaTime, bool applyMovement, bool applyLook) {
         // Mouse look
-        if (input.IsMouseButtonHeld(SDL_BUTTON_RIGHT)){
+        if (applyLook && input.IsMouseButtonHeld(SDL_BUTTON_RIGHT)){
             glm::vec2 mouseDelta = input.GetMouseDelta();
             m_Yaw   += mouseDelta.x * m_Sensitivity;
             m_Pitch -= mouseDelta.y * m_Sensitivity;
@@ -80,6 +80,10 @@ namespace Osiris
 
     void Camera::SetPosition(const glm::vec3& position) {
         m_Position = position;
+    }
+
+    void Camera::SetAspectRatio(float aspectRatio) {
+        m_AspectRatio = aspectRatio;
     }
 
     float& Camera::GetSpeed() {

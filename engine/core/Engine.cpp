@@ -5,6 +5,8 @@
 #include "physics/jolt/JoltPhysics.h"
 #include "audio/openal/OpenALAudio.h"
 #include "scripting/lua/LuaScripting.h"
+#include "renderer/Camera.h"
+#include "scene/Scene.h"
 
 namespace Osiris {
     bool Engine::Initialize() {
@@ -88,6 +90,33 @@ namespace Osiris {
     void Engine::EndFrame() const {
         m_RHI->EndFrame();
         m_RHI->Present();
+    }
+
+    void Engine::SetEditorViewportSize(uint32_t width, uint32_t height) {
+        if (!m_IsPlaying) m_RHI->ResizeViewport(width, height);
+    }
+
+    uint64_t Engine::GetEditorViewportTextureID() const {
+        return m_RHI->GetViewportTextureID();
+    }
+
+    void Engine::UpdateCameraAspect(Camera& camera) const {
+        const glm::uvec2 extent = m_RHI->GetRenderExtent(!m_IsPlaying);
+        if (extent.y > 0) camera.SetAspectRatio(static_cast<float>(extent.x) / static_cast<float>(extent.y));
+    }
+
+    void Engine::RenderScene(Scene& scene, Camera& camera) {
+        if (m_IsPlaying) {
+            m_RHI->BeginForwardPass();
+        } else {
+            m_RHI->BeginViewportForwardPass();
+        }
+
+        scene.Render(m_RHI.get(), camera);
+    }
+
+    void Engine::RenderImGui() const {
+        m_RHI->RenderImGui(!m_IsPlaying);
     }
 
     void Engine::PollEvents() {

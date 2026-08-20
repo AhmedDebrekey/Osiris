@@ -49,6 +49,10 @@ namespace Osiris {
         virtual void EndShadowPass      (uint32_t cascadeIndex) = 0;
         virtual void DrawShadowIndexed  (uint32_t indexCount)   = 0;
         virtual void BeginForwardPass   ()                      = 0;
+        virtual void BeginViewportForwardPass()                 = 0;
+        virtual void ResizeViewport(uint32_t width, uint32_t height) = 0;
+        virtual uint64_t GetViewportTextureID() const            = 0;
+        virtual glm::uvec2 GetRenderExtent(bool viewport) const = 0;
 
 
         virtual void UpdateSpotLights(const std::vector<SpotLightRenderData>& lights) = 0;
@@ -65,7 +69,7 @@ namespace Osiris {
         virtual void InitImGui()        = 0;
         virtual void ShutdownImGui()    = 0;
         virtual void BeginImGuiFrame()  = 0;
-        virtual void RenderImGui()      = 0;
+        virtual void RenderImGui(bool separatePass) = 0;
 
         virtual DirectionalLight& GetDirectionalLight() = 0;
         virtual glm::mat4 GetLightViewMatrix(uint32_t cascade) const = 0;

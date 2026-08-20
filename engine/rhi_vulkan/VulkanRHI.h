@@ -5,6 +5,7 @@
 #ifndef OSIRIS_VULKANRHI_H
 #define OSIRIS_VULKANRHI_H
 #include <array>
+#include <chrono>
 
 #include "rhi/RHI.h"
 #include "VulkanTypes.h"
@@ -69,7 +70,7 @@ namespace Osiris {
 
         void BeginImGuiFrame() override;
 
-        void RenderImGui() override;
+        void RenderImGui(bool separatePass) override;
 
         void Dispatch(uint32_t x, uint32_t y, uint32_t z) override;
 
@@ -87,6 +88,10 @@ namespace Osiris {
         void SetCameraBuffer(const glm::mat4& view, const glm::mat4& projection, const glm::vec4& position) override;
 
         void BeginForwardPass() override;
+        void BeginViewportForwardPass() override;
+        void ResizeViewport(uint32_t width, uint32_t height) override;
+        uint64_t GetViewportTextureID() const override { return m_ViewportTextureID; }
+        glm::uvec2 GetRenderExtent(bool viewport) const override;
 
         void BeginShadowPass(uint32_t cascadeIndex) override;
 
@@ -121,6 +126,10 @@ namespace Osiris {
         bool CreateSwapChain();
         bool CreateSwapChainImages();
         bool CreateDepthResources();
+        bool CreateViewportResources(uint32_t width, uint32_t height);
+        void DestroyViewportResources();
+        void BeginScenePass(VulkanImage& colorImage, VulkanImage& depthImage, VkExtent2D extent,
+                            ResourceState colorInitialState);
         bool CreatePipeline();
         bool CreateDescriptorSetLayouts();
         bool CreateDescriptorPool();
@@ -173,6 +182,14 @@ namespace Osiris {
         VulkanDevice       m_Device;
         VulkanSwapChain    m_SwapChain;
         VulkanImage        m_DepthImage;
+        VulkanImage        m_ViewportColorImage;
+        VulkanImage        m_ViewportDepthImage;
+        VkExtent2D         m_ViewportExtent = {};
+        VkExtent2D         m_PendingViewportExtent = {};
+        std::chrono::steady_clock::time_point m_ViewportResizeRequestedAt = {};
+        uint64_t           m_ViewportTextureID = 0;
+        bool               m_ViewportImageInitialized = false;
+        bool               m_RenderingViewport = false;
 
         VulkanContextDesc m_Desc;
 

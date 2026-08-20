@@ -274,6 +274,23 @@ int main() {
             engine.TogglePlaying();
         }
 
+        bool viewportHovered = false;
+        if (!engine.IsPlaying()) {
+            ImGui::DockSpaceOverViewport();
+            ImGui::Begin("Viewport");
+            const ImVec2 viewportSize = ImGui::GetContentRegionAvail();
+            const uint32_t viewportWidth = static_cast<uint32_t>(glm::max(viewportSize.x, 1.0f));
+            const uint32_t viewportHeight = static_cast<uint32_t>(glm::max(viewportSize.y, 1.0f));
+            engine.SetEditorViewportSize(viewportWidth, viewportHeight);
+            const uint64_t viewportTexture = engine.GetEditorViewportTextureID();
+            if (viewportTexture != 0) {
+                ImGui::Image(viewportTexture,
+                    ImVec2(static_cast<float>(viewportWidth), static_cast<float>(viewportHeight)));
+            }
+            viewportHovered = ImGui::IsWindowHovered();
+            ImGui::End();
+        }
+
         if (engine.IsPlaying() && audioTestEntity.IsValid() && engine.GetInput()->IsKeyPressed(SDL_SCANCODE_P)) {
             auto& audioSrc = audioTestEntity.GetComponent<Osiris::AudioSourceComponent>();
             if (engine.GetAudio()->IsSourcePlaying(audioSrc.sourceHandle)) {
@@ -308,7 +325,7 @@ int main() {
             auto& character = cameraEntity.GetComponent<Osiris::CharacterComponent>();
             engine.GetPhysics()->SetCharacterDesiredVelocity(character.characterHandle, desiredVelocity, jump);
         } else {
-            camera.Update(*engine.GetInput(), deltaTime);
+            camera.Update(*engine.GetInput(), deltaTime, true, engine.IsPlaying() || viewportHovered);
         }
 
         if (engine.IsPlaying()) {
@@ -332,6 +349,8 @@ int main() {
         // Listener tracks whichever camera is actually driving the view, in either scene mode.
         engine.GetAudio()->SetListenerTransform(camera.GetPosition(), camera.GetFront(), glm::vec3(0.0f, 1.0f, 0.0f));
         scene.SyncAudioSources(engine.GetAudio());
+
+        engine.UpdateCameraAspect(camera);
 
         auto activeSpotLights = scene.GatherSpotLights(camera.GetPosition());
         engine.GetRHI()->UpdateSpotLights(activeSpotLights);
@@ -363,12 +382,11 @@ int main() {
         }
 
         // Forward pass
-        engine.GetRHI()->BeginForwardPass();
-        scene.Render(engine.GetRHI(), camera);
+        engine.RenderScene(scene, camera);
 
         // All ImGui hidden in Play mode (Phase 8G).
         if (!engine.IsPlaying()) {
-            ImGui::Begin("Osiris Engine");
+            ImGui::Begin("Stats");
             ImGui::Text("FPS: %.1f", deltaTime > 0.0f ? 1.0f / deltaTime : 0.0f);
             ImGui::Text("Frame time: %.3f ms", deltaTime * 1000.0f);
             ImGui::Separator();
@@ -387,8 +405,9 @@ int main() {
             }
             ImGui::Text("Draw calls: %d", scene.GetDrawCallCount());
             ImGui::Text("Culled: %d", scene.GetCulledCount());
-            ImGui::Separator();
+            ImGui::End();
 
+            ImGui::Begin("Lighting");
             auto& light = engine.GetRHI()->GetDirectionalLight();
             ImGui::SliderFloat3("Light Direction", &light.direction.x, -1.0f, 1.0f);
             light.direction = glm::normalize(light.direction);
@@ -402,14 +421,9 @@ int main() {
 
             ImGui::SliderFloat("Environment Exposure", &engine.GetRHI()->GetEnvironmentExposure(),
                 0.001f, 4.0f, "%.4f", ImGuiSliderFlags_Logarithmic);
+            ImGui::End();
 
-            ImGui::Separator();
-            int activeShadowCasters = 0;
-            for (const auto& sl : activeSpotLights) {
-                if (sl.shadowIndex >= 0) activeShadowCasters++;
-            }
-            ImGui::Separator();
-
+            ImGui::Begin("Shadow Debug");
             auto& shadowSettings = engine.GetRHI()->GetShadowSettings();
             ImGui::SliderFloat("Shadow Near", &shadowSettings.nearClip, 0.01f, 5.0f);
             ImGui::SliderFloat("Shadow Far", &shadowSettings.farClip, 5.0f, 50.0f);
@@ -421,7 +435,7 @@ int main() {
                 ImGui::SliderInt("Cascade", &debugCascade, 0, 2);
             }
 
-            if (ImGui::CollapsingHeader("Shadow Debug")) {
+            if (ImGui::CollapsingHeader("Light Space Matrices")) {
                 for (int cascade = 0; cascade < 3; cascade++) {
                     glm::mat4 m = engine.GetRHI()->GetLightSpaceMatrix(cascade);
                     ImGui::Text("Cascade %d Light Space Matrix:", cascade);
@@ -437,7 +451,7 @@ int main() {
             sceneInspector.Draw(scene, engine.GetPhysics(), engine.GetAudio(), engine.GetScripting());
         }
 
-        engine.GetRHI()->RenderImGui();
+        engine.RenderImGui();
         engine.EndFrame();
     }
 

@@ -1,16 +1,21 @@
 #include "LuaScripting.h"
 
 #include "core/Log.h"
+#include "rhi/RHI.h"
 #include "scene/Scene.h"
 #include "scene/Components.h"
+#include "assets/MeshLoader.h"
+#include "scripting/ScriptTemplate.h"
 #include "physics/IPhysics.h"
 #include "audio/IAudio.h"
 #include "platform/Input.h"
 
 namespace {
     // Same slot-reuse pattern as OpenALAudio/JoltPhysics, duplicated locally (see OpenALAudio.cpp).
-    template<typename T>
-    uint32_t AllocateSlot(std::vector<T>& slots, T item, auto isNull) {
+    // Generic over the container (not just std::vector) so LuaScripting::m_Instances can be a
+    // std::deque — see the comment on that member for why it isn't a vector.
+    template<typename Container, typename T>
+    uint32_t AllocateSlot(Container& slots, T item, auto isNull) {
         for (uint32_t i = 0; i < slots.size(); i++) {
             if (isNull(slots[i])) {
                 slots[i] = std::move(item);
@@ -26,7 +31,8 @@ namespace {
 }
 
 namespace Osiris {
-    bool LuaScripting::Init(IPhysics* physics, IAudio* audio, Input* input) {
+    bool LuaScripting::Init(IRHI* rhi, IPhysics* physics, IAudio* audio, Input* input) {
+        m_RHI     = rhi;
         m_Physics = physics;
         m_Audio   = audio;
         m_Input   = input;
@@ -89,6 +95,12 @@ namespace Osiris {
         m_Lua.new_usertype<CharacterHandle>("CharacterHandle", "IsValid", &CharacterHandle::IsValid);
         m_Lua.new_usertype<AudioBufferHandle>("AudioBufferHandle", "IsValid", &AudioBufferHandle::IsValid);
         m_Lua.new_usertype<AudioSourceHandle>("AudioSourceHandle", "IsValid", &AudioSourceHandle::IsValid);
+        m_Lua.new_usertype<MaterialHandle>("MaterialHandle", "IsValid", &MaterialHandle::IsValid);
+
+        // No fields worth exposing on MeshComponent itself (raw GPU buffer handles/counts) — only
+        // reachable via Entity:HasMesh()/AddBoxMesh()/AddPlaneMesh() below.
+        m_Lua.new_usertype<MaterialComponent>("Material",
+            "material", &MaterialComponent::material);
 
         m_Lua.new_usertype<BoxColliderDesc>("BoxColliderDesc",
             sol::constructors<BoxColliderDesc()>(),
@@ -191,17 +203,62 @@ namespace Osiris {
 
             // No AddCharacter — needs a Scene::CreateCharacters pass to get a live body.
             "GetCharacter", &Entity::GetComponent<CharacterComponent>,
-            "HasCharacter", &Entity::HasComponent<CharacterComponent>);
+            "HasCharacter", &Entity::HasComponent<CharacterComponent>,
 
-        // Script-created entities only get Tag+Transform — no mesh/body/source until scene setup.
+            "HasMesh", &Entity::HasComponent<MeshComponent>,
+            // Procedural shapes only — same two primitives MeshLoader offers in C++. A script
+            // can't load a glTF at runtime (no legitimate async/asset-pipeline story yet).
+            "AddBoxMesh", [this](Entity& entity, glm::vec3 halfExtents) {
+                if (entity.HasComponent<MeshComponent>()) return;
+                entity.AddComponent<MeshComponent>(MeshLoader::CreateBox(halfExtents, m_RHI));
+            },
+            "AddPlaneMesh", [this](Entity& entity, float width, float height) {
+                if (entity.HasComponent<MeshComponent>()) return;
+                entity.AddComponent<MeshComponent>(MeshLoader::CreatePlane(width, height, m_RHI));
+            },
+
+            "GetMaterial", &Entity::GetComponent<MaterialComponent>,
+            "HasMaterial", &Entity::HasComponent<MaterialComponent>,
+            // Takes a handle, not a desc — building a MaterialDesc needs TextureHandles, which
+            // themselves need decoded pixel data no script can produce. Read one off an existing
+            // entity (e.g. entity:GetMaterial().material) and hand it to a new entity instead.
+            "AddMaterial", [](Entity& entity, MaterialHandle material) {
+                if (entity.HasComponent<MaterialComponent>()) return;
+                entity.AddComponent<MaterialComponent>(material);
+            },
+
+            // Loads scriptPath (writing a fresh stub if it doesn't exist) and starts it running
+            // immediately — Scene::CreateScriptInstances only runs once at scene setup, before
+            // this entity existed, so a script-spawned entity needs its own entry point.
+            "AddScript", [this](Entity& entity, const std::string& scriptPath) {
+                if (entity.HasComponent<ScriptComponent>()) return;
+                CreateScriptFileIfMissing(scriptPath);
+                ScriptInstanceHandle instanceHandle = CreateInstance(entity, scriptPath);
+                entity.AddComponent<ScriptComponent>(scriptPath, instanceHandle);
+            });
+
+        // Script-created entities only get Tag+Transform — everything else (mesh, material,
+        // script) is added afterward via the Entity methods above.
         m_Lua.new_usertype<Scene>("Scene",
             "FindEntityByName", &Scene::FindEntityByName,
             "CreateEntity",     &Scene::CreateEntity,
-            "FindCameraEntity", &Scene::FindCameraEntity);
+            "FindCameraEntity", &Scene::FindCameraEntity,
+            // Wrapped so Lua doesn't need to pass physics/audio/scripting itself — same trio
+            // Scene::DestroyEntity's C++ callers would otherwise have to thread through by hand.
+            "DestroyEntity", [this](Scene& scene, Entity entity) {
+                scene.DestroyEntity(entity, m_Physics, m_Audio, this);
+            },
+            // Returns a Lua table of every entity spawned (one per model primitive) — sol2
+            // converts the std::vector<Entity> automatically. Same helper main.cpp's own scene
+            // authoring calls, so a script-spawned model behaves identically to a hand-authored one.
+            "SpawnModel", [this](Scene& scene, const std::string& name, const std::string& relativePath) {
+                return scene.SpawnModel(name, relativePath, m_RHI);
+            });
 
         m_Lua.new_usertype<IPhysics>("IPhysics",
             "CreateBody",  &IPhysics::CreateBody,
             "DestroyBody", &IPhysics::DestroyBody,
+            "ApplyImpulse", &IPhysics::ApplyImpulse,
             "GetBodyPosition",     &IPhysics::GetBodyPosition,
             "GetBodyRotationEuler", &IPhysics::GetBodyRotationEuler,
             "CreateCharacter",  &IPhysics::CreateCharacter,
@@ -303,7 +360,12 @@ namespace Osiris {
     }
 
     void LuaScripting::Update(float deltaTime) {
-        for (auto& instance : m_Instances) {
+        // Index-based, not range-for: a script's OnUpdate can spawn another scripted entity
+        // (Entity:AddScript -> CreateInstance -> AllocateSlot), growing m_Instances mid-loop.
+        // Re-reading size()/operator[] each pass avoids holding a deque iterator across that
+        // call — see the m_Instances comment in LuaScripting.h for why deque, not vector.
+        for (size_t i = 0; i < m_Instances.size(); i++) {
+            ScriptInstance& instance = m_Instances[i];
             if (!instance.entity.IsValid()) continue;
 
             if (!instance.started) {
@@ -331,7 +393,8 @@ namespace Osiris {
         m_Accumulator += deltaTime;
         while (m_Accumulator >= kFixedTimeStep) {
             m_Accumulator -= kFixedTimeStep;
-            for (auto& instance : m_Instances) {
+            for (size_t i = 0; i < m_Instances.size(); i++) {
+                ScriptInstance& instance = m_Instances[i];
                 if (!instance.entity.IsValid() || !instance.onFixedUpdate.valid()) continue;
                 sol::protected_function_result result = instance.onFixedUpdate(kFixedTimeStep);
                 if (!result.valid()) {

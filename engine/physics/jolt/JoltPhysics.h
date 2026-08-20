@@ -26,6 +26,7 @@ namespace Osiris {
 
         PhysicsBodyHandle CreateBody(const RigidBodyDesc& desc) override;
         void DestroyBody(PhysicsBodyHandle handle) override;
+        void ApplyImpulse(PhysicsBodyHandle handle, const glm::vec3& impulse) override;
         glm::vec3 GetBodyPosition(PhysicsBodyHandle handle) const override;
         glm::vec3 GetBodyRotationEuler(PhysicsBodyHandle handle) const override;
 

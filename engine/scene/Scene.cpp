@@ -13,6 +13,8 @@
 #include "audio/IAudio.h"
 #include "scripting/IScripting.h"
 #include "scripting/ScriptTemplate.h"
+#include "assets/MeshLoader.h"
+#include "core/AssetManager.h"
 
 namespace Osiris {
     Entity Scene::CreateEntity(const std::string& name) {
@@ -21,6 +23,43 @@ namespace Osiris {
         entity.AddComponent<TagComponent>(name);
         entity.AddComponent<TransformComponent>();
         return entity;
+    }
+
+    void Scene::DestroyEntity(Entity entity, IPhysics* physics, IAudio* audio, IScripting* scripting) {
+        if (!entity.IsValid()) return;
+
+        if (entity.HasComponent<RigidBodyComponent>()) {
+            auto& rigidBody = entity.GetComponent<RigidBodyComponent>();
+            if (rigidBody.bodyHandle.IsValid()) physics->DestroyBody(rigidBody.bodyHandle);
+        }
+        if (entity.HasComponent<CharacterComponent>()) {
+            auto& character = entity.GetComponent<CharacterComponent>();
+            if (character.characterHandle.IsValid()) physics->DestroyCharacter(character.characterHandle);
+        }
+        if (entity.HasComponent<AudioSourceComponent>()) {
+            auto& audioSrc = entity.GetComponent<AudioSourceComponent>();
+            if (audioSrc.sourceHandle.IsValid()) audio->DestroySource(audioSrc.sourceHandle);
+        }
+        if (entity.HasComponent<ScriptComponent>()) {
+            auto& script = entity.GetComponent<ScriptComponent>();
+            if (script.instanceHandle.IsValid()) scripting->DestroyInstance(script.instanceHandle);
+        }
+
+        m_Registry.destroy(entity.GetHandle());
+    }
+
+    std::vector<Entity> Scene::SpawnModel(const std::string& name, const std::string& relativePath, IRHI* rhi) {
+        std::vector<MeshPrimitive> primitives = MeshLoader::LoadFromGLTF(AssetManager::GetPath(relativePath), rhi);
+
+        std::vector<Entity> entities;
+        entities.reserve(primitives.size());
+        for (uint32_t i = 0; i < primitives.size(); i++) {
+            Entity entity = CreateEntity(name + "_" + std::to_string(i));
+            entity.AddComponent<MeshComponent>(primitives[i].mesh);
+            entity.AddComponent<MaterialComponent>(primitives[i].material);
+            entities.push_back(entity);
+        }
+        return entities;
     }
 
     Entity Scene::FindEntityByName(const std::string& name) {

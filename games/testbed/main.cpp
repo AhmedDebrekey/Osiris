@@ -189,22 +189,12 @@ int main() {
         // PBR test model (Khronos DamagedHelmet) — has real metallic/roughness
         // variation, unlike the fully-diffuse crates, so it's a much better way
         // to visually verify specular IBL once tasks 4-6 land.
-        auto helmetPrimitives = Osiris::MeshLoader::LoadFromGLTF(
-            Osiris::AssetManager::GetPath("models/DamagedHelmet/DamagedHelmet.gltf"), engine.GetRHI());
-        for (uint32_t i = 0; i < helmetPrimitives.size(); i++) {
-            Osiris::Entity helmet = scene.CreateEntity("DamagedHelmet_" + std::to_string(i));
+        auto helmetEntities = scene.SpawnModel("DamagedHelmet", "models/DamagedHelmet/DamagedHelmet.gltf", engine.GetRHI());
+        for (auto& helmet : helmetEntities) {
             helmet.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-2.5f, 1.3f, -0.5f);
-            helmet.AddComponent<Osiris::MeshComponent>(helmetPrimitives[i].mesh);
-            helmet.AddComponent<Osiris::MaterialComponent>(helmetPrimitives[i].material);
         }
 
-        auto sponzaPrimitives = Osiris::MeshLoader::LoadFromGLTF(
-            Osiris::AssetManager::GetPath("models/sponza/Sponza.gltf"), engine.GetRHI());
-        for (uint32_t i = 0; i < sponzaPrimitives.size(); i++) {
-            Osiris::Entity sponza = scene.CreateEntity("sponza_" + std::to_string(i));
-            sponza.AddComponent<Osiris::MeshComponent>(sponzaPrimitives[i].mesh);
-            sponza.AddComponent<Osiris::MaterialComponent>(sponzaPrimitives[i].material);
-        }
+        scene.SpawnModel("sponza", "models/sponza/Sponza.gltf", engine.GetRHI());
     }
 
     scene.CreatePhysicsBodies(engine.GetPhysics());
@@ -244,6 +234,11 @@ int main() {
     Osiris::Entity scriptController = scene.CreateEntity("ScriptController");
     scriptController.AddComponent<Osiris::ScriptComponent>().scriptPath =
         Osiris::AssetManager::GetPath("scripts/pulse_light.lua");
+
+    // Headless controller entity whose script showcases scene:SpawnModel.
+    Osiris::Entity modelSpawnController = scene.CreateEntity("ModelSpawnController");
+    modelSpawnController.AddComponent<Osiris::ScriptComponent>().scriptPath =
+        Osiris::AssetManager::GetPath("scripts/spawn_model.lua");
 
     scene.CreateScriptInstances(engine.GetScripting());
 

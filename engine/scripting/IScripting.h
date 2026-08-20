@@ -7,6 +7,7 @@
 
 namespace Osiris {
     class Entity;
+    class IRHI;
     class IPhysics;
     class IAudio;
     class Input;
@@ -17,7 +18,8 @@ namespace Osiris {
         virtual ~IScripting() = default;
 
         // Physics/audio/input are handed to every script instance as globals — see LuaScripting::BindAPI.
-        virtual bool Init(IPhysics* physics, IAudio* audio, Input* input) = 0;
+        // rhi isn't a Lua global itself (too broad a surface); it only backs Entity mesh-creation helpers.
+        virtual bool Init(IRHI* rhi, IPhysics* physics, IAudio* audio, Input* input) = 0;
         virtual void Shutdown() = 0;
 
         // Sandboxes scriptPath into an environment bound to entity (exposed as `self`/`scene`).

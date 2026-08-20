@@ -238,6 +238,12 @@ namespace Osiris {
         id = JPH::BodyID(); // reset to invalid so AllocateSlot can reuse this slot
     }
 
+    void JoltPhysics::ApplyImpulse(PhysicsBodyHandle handle, const glm::vec3& impulse) {
+        if (!handle.IsValid() || handle.id >= m_Bodies.size() || m_Bodies[handle.id].IsInvalid()) return;
+        JPH::Vec3 joltImpulse(impulse.x, impulse.y, impulse.z);
+        m_PhysicsSystem.GetBodyInterface().AddImpulse(m_Bodies[handle.id], joltImpulse);
+    }
+
     glm::vec3 JoltPhysics::GetBodyPosition(PhysicsBodyHandle handle) const {
         if (!handle.IsValid() || handle.id >= m_Bodies.size() || m_Bodies[handle.id].IsInvalid())
             return glm::vec3(0.0f);

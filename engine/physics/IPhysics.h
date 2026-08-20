@@ -20,6 +20,11 @@ namespace Osiris {
         virtual PhysicsBodyHandle CreateBody(const RigidBodyDesc& desc) = 0;
         virtual void DestroyBody(PhysicsBodyHandle handle) = 0;
 
+        // World-space impulse (mass * velocity change), applied instantly. Mass comes from
+        // Jolt's own shape-volume x density computation — RigidBodyDesc has no mass override.
+        // Only meaningful for Dynamic bodies; Static/Kinematic bodies ignore impulses in Jolt.
+        virtual void ApplyImpulse(PhysicsBodyHandle handle, const glm::vec3& impulse) = 0;
+
         // Live body origin (matches whatever position RigidBodyDesc created it at). Only
         // meaningful for Dynamic/Kinematic bodies — static bodies never move, so nothing
         // currently reads this for them.

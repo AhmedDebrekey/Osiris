@@ -23,6 +23,20 @@ namespace Osiris {
     class Scene {
     public:
         Entity CreateEntity(const std::string& name);
+
+        // Destroys the live physics body/character/audio source/script instance this entity
+        // owns (same per-component teardown as the Scene Inspector's Remove buttons), then
+        // removes it from the registry.
+        void DestroyEntity(Entity entity, IPhysics* physics, IAudio* audio, IScripting* scripting);
+
+        // Loads a model file (relativePath resolved through AssetManager; glTF via MeshLoader
+        // today) and spawns one entity per primitive, named "<name>_0", "<name>_1", ... — a model
+        // can be split into several material-distinct pieces, so there's no single entity to hand
+        // back. The one place this logic lives; main.cpp's scene authoring and LuaScripting's
+        // Scene binding both call it, and a future prefab/asset-browser drag-drop system should
+        // too rather than reimplementing the load-and-spawn loop a third time.
+        std::vector<Entity> SpawnModel(const std::string& name, const std::string& relativePath, IRHI* rhi);
+
         Entity FindEntityByName(const std::string& name);
         std::vector<Entity> GetAllEntities();
         void Update(float deltaTime);

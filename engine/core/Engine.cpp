@@ -52,7 +52,7 @@ namespace Osiris {
         }
 
         m_Scripting = std::make_unique<LuaScripting>();
-        if (!m_Scripting->Init(m_Physics.get(), m_Audio.get(), &m_Input)) {
+        if (!m_Scripting->Init(m_RHI.get(), m_Physics.get(), m_Audio.get(), &m_Input)) {
             OSIRIS_ERROR("Failed to initialize scripting!");
             return false;
         }

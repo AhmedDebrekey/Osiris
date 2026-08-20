@@ -1,8 +1,8 @@
 #ifndef OSIRIS_LUASCRIPTING_H
 #define OSIRIS_LUASCRIPTING_H
 
+#include <deque>
 #include <string>
-#include <vector>
 
 #include <sol/sol.hpp>
 
@@ -12,7 +12,7 @@
 namespace Osiris {
     class LuaScripting : public IScripting {
     public:
-        bool Init(IPhysics* physics, IAudio* audio, Input* input) override;
+        bool Init(IRHI* rhi, IPhysics* physics, IAudio* audio, Input* input) override;
         void Shutdown() override;
 
         ScriptInstanceHandle CreateInstance(Entity entity, const std::string& scriptPath) override;
@@ -35,10 +35,18 @@ namespace Osiris {
         };
 
         sol::state m_Lua;
-        std::vector<ScriptInstance> m_Instances;
+
+        // deque, not vector: Entity:AddScript() (bound in BindAPI) can call CreateInstance()
+        // reentrantly from inside the very Update() loop below that iterates m_Instances (a
+        // script spawning another scripted entity from its own OnUpdate). A vector's push_back
+        // can reallocate and invalidate every reference into it, including the one Update()'s
+        // loop is currently holding; deque never invalidates references to existing elements on
+        // push_back, only iterators — which is why that loop is index-based, not range-based.
+        std::deque<ScriptInstance> m_Instances;
         float m_Accumulator = 0.0f;
 
         // Engine-wide singletons, bound as true Lua globals in Init() — see BindAPI().
+        IRHI*     m_RHI     = nullptr;
         IPhysics* m_Physics = nullptr;
         IAudio*   m_Audio   = nullptr;
         Input*    m_Input   = nullptr;

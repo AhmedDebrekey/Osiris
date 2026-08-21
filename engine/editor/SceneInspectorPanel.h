@@ -10,8 +10,8 @@ namespace Osiris {
     class IAudio;
     class IScripting;
 
-    // Debug-only ImGui panel: entity list + inspect/edit/add/remove components. physics/audio/
-    // scripting let Remove destroy the live backend resource instead of orphaning it.
+    // Debug-only ImGui panel: entity hierarchy + inspect/edit/add/remove components. physics/
+    // audio/scripting let Remove destroy the live backend resource instead of orphaning it.
     class SceneInspectorPanel {
     public:
         void Draw(Scene& scene, IPhysics* physics, IAudio* audio, IScripting* scripting);
@@ -23,7 +23,8 @@ namespace Osiris {
         void ClearSelection() { m_SelectedEntity = entt::null; }
 
     private:
-        void DrawEntityList(Scene& scene);
+        void DrawEntityList(Scene& scene, IPhysics* physics, IAudio* audio, IScripting* scripting);
+        void DrawEntityNode(Scene& scene, Entity entity, entt::entity& pendingDelete);
         void DrawComponents(Entity entity, IPhysics* physics, IAudio* audio, IScripting* scripting);
         void DrawAddComponentButton(Entity entity);
 

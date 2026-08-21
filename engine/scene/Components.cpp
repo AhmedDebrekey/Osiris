@@ -5,6 +5,8 @@
 #include "Components.h"
 #include "glm/glm.hpp"
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/constants.hpp>
+#include <cmath>
 
 namespace Osiris {
     glm::mat4 TransformComponent::GetModelMatrix() const {
@@ -27,4 +29,40 @@ namespace Osiris {
         return glm::normalize(glm::vec3(rot * glm::vec4(0.0f, -1.0f, 0.0f, 0.0f)));
     }
 
+    glm::vec3 TransformComponent::ExtractRotation(const glm::mat4& matrix, const glm::vec3& reference) {
+        glm::mat3 rotationMatrix(matrix);
+        rotationMatrix[0] = glm::normalize(rotationMatrix[0]);
+        rotationMatrix[1] = glm::normalize(rotationMatrix[1]);
+        rotationMatrix[2] = glm::normalize(rotationMatrix[2]);
+
+        const float ry = std::asin(glm::clamp(rotationMatrix[2][0], -1.0f, 1.0f));
+        const float rx = std::atan2(-rotationMatrix[2][1], rotationMatrix[2][2]);
+        const float rz = std::atan2(-rotationMatrix[1][0], rotationMatrix[0][0]);
+
+        auto unwrapDegrees = [](float angle, float previous) {
+            return previous + std::remainder(angle - previous, 360.0f);
+        };
+        glm::vec3 primary = glm::degrees(glm::vec3(rx, ry, rz));
+        glm::vec3 alternate = glm::degrees(glm::vec3(
+            rx + glm::pi<float>(), glm::pi<float>() - ry, rz + glm::pi<float>()));
+        for (int axis = 0; axis < 3; ++axis) {
+            primary[axis] = unwrapDegrees(primary[axis], reference[axis]);
+            alternate[axis] = unwrapDegrees(alternate[axis], reference[axis]);
+        }
+
+        const glm::vec3 primaryDelta = primary - reference;
+        const glm::vec3 alternateDelta = alternate - reference;
+        return glm::dot(primaryDelta, primaryDelta) <= glm::dot(alternateDelta, alternateDelta)
+            ? primary : alternate;
+    }
+
+    void TransformComponent::SetFromMatrix(const glm::mat4& matrix) {
+        position = glm::vec3(matrix[3]);
+        rotation = ExtractRotation(matrix, rotation);
+        scale = {
+            glm::length(glm::vec3(matrix[0])),
+            glm::length(glm::vec3(matrix[1])),
+            glm::length(glm::vec3(matrix[2])),
+        };
+    }
 }

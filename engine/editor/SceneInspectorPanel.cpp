@@ -12,6 +12,8 @@
 
 namespace Osiris {
     namespace {
+        constexpr const char* kSceneEntityPayload = "OSIRIS_SCENE_ENTITY";
+
         // Draws drawFn's fields plus a "Remove" button, only if the entity has component T.
         // Returns true the frame "Remove" is clicked — caller does the actual removal, since
         // some component types need backend cleanup first.
@@ -31,18 +33,37 @@ namespace Osiris {
             ImGui::PopID();
             return remove;
         }
+
+        template<typename DrawFn>
+        void DrawReadOnlyComponentSection(const char* label, DrawFn&& drawFn) {
+            ImGui::PushID(label);
+            if (ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen)) {
+                drawFn();
+            }
+            ImGui::PopID();
+        }
     }
 
     void SceneInspectorPanel::Draw(Scene& scene, IPhysics* physics, IAudio* audio, IScripting* scripting) {
         ImGui::Begin("Scene Inspector");
 
-        DrawEntityList(scene);
+        DrawEntityList(scene, physics, audio, scripting);
         ImGui::Separator();
 
         if (m_SelectedEntity != entt::null) {
             Entity entity(m_SelectedEntity, &scene);
             if (entity.IsValid() && entity.HasComponent<TagComponent>()) {
-                DrawComponents(entity, physics, audio, scripting);
+                // Guarded by IsAnyItemActive so Del deletes the entity, not a character out of
+                // whatever text field (e.g. the Tag Name box) happens to be focused.
+                const bool deletePressed = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
+                    && !ImGui::IsAnyItemActive()
+                    && ImGui::IsKeyPressed(ImGuiKey_Delete);
+                if (deletePressed) {
+                    scene.DestroyEntity(entity, physics, audio, scripting);
+                    m_SelectedEntity = entt::null;
+                } else {
+                    DrawComponents(entity, physics, audio, scripting);
+                }
             } else {
                 m_SelectedEntity = entt::null; // entity no longer exists
             }
@@ -53,22 +74,88 @@ namespace Osiris {
         ImGui::End();
     }
 
-    void SceneInspectorPanel::DrawEntityList(Scene& scene) {
+    void SceneInspectorPanel::DrawEntityList(Scene& scene, IPhysics* physics, IAudio* audio, IScripting* scripting) {
         std::vector<Entity> entities = scene.GetAllEntities();
         ImGui::Text("Entities: %d", static_cast<int>(entities.size()));
 
         ImGui::BeginChild("EntityList", ImVec2(0.0f, 150.0f), true);
-        for (Entity entity : entities) {
-            const std::string& name = entity.GetComponent<TagComponent>().name;
-            bool isSelected = entity.GetHandle() == m_SelectedEntity;
 
-            ImGui::PushID(static_cast<int>(static_cast<uint32_t>(entity.GetHandle())));
-            if (ImGui::Selectable(name.c_str(), isSelected)) {
-                m_SelectedEntity = entity.GetHandle();
+        ImGui::Button("Drop here to make root", ImVec2(-1.0f, 0.0f));
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kSceneEntityPayload)) {
+                if (payload->DataSize == sizeof(entt::entity)) {
+                    const entt::entity draggedHandle = *static_cast<const entt::entity*>(payload->Data);
+                    scene.SetParent(Entity(draggedHandle, &scene), Entity{});
+                }
             }
-            ImGui::PopID();
+            ImGui::EndDragDropTarget();
+        }
+
+        // Collected rather than destroyed on the spot — DestroyEntity (which cascades to
+        // children) must run after the tree walk below finishes, not while it's still reading
+        // ChildrenComponent/GetAllEntities' snapshot.
+        entt::entity pendingDelete = entt::null;
+        for (Entity entity : entities) {
+            if (!entity.HasComponent<ParentComponent>() || !scene.GetParent(entity).IsValid()) {
+                DrawEntityNode(scene, entity, pendingDelete);
+            }
         }
         ImGui::EndChild();
+
+        if (pendingDelete != entt::null) {
+            scene.DestroyEntity(Entity(pendingDelete, &scene), physics, audio, scripting);
+        }
+    }
+
+    void SceneInspectorPanel::DrawEntityNode(Scene& scene, Entity entity, entt::entity& pendingDelete) {
+        const std::vector<Entity> children = scene.GetChildren(entity);
+        const std::string& name = entity.GetComponent<TagComponent>().name;
+
+        ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
+        if (entity.GetHandle() == m_SelectedEntity) flags |= ImGuiTreeNodeFlags_Selected;
+        if (children.empty()) flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
+
+        ImGui::PushID(static_cast<int>(static_cast<uint32_t>(entity.GetHandle())));
+        const bool open = ImGui::TreeNodeEx("##Entity", flags, "%s", name.c_str());
+        if (ImGui::IsItemClicked()) {
+            m_SelectedEntity = entity.GetHandle();
+        }
+
+        if (ImGui::BeginPopupContextItem("EntityContextMenu")) {
+            if (!children.empty()) {
+                ImGui::TextDisabled("Deletes %d child%s too.",
+                    static_cast<int>(children.size()), children.size() == 1 ? "" : "ren");
+            }
+            if (ImGui::MenuItem("Delete")) {
+                pendingDelete = entity.GetHandle();
+            }
+            ImGui::EndPopup();
+        }
+
+        if (ImGui::BeginDragDropSource()) {
+            const entt::entity handle = entity.GetHandle();
+            ImGui::SetDragDropPayload(kSceneEntityPayload, &handle, sizeof(handle));
+            ImGui::TextUnformatted(name.c_str());
+            ImGui::EndDragDropSource();
+        }
+
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kSceneEntityPayload)) {
+                if (payload->DataSize == sizeof(entt::entity)) {
+                    const entt::entity draggedHandle = *static_cast<const entt::entity*>(payload->Data);
+                    scene.SetParent(Entity(draggedHandle, &scene), entity);
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        if (open && !children.empty()) {
+            for (Entity child : children) {
+                DrawEntityNode(scene, child, pendingDelete);
+            }
+            ImGui::TreePop();
+        }
+        ImGui::PopID();
     }
 
     void SceneInspectorPanel::DrawComponents(Entity entity, IPhysics* physics, IAudio* audio, IScripting* scripting) {
@@ -81,11 +168,37 @@ namespace Osiris {
             }
         });
 
-        DrawComponentSection<TransformComponent>(entity, "Transform", [](TransformComponent& transform) {
+        DrawComponentSection<TransformComponent>(entity, "Transform", [&](TransformComponent& transform) {
             ImGui::DragFloat3("Position", &transform.position.x, 0.05f);
             ImGui::DragFloat3("Rotation", &transform.rotation.x, 0.5f);
             ImGui::DragFloat3("Scale", &transform.scale.x, 0.05f, 0.001f, 1000.0f);
+            if (entity.HasComponent<ParentComponent>()) {
+                ImGui::TextDisabled("Local to parent.");
+            }
         });
+
+        if (entity.HasComponent<ParentComponent>()) {
+            DrawReadOnlyComponentSection("Parent", [&] {
+                Entity parent = entity.GetScene()->GetParent(entity);
+                if (parent.IsValid() && parent.HasComponent<TagComponent>()) {
+                    ImGui::Text("Entity: %s", parent.GetComponent<TagComponent>().name.c_str());
+                } else {
+                    ImGui::TextDisabled("Parent handle is invalid.");
+                }
+                ImGui::TextDisabled("Read-only — reparent through the entity tree.");
+            });
+        }
+
+        if (entity.HasComponent<ChildrenComponent>()) {
+            DrawReadOnlyComponentSection("Children", [&] {
+                std::vector<Entity> children = entity.GetScene()->GetChildren(entity);
+                ImGui::Text("Count: %d", static_cast<int>(children.size()));
+                for (Entity child : children) {
+                    ImGui::BulletText("%s", child.GetComponent<TagComponent>().name.c_str());
+                }
+                ImGui::TextDisabled("Read-only — reparent through the entity tree.");
+            });
+        }
 
         if (DrawComponentSection<MeshComponent>(entity, "Mesh", [](MeshComponent& mesh) {
             ImGui::Text("Vertices: %u", mesh.mesh.vertexCount);

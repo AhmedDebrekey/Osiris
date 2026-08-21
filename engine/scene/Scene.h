@@ -30,12 +30,9 @@ namespace Osiris {
         void DestroyEntity(Entity entity, IPhysics* physics, IAudio* audio, IScripting* scripting);
 
         // Loads a model file (relativePath resolved through AssetManager; glTF via MeshLoader
-        // today) and spawns one entity per primitive, named "<name>_0", "<name>_1", ... — a model
-        // can be split into several material-distinct pieces, so there's no single entity to hand
-        // back. The one place this logic lives; main.cpp's scene authoring and LuaScripting's
-        // Scene binding both call it, and a future prefab/asset-browser drag-drop system should
-        // too rather than reimplementing the load-and-spawn loop a third time.
-        std::vector<Entity> SpawnModel(const std::string& name, const std::string& relativePath, IRHI* rhi);
+        // today) and returns one root entity, with one child named "<name>_<index>" per primitive.
+        // The one place this logic lives; main.cpp, Lua, and asset-browser spawning all call it.
+        Entity SpawnModel(const std::string& name, const std::string& relativePath, IRHI* rhi);
 
         // Destroys every entity currently in the scene, same per-component teardown as
         // DestroyEntity, one at a time — used before loading a new scene on top of a running one.
@@ -43,6 +40,14 @@ namespace Osiris {
 
         Entity FindEntityByName(const std::string& name);
         std::vector<Entity> GetAllEntities();
+
+        // Keeps ParentComponent and ChildrenComponent in sync while preserving world transform.
+        // An invalid newParent unparents; requests that would create a cycle are ignored.
+        void SetParent(Entity child, Entity newParent);
+        Entity GetParent(Entity entity);
+        std::vector<Entity> GetChildren(Entity entity);
+        glm::mat4 GetWorldTransform(Entity entity) const;
+
         void Update(float deltaTime);
         void Render(IRHI* rhi, const Camera& camera);
         void RenderShadows(IRHI* rhi);
@@ -54,7 +59,7 @@ namespace Osiris {
         // shape/motion-type change. CreatePhysicsBodies is this called once per matching entity.
         void RebuildPhysicsBody(Entity entity, IPhysics* physics);
 
-        // Writes each non-Static body's live position + rotation back into TransformComponent.
+        // Writes each non-Static body's live world pose back into its local TransformComponent.
         void SyncPhysicsTransforms(IPhysics* physics);
 
         // Creates a live OpenAL source per AudioSourceComponent entity; auto-plays if autoPlay=true.
@@ -79,7 +84,7 @@ namespace Osiris {
         // equivalent of RebuildPhysicsBody.
         void RebuildCharacter(Entity entity, IPhysics* physics);
 
-        // Writes each character's live position back into TransformComponent.
+        // Writes each character's live world position back into its local TransformComponent.
         void SyncCharacterTransforms(IPhysics* physics);
 
         // Play mode snapshot/restore — Transform only, not a full scene undo.

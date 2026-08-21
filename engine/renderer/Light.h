@@ -17,7 +17,7 @@ namespace Osiris {
     };
 
     struct ShadowSettings {
-        float nearClip           = 0.5f;
+        float nearClip           = 5.0f;
         float farClip            = 80.0f;
         float cascadeSplitLambda = 0.95f;
         float depthBiasConstant  = 1.25f;

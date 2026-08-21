@@ -64,6 +64,10 @@ namespace Osiris {
             "x", &glm::vec2::x,
             "y", &glm::vec2::y);
 
+        m_Lua.new_usertype<glm::mat4>("mat4",
+            sol::no_constructor,
+            "GetTranslation", [](const glm::mat4& matrix) { return glm::vec3(matrix[3]); });
+
         m_Lua.new_usertype<TransformComponent>("Transform",
             "position",    &TransformComponent::position,
             "rotation",    &TransformComponent::rotation, // euler degrees
@@ -72,6 +76,15 @@ namespace Osiris {
 
         m_Lua.new_usertype<TagComponent>("Tag",
             "name", &TagComponent::name);
+
+        // Hierarchy storage is read-only to scripts; Scene:SetParent is the only mutation path.
+        m_Lua.new_usertype<ParentComponent>("Parent",
+            sol::no_constructor,
+            "IsSet", &ParentComponent::HasParent);
+
+        m_Lua.new_usertype<ChildrenComponent>("Children",
+            sol::no_constructor,
+            "GetCount", &ChildrenComponent::GetCount);
 
         m_Lua.new_usertype<SpotLightComponent>("SpotLight",
             "color",       &SpotLightComponent::color,
@@ -177,6 +190,11 @@ namespace Osiris {
             "GetTag", &Entity::GetComponent<TagComponent>,
             "HasTag", &Entity::HasComponent<TagComponent>,
 
+            "GetParentComponent", &Entity::GetComponent<ParentComponent>,
+            "HasParentComponent", &Entity::HasComponent<ParentComponent>,
+            "GetChildrenComponent", &Entity::GetComponent<ChildrenComponent>,
+            "HasChildrenComponent", &Entity::HasComponent<ChildrenComponent>,
+
             "GetSpotLight", &Entity::GetComponent<SpotLightComponent>,
             "HasSpotLight", &Entity::HasComponent<SpotLightComponent>,
             "AddSpotLight", &Entity::AddComponent<SpotLightComponent>,
@@ -252,14 +270,19 @@ namespace Osiris {
             "FindEntityByName", &Scene::FindEntityByName,
             "CreateEntity",     &Scene::CreateEntity,
             "FindCameraEntity", &Scene::FindCameraEntity,
+            "SetParent",        &Scene::SetParent,
+            "ClearParent", [](Scene& scene, Entity child) {
+                scene.SetParent(child, Entity{});
+            },
+            "GetParent",        &Scene::GetParent,
+            "GetChildren",      &Scene::GetChildren,
+            "GetWorldTransform", &Scene::GetWorldTransform,
             // Wrapped so Lua doesn't need to pass physics/audio/scripting itself — same trio
             // Scene::DestroyEntity's C++ callers would otherwise have to thread through by hand.
             "DestroyEntity", [this](Scene& scene, Entity entity) {
                 scene.DestroyEntity(entity, m_Physics, m_Audio, this);
             },
-            // Returns a Lua table of every entity spawned (one per model primitive) — sol2
-            // converts the std::vector<Entity> automatically. Same helper main.cpp's own scene
-            // authoring calls, so a script-spawned model behaves identically to a hand-authored one.
+            // Returns the model root; its primitive entities are children of that root.
             "SpawnModel", [this](Scene& scene, const std::string& name, const std::string& relativePath) {
                 return scene.SpawnModel(name, relativePath, m_RHI);
             });

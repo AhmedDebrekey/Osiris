@@ -64,8 +64,9 @@ namespace Osiris {
     void AssetBrowserPanel::SpawnModel(
         const AssetEntry& model, Scene& scene, const Camera& camera, IRHI* rhi) {
         const glm::vec3 spawnPosition = camera.GetPosition() + camera.GetFront() * kSpawnDistance;
-        for (Entity entity : scene.SpawnModel(model.name, model.relativePath, rhi)) {
-            entity.GetComponent<TransformComponent>().position = spawnPosition;
+        Entity root = scene.SpawnModel(model.name, model.relativePath, rhi);
+        if (root.IsValid()) {
+            root.GetComponent<TransformComponent>().position = spawnPosition;
         }
     }
 }

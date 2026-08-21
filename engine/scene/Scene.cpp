@@ -26,26 +26,43 @@ namespace Osiris {
     }
 
     void Scene::DestroyEntity(Entity entity, IPhysics* physics, IAudio* audio, IScripting* scripting) {
-        if (!entity.IsValid()) return;
+        if (entity.GetScene() != this || !m_Registry.valid(entity.GetHandle())) return;
 
-        if (entity.HasComponent<RigidBodyComponent>()) {
-            auto& rigidBody = entity.GetComponent<RigidBodyComponent>();
-            if (rigidBody.bodyHandle.IsValid()) physics->DestroyBody(rigidBody.bodyHandle);
-        }
-        if (entity.HasComponent<CharacterComponent>()) {
-            auto& character = entity.GetComponent<CharacterComponent>();
-            if (character.characterHandle.IsValid()) physics->DestroyCharacter(character.characterHandle);
-        }
-        if (entity.HasComponent<AudioSourceComponent>()) {
-            auto& audioSrc = entity.GetComponent<AudioSourceComponent>();
-            if (audioSrc.sourceHandle.IsValid()) audio->DestroySource(audioSrc.sourceHandle);
-        }
-        if (entity.HasComponent<ScriptComponent>()) {
-            auto& script = entity.GetComponent<ScriptComponent>();
-            if (script.instanceHandle.IsValid()) scripting->DestroyInstance(script.instanceHandle);
+        std::vector<entt::entity> subtree;
+        subtree.push_back(entity.GetHandle());
+        for (size_t i = 0; i < subtree.size(); i++) {
+            const entt::entity current = subtree[i];
+            if (const auto* children = m_Registry.try_get<ChildrenComponent>(current)) {
+                subtree.insert(subtree.end(), children->m_Children.begin(), children->m_Children.end());
+            }
         }
 
-        m_Registry.destroy(entity.GetHandle());
+        for (auto it = subtree.rbegin(); it != subtree.rend(); ++it) {
+            if (!m_Registry.valid(*it)) continue;
+
+            Entity current(*it, this);
+            SetParent(current, Entity{});
+
+            if (current.HasComponent<RigidBodyComponent>()) {
+                auto& rigidBody = current.GetComponent<RigidBodyComponent>();
+                if (rigidBody.bodyHandle.IsValid()) physics->DestroyBody(rigidBody.bodyHandle);
+            }
+            if (current.HasComponent<CharacterComponent>()) {
+                auto& character = current.GetComponent<CharacterComponent>();
+                if (character.characterHandle.IsValid()) physics->DestroyCharacter(character.characterHandle);
+            }
+            if (current.HasComponent<AudioSourceComponent>()) {
+                auto& audioSrc = current.GetComponent<AudioSourceComponent>();
+                if (audioSrc.sourceHandle.IsValid()) audio->DestroySource(audioSrc.sourceHandle);
+            }
+            if (current.HasComponent<ScriptComponent>()) {
+                auto& script = current.GetComponent<ScriptComponent>();
+                if (script.instanceHandle.IsValid()) scripting->DestroyInstance(script.instanceHandle);
+            }
+
+            m_PlaySnapshot.erase(*it);
+            m_Registry.destroy(*it);
+        }
     }
 
     void Scene::Clear(IPhysics* physics, IAudio* audio, IScripting* scripting) {
@@ -54,19 +71,20 @@ namespace Osiris {
         }
     }
 
-    std::vector<Entity> Scene::SpawnModel(const std::string& name, const std::string& relativePath, IRHI* rhi) {
+    Entity Scene::SpawnModel(const std::string& name, const std::string& relativePath, IRHI* rhi) {
         std::vector<MeshPrimitive> primitives = MeshLoader::LoadFromGLTF(AssetManager::GetPath(relativePath), rhi);
+        if (primitives.empty()) return Entity{};
 
-        std::vector<Entity> entities;
-        entities.reserve(primitives.size());
+        Entity root = CreateEntity(name);
+        root.AddComponent<ModelSourceComponent>(relativePath);
         for (uint32_t i = 0; i < primitives.size(); i++) {
             Entity entity = CreateEntity(name + "_" + std::to_string(i));
             entity.AddComponent<MeshComponent>(primitives[i].mesh);
             entity.AddComponent<MaterialComponent>(primitives[i].material);
             entity.AddComponent<ModelSourceComponent>(relativePath);
-            entities.push_back(entity);
+            SetParent(entity, root);
         }
-        return entities;
+        return root;
     }
 
     Entity Scene::FindEntityByName(const std::string& name) {
@@ -89,6 +107,104 @@ namespace Osiris {
         return result;
     }
 
+    void Scene::SetParent(Entity child, Entity newParent) {
+        if (child.GetScene() != this || !m_Registry.valid(child.GetHandle())) return;
+
+        const entt::entity childHandle = child.GetHandle();
+        entt::entity newParentHandle = entt::null;
+        if (newParent.IsValid()) {
+            if (newParent.GetScene() != this || !m_Registry.valid(newParent.GetHandle())) return;
+            newParentHandle = newParent.GetHandle();
+
+            for (entt::entity ancestor = newParentHandle; ancestor != entt::null;) {
+                if (ancestor == childHandle) return;
+                if (!m_Registry.valid(ancestor)) break;
+
+                const auto* parent = m_Registry.try_get<ParentComponent>(ancestor);
+                ancestor = parent ? parent->m_Parent : entt::null;
+            }
+        }
+
+        auto* currentParent = m_Registry.try_get<ParentComponent>(childHandle);
+        if (currentParent && currentParent->m_Parent == newParentHandle) return;
+
+        const glm::mat4 worldTransform = GetWorldTransform(child);
+
+        if (currentParent) {
+            const entt::entity oldParentHandle = currentParent->m_Parent;
+            if (m_Registry.valid(oldParentHandle)) {
+                if (auto* oldChildren = m_Registry.try_get<ChildrenComponent>(oldParentHandle)) {
+                    std::erase(oldChildren->m_Children, childHandle);
+                    if (oldChildren->m_Children.empty()) {
+                        m_Registry.remove<ChildrenComponent>(oldParentHandle);
+                    }
+                }
+            }
+            m_Registry.remove<ParentComponent>(childHandle);
+        }
+
+        if (newParentHandle == entt::null) {
+            if (auto* transform = m_Registry.try_get<TransformComponent>(childHandle)) {
+                transform->SetFromMatrix(worldTransform);
+            }
+            return;
+        }
+
+        auto& parent = m_Registry.emplace<ParentComponent>(childHandle);
+        parent.m_Parent = newParentHandle;
+
+        auto& children = m_Registry.get_or_emplace<ChildrenComponent>(newParentHandle);
+        children.m_Children.push_back(childHandle);
+
+        if (auto* transform = m_Registry.try_get<TransformComponent>(childHandle)) {
+            // Non-uniformly scaled parents can introduce shear that local TRS cannot preserve exactly.
+            transform->SetFromMatrix(glm::inverse(GetWorldTransform(newParent)) * worldTransform);
+        }
+    }
+
+    Entity Scene::GetParent(Entity entity) {
+        if (entity.GetScene() != this || !m_Registry.valid(entity.GetHandle())) return Entity{};
+
+        const auto* parent = m_Registry.try_get<ParentComponent>(entity.GetHandle());
+        if (!parent || !m_Registry.valid(parent->m_Parent)) return Entity{};
+        return Entity(parent->m_Parent, this);
+    }
+
+    std::vector<Entity> Scene::GetChildren(Entity entity) {
+        std::vector<Entity> result;
+        if (entity.GetScene() != this || !m_Registry.valid(entity.GetHandle())) return result;
+
+        const auto* children = m_Registry.try_get<ChildrenComponent>(entity.GetHandle());
+        if (!children) return result;
+
+        result.reserve(children->m_Children.size());
+        for (entt::entity child : children->m_Children) {
+            if (m_Registry.valid(child)) result.emplace_back(child, this);
+        }
+        return result;
+    }
+
+    glm::mat4 Scene::GetWorldTransform(Entity entity) const {
+        if (entity.GetScene() != this || !m_Registry.valid(entity.GetHandle())) return glm::mat4(1.0f);
+
+        std::vector<entt::entity> chain;
+        for (entt::entity current = entity.GetHandle(); current != entt::null;) {
+            if (!m_Registry.valid(current)) break;
+            chain.push_back(current);
+
+            const auto* parent = m_Registry.try_get<ParentComponent>(current);
+            current = parent ? parent->m_Parent : entt::null;
+        }
+
+        glm::mat4 worldTransform(1.0f);
+        for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+            if (const auto* transform = m_Registry.try_get<TransformComponent>(*it)) {
+                worldTransform *= transform->GetModelMatrix();
+            }
+        }
+        return worldTransform;
+    }
+
     void Scene::Render(IRHI* rhi, const Camera& camera) {
         const Frustum frustum = Frustum::FromViewProjection(
             camera.GetProjectionMatrix() * camera.GetViewMatrix()
@@ -99,11 +215,10 @@ namespace Osiris {
 
         const auto view = m_Registry.view<TransformComponent, MeshComponent, MaterialComponent>();
         for (auto entity : view) {
-            auto& transform = view.get<TransformComponent>(entity);
             auto& mesh      = view.get<MeshComponent>(entity);
             auto& material  = view.get<MaterialComponent>(entity);
 
-            glm::mat4 model = transform.GetModelMatrix();
+            const glm::mat4 model = GetWorldTransform(Entity(entity, this));
             if (!frustum.IsVisible(mesh.mesh.bounds, model)) {
                 m_CulledCount++;
                 continue;
@@ -120,10 +235,9 @@ namespace Osiris {
     void Scene::RenderShadows(IRHI* rhi) {
         auto view = m_Registry.view<TransformComponent, MeshComponent>();
         for (auto entity : view) {
-            auto& transform = view.get<TransformComponent>(entity);
             auto& mesh      = view.get<MeshComponent>(entity);
 
-            rhi->SetModelMatrix(transform.GetModelMatrix());
+            rhi->SetModelMatrix(GetWorldTransform(Entity(entity, this)));
             rhi->SetMeshData(mesh.mesh);
             rhi->DrawShadowIndexed(mesh.mesh.indexCount);
         }
@@ -138,20 +252,24 @@ namespace Osiris {
         std::vector<Candidate> candidates;
         const auto view = m_Registry.view<TransformComponent, SpotLightComponent>();
         for (auto entity : view) {
-            auto& transform = view.get<TransformComponent>(entity);
             auto& light     = view.get<SpotLightComponent>(entity);
             if (!light.enabled) continue;
 
+            const glm::mat4 worldTransform = GetWorldTransform(Entity(entity, this));
+            const glm::vec3 worldPosition = glm::vec3(worldTransform[3]);
+            const glm::vec3 worldDirection = glm::normalize(glm::vec3(
+                worldTransform * glm::vec4(0.0f, -1.0f, 0.0f, 0.0f)));
+
             SpotLightRenderData data{};
-            data.position          = transform.position;
-            data.direction         = transform.GetForward();
+            data.position          = worldPosition;
+            data.direction         = worldDirection;
             data.color             = light.color;
             data.intensity         = light.intensity;
             data.innerConeDegrees  = light.innerCone;
             data.outerConeDegrees  = light.outerCone;
             data.range             = light.range;
 
-            const glm::vec3 toCamera = transform.position - cameraPosition;
+            const glm::vec3 toCamera = worldPosition - cameraPosition;
             candidates.push_back({data, glm::dot(toCamera, toCamera), light.castsShadow});
         }
 
@@ -204,8 +322,15 @@ namespace Osiris {
         RigidBodyDesc desc{};
         desc.collider.halfExtents = collider.halfExtents;
         desc.motionType    = rigidBody.motionType;
-        desc.position       = transform.position;
-        desc.rotationEuler  = transform.rotation;
+        Entity parent = GetParent(entity);
+        if (parent.IsValid()) {
+            const glm::mat4 worldTransform = GetWorldTransform(entity);
+            desc.position      = glm::vec3(worldTransform[3]);
+            desc.rotationEuler = TransformComponent::ExtractRotation(worldTransform, transform.rotation);
+        } else {
+            desc.position      = transform.position;
+            desc.rotationEuler = transform.rotation;
+        }
 
         rigidBody.bodyHandle = physics->CreateBody(desc);
     }
@@ -217,15 +342,30 @@ namespace Osiris {
             auto& rigidBody = view.get<RigidBodyComponent>(entity);
             if (rigidBody.motionType == BodyMotionType::Static) continue;
 
-            transform.position = physics->GetBodyPosition(rigidBody.bodyHandle);
-            transform.rotation = physics->GetBodyRotationEuler(rigidBody.bodyHandle);
+            const glm::vec3 worldPosition = physics->GetBodyPosition(rigidBody.bodyHandle);
+            const glm::vec3 worldRotation = physics->GetBodyRotationEuler(rigidBody.bodyHandle);
+            Entity current(entity, this);
+            Entity parent = GetParent(current);
+            if (!parent.IsValid()) {
+                transform.position = worldPosition;
+                transform.rotation = worldRotation;
+                continue;
+            }
+
+            TransformComponent worldTransform;
+            worldTransform.position = worldPosition;
+            worldTransform.rotation = worldRotation;
+            const glm::mat4 localTransform = glm::inverse(GetWorldTransform(parent))
+                * worldTransform.GetModelMatrix();
+            transform.position = glm::vec3(localTransform[3]);
+            // Non-uniformly scaled ancestors can introduce shear that local TRS cannot represent exactly.
+            transform.rotation = TransformComponent::ExtractRotation(localTransform, transform.rotation);
         }
     }
 
     void Scene::CreateAudioSources(IAudio* audio) {
         const auto view = m_Registry.view<TransformComponent, AudioSourceComponent>();
         for (auto entity : view) {
-            auto& transform = view.get<TransformComponent>(entity);
             auto& audioSrc  = view.get<AudioSourceComponent>(entity);
             if (!audioSrc.clip.IsValid()) continue; // no clip assigned yet — nothing to create a source from
 
@@ -239,7 +379,8 @@ namespace Osiris {
             desc.rolloffFactor    = audioSrc.rolloffFactor;
 
             audioSrc.sourceHandle = audio->CreateSource(desc);
-            audio->SetSourcePosition(audioSrc.sourceHandle, transform.position);
+            const glm::vec3 worldPosition = glm::vec3(GetWorldTransform(Entity(entity, this))[3]);
+            audio->SetSourcePosition(audioSrc.sourceHandle, worldPosition);
             if (audioSrc.autoPlay) audio->PlaySource(audioSrc.sourceHandle);
         }
     }
@@ -247,9 +388,9 @@ namespace Osiris {
     void Scene::SyncAudioSources(IAudio* audio) {
         const auto view = m_Registry.view<TransformComponent, AudioSourceComponent>();
         for (auto entity : view) {
-            auto& transform = view.get<TransformComponent>(entity);
             auto& audioSrc  = view.get<AudioSourceComponent>(entity);
-            audio->SetSourcePosition(audioSrc.sourceHandle, transform.position);
+            const glm::vec3 worldPosition = glm::vec3(GetWorldTransform(Entity(entity, this))[3]);
+            audio->SetSourcePosition(audioSrc.sourceHandle, worldPosition);
         }
     }
 
@@ -304,7 +445,10 @@ namespace Osiris {
         desc.height            = character.height;
         desc.maxSlopeAngleDeg  = character.maxSlopeAngleDeg;
         desc.mass              = character.mass;
-        desc.position          = transform.position;
+        Entity parent = GetParent(entity);
+        desc.position = parent.IsValid()
+            ? glm::vec3(GetWorldTransform(entity)[3])
+            : transform.position;
 
         character.characterHandle = physics->CreateCharacter(desc);
     }
@@ -316,7 +460,15 @@ namespace Osiris {
             auto& character = view.get<CharacterComponent>(entity);
             if (!character.characterHandle.IsValid()) continue;
 
-            transform.position = physics->GetCharacterPosition(character.characterHandle);
+            const glm::vec3 worldPosition = physics->GetCharacterPosition(character.characterHandle);
+            Entity parent = GetParent(Entity(entity, this));
+            if (!parent.IsValid()) {
+                transform.position = worldPosition;
+                continue;
+            }
+
+            transform.position = glm::vec3(
+                glm::inverse(GetWorldTransform(parent)) * glm::vec4(worldPosition, 1.0f));
         }
     }
 

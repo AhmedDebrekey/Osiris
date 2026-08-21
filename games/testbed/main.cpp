@@ -15,9 +15,7 @@
 #include "audio/IAudio.h"
 #include "assets/AudioLoader.h"
 
-#include <cmath>
 #include <iostream>
-#include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include "imgui.h"
@@ -196,8 +194,9 @@ int main() {
         // PBR test model (Khronos DamagedHelmet) — has real metallic/roughness
         // variation, unlike the fully-diffuse crates, so it's a much better way
         // to visually verify specular IBL once tasks 4-6 land.
-        auto helmetEntities = scene.SpawnModel("DamagedHelmet", "models/DamagedHelmet/DamagedHelmet.gltf", engine.GetRHI());
-        for (auto& helmet : helmetEntities) {
+        Osiris::Entity helmet = scene.SpawnModel(
+            "DamagedHelmet", "models/DamagedHelmet/DamagedHelmet.gltf", engine.GetRHI());
+        if (helmet.IsValid()) {
             helmet.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-2.5f, 1.3f, -0.5f);
         }
 
@@ -331,7 +330,7 @@ int main() {
                     Osiris::Entity selectedEntity(selectedHandle, &scene);
                     if (selectedEntity.HasComponent<Osiris::TransformComponent>()) {
                         auto& transform = selectedEntity.GetComponent<Osiris::TransformComponent>();
-                        glm::mat4 model = transform.GetModelMatrix();
+                        glm::mat4 model = scene.GetWorldTransform(selectedEntity);
                         const glm::mat4 view = camera.GetViewMatrix();
                         glm::mat4 projection = camera.GetProjectionMatrix();
                         // ImGuizmo applies the screen-space Y flip itself.
@@ -340,34 +339,13 @@ int main() {
                             ? ImGuizmo::WORLD : ImGuizmo::LOCAL;
                         if (ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection),
                             gizmoOperation, gizmoMode, glm::value_ptr(model))) {
-                            const glm::vec3 previousRotation = transform.rotation;
-                            glm::vec3 ignoredRotation;
-                            ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(model),
-                                &transform.position.x, &ignoredRotation.x, &transform.scale.x);
-
-                            // ImGuizmo decomposes Rz*Ry*Rx, while TransformComponent uses Rx*Ry*Rz.
-                            glm::mat3 rotationMatrix(model);
-                            rotationMatrix[0] = glm::normalize(rotationMatrix[0]);
-                            rotationMatrix[1] = glm::normalize(rotationMatrix[1]);
-                            rotationMatrix[2] = glm::normalize(rotationMatrix[2]);
-                            const float ry = std::asin(glm::clamp(rotationMatrix[2][0], -1.0f, 1.0f));
-                            const float rx = std::atan2(-rotationMatrix[2][1], rotationMatrix[2][2]);
-                            const float rz = std::atan2(-rotationMatrix[1][0], rotationMatrix[0][0]);
-
-                            auto unwrapDegrees = [](float angle, float reference) {
-                                return reference + std::remainder(angle - reference, 360.0f);
-                            };
-                            glm::vec3 primary = glm::degrees(glm::vec3(rx, ry, rz));
-                            glm::vec3 alternate = glm::degrees(glm::vec3(
-                                rx + glm::pi<float>(), glm::pi<float>() - ry, rz + glm::pi<float>()));
-                            for (int axis = 0; axis < 3; ++axis) {
-                                primary[axis] = unwrapDegrees(primary[axis], previousRotation[axis]);
-                                alternate[axis] = unwrapDegrees(alternate[axis], previousRotation[axis]);
+                            glm::mat4 localModel = model;
+                            Osiris::Entity parent = scene.GetParent(selectedEntity);
+                            if (parent.IsValid()) {
+                                // Non-uniformly scaled ancestors can introduce shear that local TRS cannot represent exactly.
+                                localModel = glm::inverse(scene.GetWorldTransform(parent)) * model;
                             }
-                            const glm::vec3 primaryDelta = primary - previousRotation;
-                            const glm::vec3 alternateDelta = alternate - previousRotation;
-                            transform.rotation = glm::dot(primaryDelta, primaryDelta)
-                                <= glm::dot(alternateDelta, alternateDelta) ? primary : alternate;
+                            transform.SetFromMatrix(localModel);
                         }
                     }
                 }
@@ -375,15 +353,7 @@ int main() {
             }
             ImGui::End();
         }
-
-        if (engine.IsPlaying() && audioTestEntity.IsValid() && engine.GetInput()->IsKeyPressed(SDL_SCANCODE_P)) {
-            auto& audioSrc = audioTestEntity.GetComponent<Osiris::AudioSourceComponent>();
-            if (engine.GetAudio()->IsSourcePlaying(audioSrc.sourceHandle)) {
-                engine.GetAudio()->StopSource(audioSrc.sourceHandle);
-            } else {
-                engine.GetAudio()->PlaySource(audioSrc.sourceHandle);
-            }
-        }
+        
 
         // Camera follows whatever Scene::FindCameraEntity() returns, not kPhysicsTestScene —
         // only relevant while actually Playing.
@@ -420,7 +390,8 @@ int main() {
 
             if (cameraEntity.IsValid()) {
                 float eyeHeight = cameraEntity.GetComponent<Osiris::CameraComponent>().eyeHeight;
-                camera.SetPosition(cameraEntity.GetComponent<Osiris::TransformComponent>().position + glm::vec3(0.0f, eyeHeight, 0.0f));
+                const glm::vec3 cameraBase = glm::vec3(scene.GetWorldTransform(cameraEntity)[3]);
+                camera.SetPosition(cameraBase + glm::vec3(0.0f, eyeHeight, 0.0f));
             }
         }
 
@@ -485,7 +456,7 @@ int main() {
 
             if (kPhysicsTestScene && player.IsValid() && player.HasComponent<Osiris::CharacterComponent>()) {
                 auto& character = player.GetComponent<Osiris::CharacterComponent>();
-                glm::vec3 feet = player.GetComponent<Osiris::TransformComponent>().position;
+                glm::vec3 feet = glm::vec3(scene.GetWorldTransform(player)[3]);
                 ImGui::Text("Character feet: %.2f %.2f %.2f", feet.x, feet.y, feet.z);
                 ImGui::Text("Grounded: %s", engine.GetPhysics()->IsCharacterGrounded(character.characterHandle) ? "yes" : "no");
                 ImGui::Text("WASD to move, Space to jump, mouse (RMB held) to look");

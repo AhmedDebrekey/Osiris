@@ -5,7 +5,6 @@
 #include "SceneLoader.h"
 
 #include <fstream>
-#include <map>
 #include <unordered_map>
 #include <nlohmann/json.hpp>
 
@@ -34,18 +33,24 @@ namespace Osiris {
             };
         }
 
-        // Scene::SpawnModel names every primitive of one spawn call "<name>_<index>" — strips
-        // that back off so primitives from the same call round-trip as one JSON "mesh" entry.
-        // Only strips a trailing "_<digits>", so a hand-authored name ending in "_2" for an
-        // unrelated reason isn't silently mangled.
-        std::string StripPrimitiveSuffix(const std::string& name) {
-            const size_t underscore = name.find_last_of('_');
-            if (underscore == std::string::npos || underscore + 1 == name.size()) return name;
-            for (size_t i = underscore + 1; i < name.size(); i++) {
-                if (!std::isdigit(static_cast<unsigned char>(name[i]))) return name;
-            }
-            return name.substr(0, underscore);
+        TransformComponent ReadTransform(const nlohmann::json& entityJson) {
+            TransformComponent transform;
+            if (!entityJson.contains("transform")) return transform;
+
+            const auto& transformJson = entityJson["transform"];
+            transform.position = ReadVec3(transformJson, "position", transform.position);
+            transform.rotation = ReadVec3(transformJson, "rotation", transform.rotation);
+            transform.scale = ReadVec3(transformJson, "scale", transform.scale);
+            return transform;
         }
+
+        void WriteParent(nlohmann::json& entityJson, Scene& scene, Entity entity) {
+            Entity parent = scene.GetParent(entity);
+            if (parent.IsValid() && parent.HasComponent<TagComponent>()) {
+                entityJson["parent"] = parent.GetComponent<TagComponent>().name;
+            }
+        }
+
     }
 
     void SceneLoader::Load(const std::string& path, Scene& scene, IRHI* rhi, IAudio* audio) {
@@ -62,33 +67,19 @@ namespace Osiris {
 
         for (auto& entityJson : json["entities"]) {
             std::string name = entityJson.value("name", std::string());
-
-            glm::vec3 position(0.0f);
-            glm::vec3 rotation(0.0f);
-            glm::vec3 scale(1.0f);
-            if (entityJson.contains("transform")) {
-                auto& t = entityJson["transform"];
-                position = ReadVec3(t, "position", position);
-                rotation = ReadVec3(t, "rotation", rotation);
-                scale    = ReadVec3(t, "scale", scale);
-            }
+            const TransformComponent savedTransform = ReadTransform(entityJson);
 
             if (entityJson.contains("mesh")) {
                 std::string meshPath = entityJson["mesh"];
-                for (Entity e : scene.SpawnModel(name, meshPath, rhi)) {
-                    auto& transform = e.GetComponent<TransformComponent>();
-                    transform.position = position;
-                    transform.rotation = rotation;
-                    transform.scale    = scale;
+                Entity root = scene.SpawnModel(name, meshPath, rhi);
+                if (root.IsValid()) {
+                    root.GetComponent<TransformComponent>() = savedTransform;
                 }
                 continue;
             }
 
             Entity entity = scene.CreateEntity(name);
-            auto& transform = entity.GetComponent<TransformComponent>();
-            transform.position = position;
-            transform.rotation = rotation;
-            transform.scale    = scale;
+            entity.GetComponent<TransformComponent>() = savedTransform;
 
             if (entityJson.contains("spotLight")) {
                 auto& j = entityJson["spotLight"];
@@ -159,14 +150,29 @@ namespace Osiris {
                 character.mass             = j.value("mass", character.mass);
             }
         }
+
+        for (const auto& entityJson : json["entities"]) {
+            if (!entityJson.contains("parent")) continue;
+
+            const std::string childName = entityJson.value("name", std::string());
+            const std::string parentName = entityJson.value("parent", std::string());
+            Entity child = scene.FindEntityByName(childName);
+            Entity parent = scene.FindEntityByName(parentName);
+            if (!child.IsValid() || !parent.IsValid()) {
+                OSIRIS_WARN("Failed to restore parent '{}' for entity '{}'", parentName, childName);
+                continue;
+            }
+
+            scene.SetParent(child, parent);
+            if (scene.GetParent(child) == parent) {
+                child.GetComponent<TransformComponent>() = ReadTransform(entityJson);
+            }
+        }
     }
 
     void SceneLoader::Save(const std::string& path, Scene& scene) {
         nlohmann::json json;
         json["entities"] = nlohmann::json::array();
-
-        struct MeshGroup { std::string name; std::string relativePath; TransformComponent transform; };
-        std::map<std::string, MeshGroup> meshGroups; // keyed by groupName + "|" + relativePath, sorted for stable output
 
         for (Entity entity : scene.GetAllEntities()) {
             if (!entity.HasComponent<TagComponent>() || !entity.HasComponent<TransformComponent>()) continue;
@@ -174,16 +180,22 @@ namespace Osiris {
             const TransformComponent& transform = entity.GetComponent<TransformComponent>();
 
             if (entity.HasComponent<ModelSourceComponent>()) {
+                if (entity.HasComponent<MeshComponent>()) continue; // primitive child; the model root serializes the glTF
                 const std::string& relativePath = entity.GetComponent<ModelSourceComponent>().relativePath;
-                const std::string groupName = StripPrimitiveSuffix(name);
-                const std::string key = groupName + "|" + relativePath;
-                meshGroups.try_emplace(key, MeshGroup{ groupName, relativePath, transform });
+                nlohmann::json entityJson = {
+                    {"name", name},
+                    {"mesh", relativePath},
+                    {"transform", WriteTransform(transform)},
+                };
+                WriteParent(entityJson, scene, entity);
+                json["entities"].push_back(entityJson);
                 continue;
             }
 
             nlohmann::json entityJson;
             entityJson["name"]      = name;
             entityJson["transform"] = WriteTransform(transform);
+            WriteParent(entityJson, scene, entity);
 
             if (entity.HasComponent<SpotLightComponent>()) {
                 auto& light = entity.GetComponent<SpotLightComponent>();
@@ -242,14 +254,6 @@ namespace Osiris {
             }
 
             json["entities"].push_back(entityJson);
-        }
-
-        for (auto& [key, group] : meshGroups) {
-            json["entities"].push_back({
-                {"name", group.name},
-                {"mesh", group.relativePath},
-                {"transform", WriteTransform(group.transform)},
-            });
         }
 
         std::ofstream file(path);

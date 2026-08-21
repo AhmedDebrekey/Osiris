@@ -9,18 +9,12 @@
 #include "core/AssetManager.h"
 #include "scene/Scene.h"
 #include "physics/IPhysics.h"
-#include "editor/SceneInspectorPanel.h"
-#include "editor/AssetBrowserPanel.h"
-#include "editor/SceneFileMenu.h"
+#include "editor/Editor.h"
 #include "audio/IAudio.h"
 #include "assets/AudioLoader.h"
 
 #include <iostream>
 #include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-#include "imgui.h"
-#include "ImGuizmo.h"
-#include "renderer/Light.h"
 
 int main() {
     std::cout << "Osiris Engine" << std::endl;
@@ -253,15 +247,10 @@ int main() {
         glm::vec3(0.0f, 0.0f, -1.0f)
     );
 
-    Osiris::SceneInspectorPanel sceneInspector;
-    Osiris::AssetBrowserPanel assetBrowser;
-    Osiris::SceneFileMenu sceneFileMenu;
+    Osiris::Editor editor;
 
     uint64_t lastCounter = SDL_GetPerformanceCounter();
     const double frequency = static_cast<double>(SDL_GetPerformanceFrequency());
-
-    static bool debugLightView = false;
-    static int debugCascade = 0;
 
     while (engine.IsRunning()) {
         const uint64_t currentCounter = SDL_GetPerformanceCounter();
@@ -269,91 +258,17 @@ int main() {
         lastCounter = currentCounter;
 
         engine.BeginFrame();
-        ImGuizmo::BeginFrame();
+        editor.BeginFrame();
 
         if (engine.GetInput()->IsKeyPressed(SDL_SCANCODE_F5)) {
-            if (engine.IsPlaying()) {
-                scene.RestorePlaySnapshot(engine.GetPhysics());
-                scene.StopAllAudioSources(engine.GetAudio());
-            } else {
-                // Edit-mode Transform edits (gizmo, Inspector) never touch the live physics body/
-                // character, only TransformComponent — rebuild both from the current Transform so
-                // Play doesn't start from whatever pose they were created/last-simulated at.
-                scene.CreatePhysicsBodies(engine.GetPhysics());
-                scene.CreateCharacters(engine.GetPhysics());
-                scene.CapturePlaySnapshot();
-                scene.ResetScriptInstances(engine.GetScripting());
-                scene.PlayAutoPlayAudioSources(engine.GetAudio());
-            }
-            engine.TogglePlaying();
+            if (engine.IsPlaying()) engine.ExitPlayMode(scene);
+            else engine.EnterPlayMode(scene);
         }
 
-        bool viewportHovered = false;
+        // All editor UI hidden in Play mode (Phase 8G) — fully immersive, no debug panels.
         if (!engine.IsPlaying()) {
-            if (ImGui::BeginMainMenuBar()) {
-                sceneFileMenu.Draw(scene, engine.GetRHI(), engine.GetPhysics(), engine.GetAudio(), engine.GetScripting(), sceneInspector);
-                ImGui::EndMainMenuBar();
-            }
-
-            ImGui::DockSpaceOverViewport();
-            ImGui::Begin("Viewport");
-            static ImGuizmo::OPERATION gizmoOperation = ImGuizmo::TRANSLATE;
-            if (ImGui::RadioButton("Translate", gizmoOperation == ImGuizmo::TRANSLATE)) {
-                gizmoOperation = ImGuizmo::TRANSLATE;
-            }
-            ImGui::SameLine();
-            if (ImGui::RadioButton("Rotate", gizmoOperation == ImGuizmo::ROTATE)) {
-                gizmoOperation = ImGuizmo::ROTATE;
-            }
-            ImGui::SameLine();
-            if (ImGui::RadioButton("Scale", gizmoOperation == ImGuizmo::SCALE)) {
-                gizmoOperation = ImGuizmo::SCALE;
-            }
-            const ImVec2 viewportSize = ImGui::GetContentRegionAvail();
-            const uint32_t viewportWidth = static_cast<uint32_t>(glm::max(viewportSize.x, 1.0f));
-            const uint32_t viewportHeight = static_cast<uint32_t>(glm::max(viewportSize.y, 1.0f));
-            engine.SetEditorViewportSize(viewportWidth, viewportHeight);
-            viewportHovered = ImGui::IsWindowHovered();
-            camera.Update(*engine.GetInput(), deltaTime, true, viewportHovered);
-            engine.UpdateCameraAspect(camera);
-            const uint64_t viewportTexture = engine.GetEditorViewportTextureID();
-            if (viewportTexture != 0) {
-                ImGui::Image(viewportTexture,
-                    ImVec2(static_cast<float>(viewportWidth), static_cast<float>(viewportHeight)));
-                const ImVec2 viewportMin = ImGui::GetItemRectMin();
-                const ImVec2 viewportMax = ImGui::GetItemRectMax();
-                ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
-                ImGuizmo::SetRect(viewportMin.x, viewportMin.y,
-                    viewportMax.x - viewportMin.x, viewportMax.y - viewportMin.y);
-                const entt::entity selectedHandle = sceneInspector.GetSelectedEntity();
-                if (selectedHandle != entt::null) {
-                    Osiris::Entity selectedEntity(selectedHandle, &scene);
-                    if (selectedEntity.HasComponent<Osiris::TransformComponent>()) {
-                        auto& transform = selectedEntity.GetComponent<Osiris::TransformComponent>();
-                        glm::mat4 model = scene.GetWorldTransform(selectedEntity);
-                        const glm::mat4 view = camera.GetViewMatrix();
-                        glm::mat4 projection = camera.GetProjectionMatrix();
-                        // ImGuizmo applies the screen-space Y flip itself.
-                        projection[1][1] *= -1.0f;
-                        const ImGuizmo::MODE gizmoMode = gizmoOperation == ImGuizmo::TRANSLATE
-                            ? ImGuizmo::WORLD : ImGuizmo::LOCAL;
-                        if (ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(projection),
-                            gizmoOperation, gizmoMode, glm::value_ptr(model))) {
-                            glm::mat4 localModel = model;
-                            Osiris::Entity parent = scene.GetParent(selectedEntity);
-                            if (parent.IsValid()) {
-                                // Non-uniformly scaled ancestors can introduce shear that local TRS cannot represent exactly.
-                                localModel = glm::inverse(scene.GetWorldTransform(parent)) * model;
-                            }
-                            transform.SetFromMatrix(localModel);
-                        }
-                    }
-                }
-                assetBrowser.DrawViewportDropTarget(scene, camera, engine.GetRHI());
-            }
-            ImGui::End();
+            editor.Draw(scene, camera, engine, deltaTime);
         }
-        
 
         // Camera follows whatever Scene::FindCameraEntity() returns, not kPhysicsTestScene —
         // only relevant while actually Playing.
@@ -380,7 +295,7 @@ int main() {
             auto& character = cameraEntity.GetComponent<Osiris::CharacterComponent>();
             engine.GetPhysics()->SetCharacterDesiredVelocity(character.characterHandle, desiredVelocity, jump);
         } else if (engine.IsPlaying()) {
-            camera.Update(*engine.GetInput(), deltaTime, true, engine.IsPlaying() || viewportHovered);
+            camera.Update(*engine.GetInput(), deltaTime, true);
         }
 
         if (engine.IsPlaying()) {
@@ -402,113 +317,7 @@ int main() {
             engine.GetScripting()->FixedUpdate(deltaTime);
         }
 
-        // Listener tracks whichever camera is actually driving the view, in either scene mode.
-        engine.GetAudio()->SetListenerTransform(camera.GetPosition(), camera.GetFront(), glm::vec3(0.0f, 1.0f, 0.0f));
-        scene.SyncAudioSources(engine.GetAudio());
-
-        // Edit mode already did this once above, before the gizmo needed it this frame.
-        if (engine.IsPlaying()) engine.UpdateCameraAspect(camera);
-
-        auto activeSpotLights = scene.GatherSpotLights(camera.GetPosition());
-        engine.GetRHI()->UpdateSpotLights(activeSpotLights);
-
-        glm::mat4 lightView, lightProj;
-        engine.GetRHI()->UpdateCamera(camera.GetViewMatrix(), camera.GetProjectionMatrix(), glm::vec4(camera.GetPosition(), 0.0f), camera.GetFront());
-
-        if (debugLightView) {
-            lightView = engine.GetRHI()->GetLightViewMatrix(debugCascade);
-            lightProj = engine.GetRHI()->GetLightProjMatrix(debugCascade);
-            engine.GetRHI()->SetCameraBuffer(lightView, lightProj, glm::vec4(camera.GetPosition(), 0.0f));
-        }
-
-        // Shadow passes
-
-        // Directional cascade shadow passes
-        for (uint32_t i = 0; i < 3; i++) {
-            engine.GetRHI()->BeginShadowPass(i);
-            scene.RenderShadows(engine.GetRHI());
-            engine.GetRHI()->EndShadowPass(i);
-        }
-
-        // Spot light shadow passes (all slots render, even unclaimed ones, to
-        // keep every shadow map's layout valid for the descriptor set).
-        for (uint32_t i = 0; i < Osiris::MAX_SPOT_SHADOW_CASTERS; i++) {
-            engine.GetRHI()->BeginSpotShadowPass(i);
-            scene.RenderShadows(engine.GetRHI());
-            engine.GetRHI()->EndSpotShadowPass(i);
-        }
-
-        // Forward pass
-        engine.RenderScene(scene, camera);
-
-        // All ImGui hidden in Play mode (Phase 8G).
-        if (!engine.IsPlaying()) {
-            assetBrowser.Draw(scene, camera, engine.GetRHI());
-
-            ImGui::Begin("Stats");
-            ImGui::Text("FPS: %.1f", deltaTime > 0.0f ? 1.0f / deltaTime : 0.0f);
-            ImGui::Text("Frame time: %.3f ms", deltaTime * 1000.0f);
-            ImGui::Separator();
-            ImGui::Text("Camera: %.2f %.2f %.2f",
-                camera.GetPosition().x, camera.GetPosition().y, camera.GetPosition().z);
-            ImGui::SliderFloat("Camera Speed", &camera.GetSpeed(), 0.1f, 20.0f);
-            ImGui::Separator();
-
-            if (kPhysicsTestScene && player.IsValid() && player.HasComponent<Osiris::CharacterComponent>()) {
-                auto& character = player.GetComponent<Osiris::CharacterComponent>();
-                glm::vec3 feet = glm::vec3(scene.GetWorldTransform(player)[3]);
-                ImGui::Text("Character feet: %.2f %.2f %.2f", feet.x, feet.y, feet.z);
-                ImGui::Text("Grounded: %s", engine.GetPhysics()->IsCharacterGrounded(character.characterHandle) ? "yes" : "no");
-                ImGui::Text("WASD to move, Space to jump, mouse (RMB held) to look");
-                ImGui::Separator();
-            }
-            ImGui::Text("Draw calls: %d", scene.GetDrawCallCount());
-            ImGui::Text("Culled: %d", scene.GetCulledCount());
-            ImGui::End();
-
-            ImGui::Begin("Lighting");
-            auto& light = engine.GetRHI()->GetDirectionalLight();
-            ImGui::SliderFloat3("Light Direction", &light.direction.x, -1.0f, 1.0f);
-            light.direction = glm::normalize(light.direction);
-            if (glm::abs(light.direction.y) > 0.999f) {
-                light.direction.y = glm::sign(light.direction.y) * 0.999f;
-                light.direction = glm::normalize(light.direction);
-            }
-            ImGui::ColorEdit3("Light Color", &light.color.x);
-            ImGui::SliderFloat("Light Intensity", &light.intensity, 0.0f, 5.0f);
-            ImGui::Separator();
-
-            ImGui::SliderFloat("Environment Exposure", &engine.GetRHI()->GetEnvironmentExposure(),
-                0.001f, 4.0f, "%.4f", ImGuiSliderFlags_Logarithmic);
-            ImGui::End();
-
-            ImGui::Begin("Shadow Debug");
-            auto& shadowSettings = engine.GetRHI()->GetShadowSettings();
-            ImGui::SliderFloat("Shadow Near", &shadowSettings.nearClip, 0.01f, 5.0f);
-            ImGui::SliderFloat("Shadow Far", &shadowSettings.farClip, 5.0f, 50.0f);
-            ImGui::SliderFloat("Cascade Lambda", &shadowSettings.cascadeSplitLambda, 0.0f, 1.0f);
-            ImGui::Separator();
-
-            ImGui::Checkbox("Debug: Light View", &debugLightView);
-            if (debugLightView) {
-                ImGui::SliderInt("Cascade", &debugCascade, 0, 2);
-            }
-
-            if (ImGui::CollapsingHeader("Light Space Matrices")) {
-                for (int cascade = 0; cascade < 3; cascade++) {
-                    glm::mat4 m = engine.GetRHI()->GetLightSpaceMatrix(cascade);
-                    ImGui::Text("Cascade %d Light Space Matrix:", cascade);
-                    for (int row = 0; row < 4; row++) {
-                        ImGui::Text("%.3f %.3f %.3f %.3f",
-                            m[0][row], m[1][row], m[2][row], m[3][row]);
-                    }
-                    ImGui::Separator();
-                }
-            }
-            ImGui::End();
-
-            sceneInspector.Draw(scene, engine.GetPhysics(), engine.GetAudio(), engine.GetScripting());
-        }
+        engine.RenderFrame(scene, camera, editor.IsDebugLightViewEnabled(), editor.GetDebugCascade());
 
         engine.RenderImGui();
         engine.EndFrame();

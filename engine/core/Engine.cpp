@@ -6,6 +6,7 @@
 #include "audio/openal/OpenALAudio.h"
 #include "scripting/lua/LuaScripting.h"
 #include "renderer/Camera.h"
+#include "renderer/Light.h"
 #include "scene/Scene.h"
 
 namespace Osiris {
@@ -113,6 +114,60 @@ namespace Osiris {
         }
 
         scene.Render(m_RHI.get(), camera);
+    }
+
+    void Engine::EnterPlayMode(Scene& scene) {
+        // Edit-mode Transform edits (gizmo, Inspector) never touch the live physics body/
+        // character, only TransformComponent — rebuild both from the current Transform so Play
+        // doesn't start from whatever pose they were created/last-simulated at.
+        scene.CreatePhysicsBodies(m_Physics.get());
+        scene.CreateCharacters(m_Physics.get());
+        scene.CapturePlaySnapshot();
+        scene.ResetScriptInstances(m_Scripting.get());
+        scene.PlayAutoPlayAudioSources(m_Audio.get());
+        m_IsPlaying = true;
+    }
+
+    void Engine::ExitPlayMode(Scene& scene) {
+        scene.RestorePlaySnapshot(m_Physics.get());
+        scene.StopAllAudioSources(m_Audio.get());
+        m_IsPlaying = false;
+    }
+
+    void Engine::RenderFrame(Scene& scene, Camera& camera, bool debugLightView, int debugCascade) {
+        m_Audio->SetListenerTransform(camera.GetPosition(), camera.GetFront(), glm::vec3(0.0f, 1.0f, 0.0f));
+        scene.SyncAudioSources(m_Audio.get());
+
+        // Edit mode already updated the aspect ratio once before the editor's gizmo needed it
+        // this frame; doing it again here would just repeat the same work.
+        if (m_IsPlaying) UpdateCameraAspect(camera);
+
+        auto activeSpotLights = scene.GatherSpotLights(camera.GetPosition());
+        m_RHI->UpdateSpotLights(activeSpotLights);
+        m_RHI->UpdateCamera(camera.GetViewMatrix(), camera.GetProjectionMatrix(),
+            glm::vec4(camera.GetPosition(), 0.0f), camera.GetFront());
+
+        if (debugLightView) {
+            const glm::mat4 lightView = m_RHI->GetLightViewMatrix(debugCascade);
+            const glm::mat4 lightProj = m_RHI->GetLightProjMatrix(debugCascade);
+            m_RHI->SetCameraBuffer(lightView, lightProj, glm::vec4(camera.GetPosition(), 0.0f));
+        }
+
+        for (uint32_t i = 0; i < 3; i++) {
+            m_RHI->BeginShadowPass(i);
+            scene.RenderShadows(m_RHI.get());
+            m_RHI->EndShadowPass(i);
+        }
+
+        // All spot shadow slots render every frame, even unclaimed ones, to keep every shadow
+        // map's layout valid for the descriptor set.
+        for (uint32_t i = 0; i < MAX_SPOT_SHADOW_CASTERS; i++) {
+            m_RHI->BeginSpotShadowPass(i);
+            scene.RenderShadows(m_RHI.get());
+            m_RHI->EndSpotShadowPass(i);
+        }
+
+        RenderScene(scene, camera);
     }
 
     void Engine::RenderImGui() const {

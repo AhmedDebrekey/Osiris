@@ -35,9 +35,15 @@ namespace Osiris {
 
         bool IsRunning() const { return m_IsRunning; }
 
-        // Edit mode (default) vs Play mode — main.cpp gates behavior on this.
+        // Edit mode (default) vs Play mode — client code gates behavior on this.
         bool IsPlaying() const { return m_IsPlaying; }
-        void TogglePlaying() { m_IsPlaying = !m_IsPlaying; }
+
+        // The only correct way to flip Play/Edit mode: rebuilds live physics bodies/characters
+        // from the current Transform, snapshots for restore on exit, resets scripts, starts
+        // autoplay audio. A bare "flip m_IsPlaying" would skip all of that and leave physics/audio/
+        // scripting out of sync with the mode.
+        void EnterPlayMode(Scene& scene);
+        void ExitPlayMode(Scene& scene);
 
         void BeginFrame();
         void EndFrame() const;
@@ -45,6 +51,14 @@ namespace Osiris {
         uint64_t GetEditorViewportTextureID() const;
         void UpdateCameraAspect(Camera& camera) const;
         void RenderScene(Scene& scene, Camera& camera);
+
+        // Spot light gathering, camera buffer update, shadow cascade + spot shadow passes, the
+        // forward pass, and the audio listener sync — everything a client needs per frame to
+        // actually see and hear the scene, in the one order that's safe to call them in.
+        // debugLightView/debugCascade are an engine-level shadow-cascade debugging aid (renders
+        // the forward pass from the light's own point of view instead of the camera's) — leave at
+        // the defaults for normal gameplay.
+        void RenderFrame(Scene& scene, Camera& camera, bool debugLightView = false, int debugCascade = 0);
         void RenderImGui() const;
 
     private:

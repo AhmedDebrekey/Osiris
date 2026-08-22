@@ -118,6 +118,10 @@ namespace Osiris {
             return false;
         }
 
+        VkPhysicalDeviceProperties physicalDeviceProperties;
+        vkGetPhysicalDeviceProperties(m_Device.physicalDevice, &physicalDeviceProperties);
+        m_TimestampPeriod = physicalDeviceProperties.limits.timestampPeriod;
+
         if (!CreateLogicalDevice()) {
             OSIRIS_ERROR("Failed to create logical device!");
             return false;
@@ -235,6 +239,19 @@ namespace Osiris {
             return false;
         }
 
+        constexpr VkQueryPoolCreateInfo queryPoolInfo = {
+            .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+            .queryType = VK_QUERY_TYPE_TIMESTAMP,
+            .queryCount = GPU_TIMESTAMP_QUERY_COUNT,
+        };
+        for (auto& timestampFrame : m_GPUTimestampFrames) {
+            if (vkCreateQueryPool(m_Device.logicalDevice, &queryPoolInfo, nullptr,
+                &timestampFrame.queryPool) != VK_SUCCESS) {
+                OSIRIS_ERROR("Failed to create GPU timestamp query pool");
+                return false;
+            }
+        }
+
         if (!CreateShadowMap()) {
             OSIRIS_ERROR("Failed to create Shadow Map");
             return false;
@@ -275,6 +292,9 @@ namespace Osiris {
         }
         for (const auto& frame : m_Frames) {
             vkDestroyFence(m_Device.logicalDevice, frame.inFlightFence, nullptr);
+        }
+        for (const auto& timestampFrame : m_GPUTimestampFrames) {
+            vkDestroyQueryPool(m_Device.logicalDevice, timestampFrame.queryPool, nullptr);
         }
 
         for (uint32_t i = 0; i < m_Buffers.size(); i++) {
@@ -383,6 +403,31 @@ namespace Osiris {
     void VulkanRHI::BeginFrame() {
         vkWaitForFences(m_Device.logicalDevice, 1, &m_Frames[m_CurrentFrame].inFlightFence, VK_TRUE, UINT64_MAX);
 
+        auto& timestampFrame = m_GPUTimestampFrames[m_CurrentFrame];
+        if (timestampFrame.queryCount > 0) {
+            std::vector<uint64_t> queryResults(timestampFrame.queryCount);
+            const VkResult result = vkGetQueryPoolResults(
+                m_Device.logicalDevice,
+                timestampFrame.queryPool,
+                0,
+                timestampFrame.queryCount,
+                queryResults.size() * sizeof(uint64_t),
+                queryResults.data(),
+                sizeof(uint64_t),
+                VK_QUERY_RESULT_64_BIT);
+            if (result == VK_SUCCESS) {
+                m_GPUTimings.clear();
+                for (const auto& scope : timestampFrame.scopes) {
+                    if (scope.endQuery == UINT32_MAX) continue;
+                    const uint64_t elapsedTicks = queryResults[scope.endQuery] - queryResults[scope.startQuery];
+                    const float elapsedMilliseconds = static_cast<float>(elapsedTicks) * m_TimestampPeriod / 1'000'000.0f;
+                    m_GPUTimings.emplace_back(scope.name, elapsedMilliseconds);
+                }
+            } else {
+                OSIRIS_WARN("Failed to resolve GPU timestamp queries: {}", static_cast<int>(result));
+            }
+        }
+
         const VkResult acquireResult = vkAcquireNextImageKHR(m_Device.logicalDevice, m_SwapChain.swapChain, UINT64_MAX,
             m_ImageAvailableSemaphores[m_CurrentFrame], VK_NULL_HANDLE, &m_ImageIndex);
 
@@ -401,8 +446,52 @@ namespace Osiris {
             .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         };
         vkBeginCommandBuffer(m_Frames[m_CurrentFrame].commandBuffer, &beginInfo);
+        vkCmdResetQueryPool(m_Frames[m_CurrentFrame].commandBuffer, timestampFrame.queryPool,
+            0, GPU_TIMESTAMP_QUERY_COUNT);
+        timestampFrame.queryCount = 0;
+        timestampFrame.scopes.clear();
 
         m_FrameStarted = true;
+    }
+
+    void VulkanRHI::BeginGPUTimestamp(const std::string& name) {
+        if (!m_FrameStarted) return;
+
+        auto& timestampFrame = m_GPUTimestampFrames[m_CurrentFrame];
+        if (timestampFrame.queryCount >= GPU_TIMESTAMP_QUERY_COUNT) {
+            OSIRIS_WARN("GPU timestamp query pool is full");
+            return;
+        }
+
+        const uint32_t query = timestampFrame.queryCount++;
+        vkCmdWriteTimestamp(m_Frames[m_CurrentFrame].commandBuffer,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timestampFrame.queryPool, query);
+        timestampFrame.scopes.push_back({
+            .name = name,
+            .startQuery = query,
+        });
+    }
+
+    void VulkanRHI::EndGPUTimestamp(const std::string& name) {
+        if (!m_FrameStarted) return;
+
+        auto& timestampFrame = m_GPUTimestampFrames[m_CurrentFrame];
+        const auto scope = std::ranges::find_if(timestampFrame.scopes.rbegin(), timestampFrame.scopes.rend(),
+            [&name](const GPUTimestampScope& candidate) {
+                return candidate.name == name && candidate.endQuery == UINT32_MAX;
+            });
+        if (scope == timestampFrame.scopes.rend()) {
+            OSIRIS_WARN("No open GPU timestamp scope named '{}'", name);
+            return;
+        }
+        if (timestampFrame.queryCount >= GPU_TIMESTAMP_QUERY_COUNT) {
+            OSIRIS_WARN("GPU timestamp query pool is full");
+            return;
+        }
+
+        scope->endQuery = timestampFrame.queryCount++;
+        vkCmdWriteTimestamp(m_Frames[m_CurrentFrame].commandBuffer,
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timestampFrame.queryPool, scope->endQuery);
     }
 
     void VulkanRHI::EndFrame() {
@@ -1010,10 +1099,31 @@ namespace Osiris {
 #endif
 
         ImGui_ImplVulkan_Init(&init_info);
+
+        for (uint32_t i = 0; i < SHADOW_CASCADE_COUNT; i++) {
+            const VkDescriptorSet descriptorSet = ImGui_ImplVulkan_AddTexture(
+                m_ShadowMaps[i].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            m_ShadowCascadeTextureIDs[i] = reinterpret_cast<uint64_t>(descriptorSet);
+        }
+        for (uint32_t i = 0; i < MAX_SPOT_SHADOW_CASTERS; i++) {
+            const VkDescriptorSet descriptorSet = ImGui_ImplVulkan_AddTexture(
+                m_SpotShadowMaps[i].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            m_SpotShadowTextureIDs[i] = reinterpret_cast<uint64_t>(descriptorSet);
+        }
     }
 
     void VulkanRHI::ShutdownImGui() {
         vkDeviceWaitIdle(m_Device.logicalDevice);
+        for (auto& textureID : m_ShadowCascadeTextureIDs) {
+            if (textureID == 0) continue;
+            ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(textureID));
+            textureID = 0;
+        }
+        for (auto& textureID : m_SpotShadowTextureIDs) {
+            if (textureID == 0) continue;
+            ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(textureID));
+            textureID = 0;
+        }
         if (m_ViewportTextureID != 0) {
             ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(m_ViewportTextureID));
             m_ViewportTextureID = 0;

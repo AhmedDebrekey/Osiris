@@ -106,6 +106,8 @@ namespace Osiris {
         ImGui::Text("Culled: %d", scene.GetCulledCount());
         ImGui::End();
 
+        m_RenderDebugPanel.Draw(engine.GetRHI(), deltaTime);
+
         ImGui::Begin("Lighting");
         auto& light = engine.GetRHI()->GetDirectionalLight();
         ImGui::SliderFloat3("Light Direction", &light.direction.x, -1.0f, 1.0f);

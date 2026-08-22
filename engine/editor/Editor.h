@@ -3,6 +3,7 @@
 
 #include "SceneInspectorPanel.h"
 #include "AssetBrowserPanel.h"
+#include "RenderDebugPanel.h"
 #include "SceneFileMenu.h"
 
 #include <imgui.h>
@@ -33,6 +34,7 @@ namespace Osiris {
     private:
         SceneInspectorPanel m_SceneInspector;
         AssetBrowserPanel m_AssetBrowser;
+        RenderDebugPanel m_RenderDebugPanel;
         SceneFileMenu m_SceneFileMenu;
 
         ImGuizmo::OPERATION m_GizmoOperation = ImGuizmo::TRANSLATE;

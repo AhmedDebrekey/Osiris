@@ -9,6 +9,8 @@
 #include "renderer/MeshType.h"
 #include "renderer/Light.h"
 #include <glm/glm.hpp>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace Osiris {
@@ -22,6 +24,10 @@ namespace Osiris {
         virtual void BeginFrame()   = 0;
         virtual void EndFrame()     = 0;
         virtual void Present()      = 0;
+
+        virtual void BeginGPUTimestamp(const std::string& name) = 0;
+        virtual void EndGPUTimestamp(const std::string& name) = 0;
+        virtual std::vector<std::pair<std::string, float>> GetGPUTimings() const = 0;
 
         virtual void UploadBufferData(BufferHandle handle, const void* data, uint64_t size) = 0;
         virtual void UploadDynamicBuffer(BufferHandle handle, const void* data, uint64_t size) = 0;
@@ -52,6 +58,8 @@ namespace Osiris {
         virtual void BeginViewportForwardPass()                 = 0;
         virtual void ResizeViewport(uint32_t width, uint32_t height) = 0;
         virtual uint64_t GetViewportTextureID() const            = 0;
+        virtual uint64_t GetShadowCascadeTextureID(uint32_t cascade) const = 0;
+        virtual uint64_t GetSpotShadowTextureID(uint32_t index) const = 0;
         virtual glm::uvec2 GetRenderExtent(bool viewport) const = 0;
 
 

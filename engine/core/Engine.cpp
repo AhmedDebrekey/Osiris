@@ -154,20 +154,28 @@ namespace Osiris {
         }
 
         for (uint32_t i = 0; i < 3; i++) {
+            const std::string timingName = "Cascade " + std::to_string(i);
+            m_RHI->BeginGPUTimestamp(timingName);
             m_RHI->BeginShadowPass(i);
             scene.RenderShadows(m_RHI.get());
             m_RHI->EndShadowPass(i);
+            m_RHI->EndGPUTimestamp(timingName);
         }
 
         // All spot shadow slots render every frame, even unclaimed ones, to keep every shadow
         // map's layout valid for the descriptor set.
         for (uint32_t i = 0; i < MAX_SPOT_SHADOW_CASTERS; i++) {
+            const std::string timingName = "Spot Shadow " + std::to_string(i);
+            m_RHI->BeginGPUTimestamp(timingName);
             m_RHI->BeginSpotShadowPass(i);
             scene.RenderShadows(m_RHI.get());
             m_RHI->EndSpotShadowPass(i);
+            m_RHI->EndGPUTimestamp(timingName);
         }
 
+        m_RHI->BeginGPUTimestamp("Forward Pass");
         RenderScene(scene, camera);
+        m_RHI->EndGPUTimestamp("Forward Pass");
     }
 
     void Engine::RenderImGui() const {

@@ -6,6 +6,9 @@
 #define OSIRIS_VULKANRHI_H
 #include <array>
 #include <chrono>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "rhi/RHI.h"
 #include "VulkanTypes.h"
@@ -33,6 +36,12 @@ namespace Osiris {
         void EndFrame() override;
 
         void Present() override;
+
+        void BeginGPUTimestamp(const std::string& name) override;
+
+        void EndGPUTimestamp(const std::string& name) override;
+
+        std::vector<std::pair<std::string, float>> GetGPUTimings() const override { return m_GPUTimings; }
 
         void UploadBufferData(BufferHandle handle, const void* data, uint64_t size) override;
 
@@ -91,6 +100,12 @@ namespace Osiris {
         void BeginViewportForwardPass() override;
         void ResizeViewport(uint32_t width, uint32_t height) override;
         uint64_t GetViewportTextureID() const override { return m_ViewportTextureID; }
+        uint64_t GetShadowCascadeTextureID(uint32_t cascade) const override {
+            return cascade < m_ShadowCascadeTextureIDs.size() ? m_ShadowCascadeTextureIDs[cascade] : 0;
+        }
+        uint64_t GetSpotShadowTextureID(uint32_t index) const override {
+            return index < m_SpotShadowTextureIDs.size() ? m_SpotShadowTextureIDs[index] : 0;
+        }
         glm::uvec2 GetRenderExtent(bool viewport) const override;
 
         void BeginShadowPass(uint32_t cascadeIndex) override;
@@ -110,6 +125,18 @@ namespace Osiris {
         }
 
     private:
+        struct GPUTimestampScope {
+            std::string name;
+            uint32_t startQuery = 0;
+            uint32_t endQuery = UINT32_MAX;
+        };
+
+        struct GPUTimestampFrame {
+            VkQueryPool queryPool = VK_NULL_HANDLE;
+            uint32_t queryCount = 0;
+            std::vector<GPUTimestampScope> scopes;
+        };
+
         bool SetupDebugMessenger();
         static void ApplyEditorTheme();
 
@@ -203,6 +230,11 @@ namespace Osiris {
         std::array<VulkanFrameData, MAX_FRAMES_IN_FLIGHT> m_Frames;
         uint32_t m_CurrentFrame = 0;
 
+        static constexpr uint32_t GPU_TIMESTAMP_QUERY_COUNT = 64;
+        std::array<GPUTimestampFrame, MAX_FRAMES_IN_FLIGHT> m_GPUTimestampFrames;
+        std::vector<std::pair<std::string, float>> m_GPUTimings;
+        float m_TimestampPeriod = 0.0f;
+
         VmaAllocator m_Allocator = VK_NULL_HANDLE;
         std::vector<VulkanBuffer> m_Buffers;
         std::vector<VulkanImage> m_Textures;
@@ -217,9 +249,11 @@ namespace Osiris {
         static constexpr uint32_t SHADOW_CASCADE_COUNT = 3;
         static constexpr uint32_t SHADOW_MAP_SIZE      = 2048;
         VulkanImage m_ShadowMaps[SHADOW_CASCADE_COUNT];
+        std::array<uint64_t, SHADOW_CASCADE_COUNT> m_ShadowCascadeTextureIDs = {};
 
         static constexpr uint32_t SPOT_SHADOW_MAP_SIZE = 1024;
         VulkanImage m_SpotShadowMaps[MAX_SPOT_SHADOW_CASTERS];
+        std::array<uint64_t, MAX_SPOT_SHADOW_CASTERS> m_SpotShadowTextureIDs = {};
         glm::mat4   m_SpotShadowMatrices[MAX_SPOT_SHADOW_CASTERS];
         BufferHandle m_SpotLightUniformBuffer;
 

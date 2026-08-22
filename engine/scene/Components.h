@@ -89,7 +89,8 @@ namespace Osiris {
 
     // Paired with ColliderComponent; Scene::CreatePhysicsBodies fills in bodyHandle.
     struct RigidBodyComponent {
-        BodyMotionType    motionType = BodyMotionType::Static;
+        BodyMotionType    motionType          = BodyMotionType::Static;
+        bool              lockRotationToYAxis = false;
         PhysicsBodyHandle bodyHandle;
     };
 

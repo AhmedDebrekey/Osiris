@@ -25,6 +25,11 @@ namespace Osiris {
         // Only meaningful for Dynamic bodies; Static/Kinematic bodies ignore impulses in Jolt.
         virtual void ApplyImpulse(PhysicsBodyHandle handle, const glm::vec3& impulse) = 0;
 
+        // Replaces the body's world-space linear and angular velocities. Only meaningful for
+        // Dynamic bodies, matching ApplyImpulse's intended use.
+        virtual void SetBodyVelocity(PhysicsBodyHandle handle, const glm::vec3& linearVelocity,
+                                     const glm::vec3& angularVelocity) = 0;
+
         // Live body origin (matches whatever position RigidBodyDesc created it at). Only
         // meaningful for Dynamic/Kinematic bodies — static bodies never move, so nothing
         // currently reads this for them.

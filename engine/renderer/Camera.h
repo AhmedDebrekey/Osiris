@@ -24,6 +24,7 @@ namespace Osiris
         void Update(const Input& input, float deltaTime, bool applyMovement = true, bool applyLook = true);
         glm::vec3 GetPosition() const;
         void SetPosition(const glm::vec3& position);
+        void SetOrientation(const glm::vec3& front, const glm::vec3& up);
         void SetAspectRatio(float aspectRatio);
         float& GetSpeed();
 

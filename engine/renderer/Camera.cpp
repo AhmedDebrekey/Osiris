@@ -4,6 +4,8 @@
 
 #include "Camera.h"
 
+#include <cmath>
+
 #include "glm/gtc/matrix_transform.hpp"
 #include "platform/Input.h"
 
@@ -18,6 +20,7 @@ namespace Osiris
                 m_Sensitivity(sensitivity),
                 m_AspectRatio(aspect_ratio),
                 m_Fov(glm::radians(fov)), m_zNear(z_near), m_zFar(z_far) {
+        SetOrientation(front, m_WorldUp);
     }
 
     Camera::~Camera() {
@@ -53,11 +56,10 @@ namespace Osiris
         m_Front.y = sin(glm::radians(m_Pitch));
         m_Front.z = sin(glm::radians(m_Yaw)) * cos(glm::radians(m_Pitch));
         m_Front   = glm::normalize(m_Front);
+        glm::vec3 right = glm::normalize(glm::cross(m_Front, m_WorldUp));
+        m_Up = glm::normalize(glm::cross(right, m_Front));
 
         if (!applyMovement) return;
-
-        // Derive right vector
-        glm::vec3 right = glm::normalize(glm::cross(m_Front, m_WorldUp));
 
         // WASD movement
         if (input.IsKeyHeld(SDL_SCANCODE_W))
@@ -80,6 +82,24 @@ namespace Osiris
 
     void Camera::SetPosition(const glm::vec3& position) {
         m_Position = position;
+    }
+
+    void Camera::SetOrientation(const glm::vec3& front, const glm::vec3& up) {
+        if (glm::dot(front, front) <= 0.0f || glm::dot(up, up) <= 0.0f) return;
+
+        m_Front = glm::normalize(front);
+        m_WorldUp = glm::normalize(up);
+        // Avoid the near-parallel cross product that would make glm::lookAt produce NaN.
+        if (glm::abs(glm::dot(m_Front, m_WorldUp)) > 0.9f) {
+            m_WorldUp = glm::abs(m_Front.y) < 0.9f
+                ? glm::vec3(0.0f, 1.0f, 0.0f)
+                : glm::vec3(0.0f, 0.0f, 1.0f);
+        }
+
+        const glm::vec3 right = glm::normalize(glm::cross(m_Front, m_WorldUp));
+        m_Up = glm::normalize(glm::cross(right, m_Front));
+        m_Yaw = glm::degrees(std::atan2(m_Front.z, m_Front.x));
+        m_Pitch = glm::degrees(std::asin(glm::clamp(m_Front.y, -1.0f, 1.0f)));
     }
 
     void Camera::SetAspectRatio(float aspectRatio) {

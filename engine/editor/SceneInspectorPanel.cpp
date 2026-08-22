@@ -247,21 +247,22 @@ namespace Osiris {
             entity.GetScene()->RebuildPhysicsBody(entity, physics);
         }
 
-        bool motionTypeChanged = false;
+        bool rigidBodyChanged = false;
         if (DrawComponentSection<RigidBodyComponent>(entity, "Rigid Body", [&](RigidBodyComponent& rigidBody) {
             const char* motionTypeNames[] = { "Static", "Kinematic", "Dynamic" };
             int motionType = static_cast<int>(rigidBody.motionType);
             if (ImGui::Combo("Motion Type", &motionType, motionTypeNames, 3)) {
                 rigidBody.motionType = static_cast<BodyMotionType>(motionType);
-                motionTypeChanged = true;
+                rigidBodyChanged = true;
             }
+            if (ImGui::Checkbox("Lock Rotation to Y Axis", &rigidBody.lockRotationToYAxis)) rigidBodyChanged = true;
             ImGui::Text("Body handle: %s", rigidBody.bodyHandle.IsValid() ? "valid" : "invalid");
-            ImGui::TextDisabled("Changing motion type rebuilds the live Jolt body (destroy +\nrecreate) — needs a Collider on this entity too.");
+            ImGui::TextDisabled("Changing creation settings rebuilds the live Jolt body (destroy +\nrecreate). A Collider is required on this entity too.");
         })) {
             PhysicsBodyHandle bodyHandle = entity.GetComponent<RigidBodyComponent>().bodyHandle;
             if (bodyHandle.IsValid()) physics->DestroyBody(bodyHandle);
             entity.RemoveComponent<RigidBodyComponent>();
-        } else if (motionTypeChanged) {
+        } else if (rigidBodyChanged) {
             entity.GetScene()->RebuildPhysicsBody(entity, physics);
         }
 

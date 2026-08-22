@@ -121,10 +121,11 @@ namespace Osiris {
 
         m_Lua.new_usertype<RigidBodyDesc>("RigidBodyDesc",
             sol::constructors<RigidBodyDesc()>(),
-            "collider",      &RigidBodyDesc::collider,
-            "motionType",    &RigidBodyDesc::motionType,
-            "position",      &RigidBodyDesc::position,
-            "rotationEuler", &RigidBodyDesc::rotationEuler);
+            "collider",            &RigidBodyDesc::collider,
+            "motionType",          &RigidBodyDesc::motionType,
+            "lockRotationToYAxis", &RigidBodyDesc::lockRotationToYAxis,
+            "position",            &RigidBodyDesc::position,
+            "rotationEuler",       &RigidBodyDesc::rotationEuler);
 
         m_Lua.new_usertype<CharacterDesc>("CharacterDesc",
             sol::constructors<CharacterDesc()>(),
@@ -134,10 +135,11 @@ namespace Osiris {
             "mass",            &CharacterDesc::mass,
             "position",        &CharacterDesc::position);
 
-        // Changing motionType alone doesn't re-type the live Jolt body — use entity:SetRigidBodyMotionType.
+        // Changing creation fields alone doesn't rebuild the live Jolt body, use the Entity setters.
         m_Lua.new_usertype<RigidBodyComponent>("RigidBody",
-            "motionType", &RigidBodyComponent::motionType,
-            "bodyHandle", &RigidBodyComponent::bodyHandle);
+            "motionType",          &RigidBodyComponent::motionType,
+            "lockRotationToYAxis", &RigidBodyComponent::lockRotationToYAxis,
+            "bodyHandle",          &RigidBodyComponent::bodyHandle);
 
         // Fields don't push to the live OpenAL source on their own — call the matching audio: function.
         m_Lua.new_usertype<AudioSourceComponent>("AudioSource",
@@ -217,6 +219,11 @@ namespace Osiris {
                 entity.GetComponent<RigidBodyComponent>().motionType = motionType;
                 entity.GetScene()->RebuildPhysicsBody(entity, m_Physics);
             },
+            "SetRigidBodyLockRotationToYAxis", [this](Entity& entity, bool lockRotationToYAxis) {
+                if (!entity.HasComponent<RigidBodyComponent>()) return;
+                entity.GetComponent<RigidBodyComponent>().lockRotationToYAxis = lockRotationToYAxis;
+                entity.GetScene()->RebuildPhysicsBody(entity, m_Physics);
+            },
 
             "GetAudioSource", &Entity::GetComponent<AudioSourceComponent>,
             "HasAudioSource", &Entity::HasComponent<AudioSourceComponent>,
@@ -291,6 +298,7 @@ namespace Osiris {
             "CreateBody",  &IPhysics::CreateBody,
             "DestroyBody", &IPhysics::DestroyBody,
             "ApplyImpulse", &IPhysics::ApplyImpulse,
+            "SetBodyVelocity", &IPhysics::SetBodyVelocity,
             "GetBodyPosition",     &IPhysics::GetBodyPosition,
             "GetBodyRotationEuler", &IPhysics::GetBodyRotationEuler,
             "CreateCharacter",  &IPhysics::CreateCharacter,
@@ -335,6 +343,8 @@ namespace Osiris {
         keyTable["Down"] = SDL_SCANCODE_DOWN;
         keyTable["Left"] = SDL_SCANCODE_LEFT;
         keyTable["Right"] = SDL_SCANCODE_RIGHT;
+        keyTable["Keypad4"] = SDL_SCANCODE_KP_4;
+        keyTable["Keypad6"] = SDL_SCANCODE_KP_6;
         m_Lua["Key"] = keyTable;
 
         sol::table mouseButtonTable = m_Lua.create_table();

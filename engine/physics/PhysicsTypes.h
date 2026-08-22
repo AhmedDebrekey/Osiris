@@ -1,6 +1,8 @@
 #ifndef OSIRIS_PHYSICSTYPES_H
 #define OSIRIS_PHYSICSTYPES_H
 
+#include <cstdint>
+
 #include <glm/glm.hpp>
 
 #include "rhi/RHITypes.h" // reuse the generic Handle<Tag> template — physics bodies aren't
@@ -27,9 +29,11 @@ namespace Osiris {
 
     struct RigidBodyDesc {
         BoxColliderDesc collider;
-        BodyMotionType  motionType    = BodyMotionType::Static;
-        glm::vec3       position      = {0.0f, 0.0f, 0.0f};
-        glm::vec3       rotationEuler = {0.0f, 0.0f, 0.0f}; // degrees, matches TransformComponent
+        BodyMotionType  motionType              = BodyMotionType::Static;
+        bool            lockRotationToYAxis     = false;
+        glm::vec3       position                = {0.0f, 0.0f, 0.0f};
+        glm::vec3       rotationEuler           = {0.0f, 0.0f, 0.0f}; // degrees, matches TransformComponent
+        uint64_t        userData                = 0;
     };
 
     struct CharacterDesc {

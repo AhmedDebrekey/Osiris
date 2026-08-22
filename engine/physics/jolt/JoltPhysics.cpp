@@ -13,6 +13,8 @@
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
+#include <Jolt/Physics/Body/AllowedDOFs.h>
+#include <Jolt/Physics/Body/Body.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 
 #include "core/Log.h"
@@ -217,11 +219,22 @@ namespace Osiris {
         boxShape->SetDensity(kDynamicBodyDensity);
 
         JPH::BodyCreationSettings settings(boxShape, position, rotation, motionType, layer);
+        if (desc.lockRotationToYAxis) {
+            settings.mAllowedDOFs = JPH::EAllowedDOFs::TranslationX
+                | JPH::EAllowedDOFs::TranslationY
+                | JPH::EAllowedDOFs::TranslationZ
+                | JPH::EAllowedDOFs::RotationY;
+        }
 
         JPH::EActivation activation = motionType == JPH::EMotionType::Static
             ? JPH::EActivation::DontActivate
             : JPH::EActivation::Activate;
-        JPH::BodyID id = m_PhysicsSystem.GetBodyInterface().CreateAndAddBody(settings, activation);
+        JPH::BodyInterface& bodyInterface = m_PhysicsSystem.GetBodyInterface();
+        JPH::Body* body = bodyInterface.CreateBody(settings);
+        if (body == nullptr) return {};
+        body->SetUserData(desc.userData);
+        JPH::BodyID id = body->GetID();
+        bodyInterface.AddBody(id, activation);
 
         uint32_t index = AllocateSlot(m_Bodies, id, [](const JPH::BodyID& b) { return b.IsInvalid(); });
         return PhysicsBodyHandle{ index };
@@ -244,6 +257,16 @@ namespace Osiris {
         m_PhysicsSystem.GetBodyInterface().AddImpulse(m_Bodies[handle.id], joltImpulse);
     }
 
+    void JoltPhysics::SetBodyVelocity(PhysicsBodyHandle handle, const glm::vec3& linearVelocity,
+                                      const glm::vec3& angularVelocity) {
+        if (!handle.IsValid() || handle.id >= m_Bodies.size() || m_Bodies[handle.id].IsInvalid()) return;
+        JPH::BodyInterface& bodyInterface = m_PhysicsSystem.GetBodyInterface();
+        bodyInterface.SetLinearVelocity(
+            m_Bodies[handle.id], JPH::Vec3(linearVelocity.x, linearVelocity.y, linearVelocity.z));
+        bodyInterface.SetAngularVelocity(
+            m_Bodies[handle.id], JPH::Vec3(angularVelocity.x, angularVelocity.y, angularVelocity.z));
+    }
+
     glm::vec3 JoltPhysics::GetBodyPosition(PhysicsBodyHandle handle) const {
         if (!handle.IsValid() || handle.id >= m_Bodies.size() || m_Bodies[handle.id].IsInvalid())
             return glm::vec3(0.0f);
@@ -261,11 +284,11 @@ namespace Osiris {
         // Decomposition hand-derived to match TransformComponent::GetModelMatrix's Rx*Ry*Rz
         // composition order exactly (Rx(x)*Ry(y)*Rz(z), verified against GLM's own per-axis
         // eulerAngleX/Y/Z matrices rather than assumed): for that composition,
-        //   m[2][0] = -sin(y), m[2][1] = -sin(x)cos(y), m[2][2] = cos(x)cos(y),
+        //   m[2][0] = sin(y), m[2][1] = -sin(x)cos(y), m[2][2] = cos(x)cos(y),
         //   m[0][0] = cos(y)cos(z), m[1][0] = -cos(y)sin(z).
         // Gimbal lock (y near +-90 deg) makes x/z individually unstable here, same as any
         // Euler-angle representation — acceptable for physics-test visualization.
-        float ry = std::asin(std::clamp(-m[2][0], -1.0f, 1.0f));
+        float ry = std::asin(std::clamp(m[2][0], -1.0f, 1.0f));
         float rx = std::atan2(-m[2][1], m[2][2]);
         float rz = std::atan2(-m[1][0], m[0][0]);
         return glm::degrees(glm::vec3(rx, ry, rz));

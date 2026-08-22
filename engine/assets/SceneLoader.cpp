@@ -100,11 +100,13 @@ namespace Osiris {
             }
 
             if (entityJson.contains("rigidBody")) {
-                const std::string motionTypeStr = entityJson["rigidBody"].value("motionType", std::string("Static"));
+                auto& j = entityJson["rigidBody"];
+                const std::string motionTypeStr = j.value("motionType", std::string("Static"));
                 auto& rigidBody = entity.AddComponent<RigidBodyComponent>();
                 if (motionTypeStr == "Dynamic")        rigidBody.motionType = BodyMotionType::Dynamic;
                 else if (motionTypeStr == "Kinematic") rigidBody.motionType = BodyMotionType::Kinematic;
                 else                                   rigidBody.motionType = BodyMotionType::Static;
+                rigidBody.lockRotationToYAxis = j.value("lockRotationToYAxis", rigidBody.lockRotationToYAxis);
             }
 
             if (entityJson.contains("audioSource")) {
@@ -221,8 +223,11 @@ namespace Osiris {
 
             if (entity.HasComponent<RigidBodyComponent>()) {
                 static constexpr const char* motionTypeNames[] = { "Static", "Kinematic", "Dynamic" };
-                auto motionType = entity.GetComponent<RigidBodyComponent>().motionType;
-                entityJson["rigidBody"] = { {"motionType", motionTypeNames[static_cast<int>(motionType)]} };
+                auto& rigidBody = entity.GetComponent<RigidBodyComponent>();
+                entityJson["rigidBody"] = {
+                    {"motionType", motionTypeNames[static_cast<int>(rigidBody.motionType)]},
+                    {"lockRotationToYAxis", rigidBody.lockRotationToYAxis},
+                };
             }
 
             if (entity.HasComponent<AudioSourceComponent>()) {

@@ -359,7 +359,9 @@ namespace Osiris {
 
         RigidBodyDesc desc{};
         desc.collider.halfExtents = collider.halfExtents;
-        desc.motionType    = rigidBody.motionType;
+        desc.motionType          = rigidBody.motionType;
+        desc.lockRotationToYAxis = rigidBody.lockRotationToYAxis;
+        desc.userData            = static_cast<uint64_t>(entity.GetHandle());
         Entity parent = GetParent(entity);
         if (parent.IsValid()) {
             const glm::mat4 worldTransform = GetWorldTransform(entity);

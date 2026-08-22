@@ -10,6 +10,7 @@
 #include "fastgltf/tools.hpp"
 #include "core/Log.h"
 #include "fastgltf/glm_element_traits.hpp"
+#include <utility>
 #include <vector>
 #include <unordered_map>
 #include <glm/gtc/matrix_transform.hpp>
@@ -34,28 +35,33 @@ namespace Osiris {
             return t * r * s;
         }
 
-        // Walks the node hierarchy accumulating world transforms, recording the transform that
-        // applies to each referenced mesh. Some glTF exporters (e.g. COLLADA2GLTF) bake an
-        // axis-correction rotation into the node hierarchy rather than the raw vertex data, so
-        // skipping this step leaves meshes in the wrong orientation.
-        void CollectMeshTransforms(const fastgltf::Asset& asset, std::size_t nodeIndex,
-                                    const glm::mat4& parentTransform,
-                                    std::unordered_map<std::size_t, glm::mat4>& outTransforms) {
+        std::size_t CollectGltfNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
+                                    std::optional<std::size_t> parentIndex,
+                                    const std::vector<std::vector<MeshPrimitive>>& meshPrimitives,
+                                    std::vector<GltfNode>& result) {
             const auto& node = asset.nodes[nodeIndex];
-            glm::mat4 worldTransform = parentTransform * GetNodeLocalMatrix(node);
+            const std::size_t resultIndex = result.size();
 
-            if (node.meshIndex.has_value()) {
-                outTransforms[node.meshIndex.value()] = worldTransform;
+            GltfNode gltfNode;
+            gltfNode.name = node.name;
+            gltfNode.localTransform = GetNodeLocalMatrix(node);
+            gltfNode.parentIndex = parentIndex;
+            if (node.meshIndex.has_value() && node.meshIndex.value() < meshPrimitives.size()) {
+                gltfNode.primitives = meshPrimitives[node.meshIndex.value()];
             }
+            result.push_back(std::move(gltfNode));
 
             for (std::size_t child : node.children) {
-                CollectMeshTransforms(asset, child, worldTransform, outTransforms);
+                const std::size_t childIndex = CollectGltfNode(
+                    asset, child, resultIndex, meshPrimitives, result);
+                result[resultIndex].childIndices.push_back(childIndex);
             }
+            return resultIndex;
         }
     }
 
-    std::vector<MeshPrimitive> MeshLoader::LoadFromGLTF(const std::string& path, IRHI* rhi) {
-    std::vector<MeshPrimitive> result;
+    std::vector<GltfNode> MeshLoader::LoadFromGLTF(const std::string& path, IRHI* rhi) {
+    std::vector<GltfNode> result;
 
     fastgltf::Parser parser;
     fastgltf::GltfDataBuffer data;
@@ -102,15 +108,7 @@ namespace Osiris {
         return asset->textures[textureIndex].imageIndex.value_or(0);
     };
 
-    // Bake each node's world transform into its mesh's vertices, so exporter-added
-    // axis-correction rotations (e.g. COLLADA's Z-up -> glTF's Y-up) aren't lost.
-    std::unordered_map<std::size_t, glm::mat4> meshTransforms;
-    if (!asset->scenes.empty()) {
-        std::size_t sceneIndex = asset->defaultScene.value_or(0);
-        for (std::size_t nodeIndex : asset->scenes[sceneIndex].nodeIndices) {
-            CollectMeshTransforms(asset.get(), nodeIndex, glm::mat4(1.0f), meshTransforms);
-        }
-    }
+    std::vector<std::vector<MeshPrimitive>> meshPrimitives(asset->meshes.size());
 
     // Loop over all meshes and primitives
     for (std::size_t meshIndex = 0; meshIndex < asset->meshes.size(); ++meshIndex) {
@@ -157,20 +155,6 @@ namespace Osiris {
                     [&](glm::vec3 norm) { vertices[i++].Normal = norm; });
             }
 
-            // Bake the node's world transform into positions/normals now, so anything derived
-            // from them below (generated tangents, AABB) is computed in the correct space.
-            {
-                auto it = meshTransforms.find(meshIndex);
-                if (it != meshTransforms.end()) {
-                    const glm::mat4& nodeTransform = it->second;
-                    glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(nodeTransform)));
-                    for (auto& v : vertices) {
-                        v.Position = glm::vec3(nodeTransform * glm::vec4(v.Position, 1.0f));
-                        v.Normal   = glm::normalize(normalMatrix * v.Normal);
-                    }
-                }
-            }
-
             // Extract UVs
             auto uvIt = std::find_if(primitive.attributes.begin(), primitive.attributes.end(),
                 [](const auto& attr) { return attr.first == "TEXCOORD_0"; });
@@ -189,16 +173,6 @@ namespace Osiris {
                 std::size_t i = 0;
                 fastgltf::iterateAccessor<glm::vec4>(asset.get(), accessor,
                     [&](glm::vec4 tangent) { vertices[i++].Tangent = tangent; });
-
-                // Authored tangents also need the node rotation applied (handedness in .w is unaffected).
-                auto it = meshTransforms.find(meshIndex);
-                if (it != meshTransforms.end()) {
-                    glm::mat3 rotation(it->second);
-                    for (auto& v : vertices) {
-                        glm::vec3 t = glm::normalize(rotation * glm::vec3(v.Tangent));
-                        v.Tangent = glm::vec4(t, v.Tangent.w);
-                    }
-                }
             } else {
                 GenerateTangents(vertices, indices);
             }
@@ -276,13 +250,47 @@ namespace Osiris {
 
             MaterialHandle material = rhi->CreateMaterial(matDesc);
 
-            result.push_back({ mesh, material });
+            meshPrimitives[meshIndex].push_back({ mesh, material });
         }
     }
 
-    OSIRIS_INFO("MeshLoader: loaded {} primitives from {}", result.size(), path);
+    if (asset->scenes.empty()) {
+        OSIRIS_ERROR("MeshLoader: glTF has no scenes: {}", path);
+        return result;
+    }
+
+    const std::size_t sceneIndex = asset->defaultScene.value_or(0);
+    for (std::size_t nodeIndex : asset->scenes[sceneIndex].nodeIndices) {
+        CollectGltfNode(asset.get(), nodeIndex, std::nullopt, meshPrimitives, result);
+    }
+
+    std::size_t primitiveCount = 0;
+    for (const GltfNode& node : result) primitiveCount += node.primitives.size();
+    OSIRIS_INFO("MeshLoader: loaded {} nodes and {} primitives from {}", result.size(), primitiveCount, path);
     return result;
 }
+
+    std::vector<GltfPrimitiveInstance> MeshLoader::FlattenPrimitives(const std::vector<GltfNode>& nodes) {
+        std::vector<GltfPrimitiveInstance> result;
+
+        auto collectNode = [&](auto&& self, std::size_t nodeIndex, const glm::mat4& parentTransform) -> void {
+            const GltfNode& node = nodes[nodeIndex];
+            const glm::mat4 transform = parentTransform * node.localTransform;
+            for (const MeshPrimitive& primitive : node.primitives) {
+                result.push_back({primitive, transform});
+            }
+            for (std::size_t childIndex : node.childIndices) {
+                self(self, childIndex, transform);
+            }
+        };
+
+        for (std::size_t i = 0; i < nodes.size(); i++) {
+            if (!nodes[i].parentIndex.has_value()) {
+                collectNode(collectNode, i, glm::mat4(1.0f));
+            }
+        }
+        return result;
+    }
 
     Mesh MeshLoader::CreatePlane(float width, float height, IRHI* rhi) {
         float halfW = width  * 0.5f;

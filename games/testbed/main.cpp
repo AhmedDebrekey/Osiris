@@ -136,8 +136,9 @@ int main() {
     } else {
         Osiris::Mesh wallPlane  = Osiris::MeshLoader::CreatePlane(10.0f, 3.0f, engine.GetRHI());
         Osiris::Mesh floorPlane = Osiris::MeshLoader::CreatePlane(10.0f, 10.0f, engine.GetRHI());
-        auto boxPrimitives = Osiris::MeshLoader::LoadFromGLTF(
+        auto boxNodes = Osiris::MeshLoader::LoadFromGLTF(
             Osiris::AssetManager::GetPath("models/BoxTexturedGLTF/BoxTextured.gltf"), engine.GetRHI());
+        auto boxPrimitives = Osiris::MeshLoader::FlattenPrimitives(boxNodes);
 
         // Ceiling
         Osiris::Entity ceiling = scene.CreateEntity("Ceiling");
@@ -174,15 +175,19 @@ int main() {
         // Crates
         for (uint32_t i = 0; i < boxPrimitives.size(); i++) {
             Osiris::Entity crate1 = scene.CreateEntity("Crate_01_" + std::to_string(i));
-            crate1.GetComponent<Osiris::TransformComponent>().position = glm::vec3(-1.0f, 1.5f, -1.0f);
-            crate1.AddComponent<Osiris::MeshComponent>(boxPrimitives[i].mesh);
-            crate1.AddComponent<Osiris::MaterialComponent>(boxPrimitives[i].material);
+            auto& crate1Transform = crate1.GetComponent<Osiris::TransformComponent>();
+            crate1Transform.position = glm::vec3(-1.0f, 1.5f, -1.0f);
+            crate1Transform.SetFromMatrix(crate1Transform.GetModelMatrix() * boxPrimitives[i].transform);
+            crate1.AddComponent<Osiris::MeshComponent>(boxPrimitives[i].primitive.mesh);
+            crate1.AddComponent<Osiris::MaterialComponent>(boxPrimitives[i].primitive.material);
 
             Osiris::Entity crate2 = scene.CreateEntity("Crate_02_" + std::to_string(i));
-            crate2.GetComponent<Osiris::TransformComponent>().position = glm::vec3(1.5f, 2.5f, 0.5f);
-            crate2.GetComponent<Osiris::TransformComponent>().rotation = glm::vec3(0.0f, 45.0f, 0.0f);
-            crate2.AddComponent<Osiris::MeshComponent>(boxPrimitives[i].mesh);
-            crate2.AddComponent<Osiris::MaterialComponent>(boxPrimitives[i].material);
+            auto& crate2Transform = crate2.GetComponent<Osiris::TransformComponent>();
+            crate2Transform.position = glm::vec3(1.5f, 2.5f, 0.5f);
+            crate2Transform.rotation = glm::vec3(0.0f, 45.0f, 0.0f);
+            crate2Transform.SetFromMatrix(crate2Transform.GetModelMatrix() * boxPrimitives[i].transform);
+            crate2.AddComponent<Osiris::MeshComponent>(boxPrimitives[i].primitive.mesh);
+            crate2.AddComponent<Osiris::MaterialComponent>(boxPrimitives[i].primitive.material);
         }
 
         // PBR test model (Khronos DamagedHelmet) — has real metallic/roughness

@@ -72,17 +72,50 @@ namespace Osiris {
     }
 
     Entity Scene::SpawnModel(const std::string& name, const std::string& relativePath, IRHI* rhi) {
-        std::vector<MeshPrimitive> primitives = MeshLoader::LoadFromGLTF(AssetManager::GetPath(relativePath), rhi);
-        if (primitives.empty()) return Entity{};
+        std::vector<GltfNode> nodes = MeshLoader::LoadFromGLTF(AssetManager::GetPath(relativePath), rhi);
+        if (nodes.empty()) return Entity{};
 
         Entity root = CreateEntity(name);
         root.AddComponent<ModelSourceComponent>(relativePath);
-        for (uint32_t i = 0; i < primitives.size(); i++) {
-            Entity entity = CreateEntity(name + "_" + std::to_string(i));
-            entity.AddComponent<MeshComponent>(primitives[i].mesh);
-            entity.AddComponent<MaterialComponent>(primitives[i].material);
+
+        std::vector<Entity> nodeEntities;
+        nodeEntities.reserve(nodes.size());
+        for (std::size_t i = 0; i < nodes.size(); i++) {
+            const std::string nodeName = name + "_"
+                + (nodes[i].name.empty() ? "Node" : nodes[i].name)
+                + "_" + std::to_string(i);
+            Entity entity = CreateEntity(nodeName);
             entity.AddComponent<ModelSourceComponent>(relativePath);
-            SetParent(entity, root);
+            if (!nodes[i].primitives.empty()) {
+                entity.AddComponent<MeshComponent>(nodes[i].primitives[0].mesh);
+                entity.AddComponent<MaterialComponent>(nodes[i].primitives[0].material);
+            }
+            nodeEntities.push_back(entity);
+        }
+
+        for (std::size_t i = 0; i < nodes.size(); i++) {
+            Entity parent = root;
+            if (nodes[i].parentIndex.has_value() && nodes[i].parentIndex.value() < nodeEntities.size()) {
+                parent = nodeEntities[nodes[i].parentIndex.value()];
+            }
+            SetParent(nodeEntities[i], parent, false);
+            nodeEntities[i].GetComponent<TransformComponent>().SetFromMatrix(nodes[i].localTransform);
+        }
+
+        for (std::size_t i = 0; i < nodes.size(); i++) {
+            const std::string& nodeName = nodeEntities[i].GetComponent<TagComponent>().name;
+            for (std::size_t primitiveIndex = 1;
+                 primitiveIndex < nodes[i].primitives.size(); primitiveIndex++) {
+                Entity primitiveEntity = CreateEntity(
+                    nodeName + "_Primitive_" + std::to_string(primitiveIndex));
+                primitiveEntity.AddComponent<MeshComponent>(nodes[i].primitives[primitiveIndex].mesh);
+                primitiveEntity.AddComponent<MaterialComponent>(nodes[i].primitives[primitiveIndex].material);
+                primitiveEntity.AddComponent<ModelSourceComponent>(relativePath);
+                // false: primitiveEntity was just default-constructed at identity, which is
+                // already the right local transform relative to nodeEntities[i] (it's just
+                // another material slice of the same node's mesh) — no need to preserve/rewrite it.
+                SetParent(primitiveEntity, nodeEntities[i], false);
+            }
         }
         return root;
     }
@@ -107,7 +140,7 @@ namespace Osiris {
         return result;
     }
 
-    void Scene::SetParent(Entity child, Entity newParent) {
+    void Scene::SetParent(Entity child, Entity newParent, bool preserveWorldTransform) {
         if (child.GetScene() != this || !m_Registry.valid(child.GetHandle())) return;
 
         const entt::entity childHandle = child.GetHandle();
@@ -128,7 +161,8 @@ namespace Osiris {
         auto* currentParent = m_Registry.try_get<ParentComponent>(childHandle);
         if (currentParent && currentParent->m_Parent == newParentHandle) return;
 
-        const glm::mat4 worldTransform = GetWorldTransform(child);
+        glm::mat4 worldTransform(1.0f);
+        if (preserveWorldTransform) worldTransform = GetWorldTransform(child);
 
         if (currentParent) {
             const entt::entity oldParentHandle = currentParent->m_Parent;
@@ -144,8 +178,10 @@ namespace Osiris {
         }
 
         if (newParentHandle == entt::null) {
-            if (auto* transform = m_Registry.try_get<TransformComponent>(childHandle)) {
-                transform->SetFromMatrix(worldTransform);
+            if (preserveWorldTransform) {
+                if (auto* transform = m_Registry.try_get<TransformComponent>(childHandle)) {
+                    transform->SetFromMatrix(worldTransform);
+                }
             }
             return;
         }
@@ -156,9 +192,11 @@ namespace Osiris {
         auto& children = m_Registry.get_or_emplace<ChildrenComponent>(newParentHandle);
         children.m_Children.push_back(childHandle);
 
-        if (auto* transform = m_Registry.try_get<TransformComponent>(childHandle)) {
-            // Non-uniformly scaled parents can introduce shear that local TRS cannot preserve exactly.
-            transform->SetFromMatrix(glm::inverse(GetWorldTransform(newParent)) * worldTransform);
+        if (preserveWorldTransform) {
+            if (auto* transform = m_Registry.try_get<TransformComponent>(childHandle)) {
+                // Non-uniformly scaled parents can introduce shear that local TRS cannot preserve exactly.
+                transform->SetFromMatrix(glm::inverse(GetWorldTransform(newParent)) * worldTransform);
+            }
         }
     }
 

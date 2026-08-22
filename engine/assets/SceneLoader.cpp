@@ -163,10 +163,7 @@ namespace Osiris {
                 continue;
             }
 
-            scene.SetParent(child, parent);
-            if (scene.GetParent(child) == parent) {
-                child.GetComponent<TransformComponent>() = ReadTransform(entityJson);
-            }
+            scene.SetParent(child, parent, false);
         }
     }
 
@@ -180,8 +177,16 @@ namespace Osiris {
             const TransformComponent& transform = entity.GetComponent<TransformComponent>();
 
             if (entity.HasComponent<ModelSourceComponent>()) {
-                if (entity.HasComponent<MeshComponent>()) continue; // primitive child; the model root serializes the glTF
                 const std::string& relativePath = entity.GetComponent<ModelSourceComponent>().relativePath;
+                Entity parent = scene.GetParent(entity);
+                // Only skip if the parent is part of the *same* spawn (matching relativePath) —
+                // otherwise a model root reparented under a different model's entity (e.g. via
+                // the Scene Inspector's drag-and-drop) would silently never get its own "mesh"
+                // entry and vanish on the next Load.
+                if (parent.IsValid() && parent.HasComponent<ModelSourceComponent>()
+                    && parent.GetComponent<ModelSourceComponent>().relativePath == relativePath) {
+                    continue;
+                }
                 nlohmann::json entityJson = {
                     {"name", name},
                     {"mesh", relativePath},

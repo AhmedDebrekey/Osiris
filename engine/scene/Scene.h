@@ -30,7 +30,7 @@ namespace Osiris {
         void DestroyEntity(Entity entity, IPhysics* physics, IAudio* audio, IScripting* scripting);
 
         // Loads a model file (relativePath resolved through AssetManager; glTF via MeshLoader
-        // today) and returns one root entity, with one child named "<name>_<index>" per primitive.
+        // today) and mirrors its node-local transforms under one movable root entity.
         // The one place this logic lives; main.cpp, Lua, and asset-browser spawning all call it.
         Entity SpawnModel(const std::string& name, const std::string& relativePath, IRHI* rhi);
 
@@ -41,9 +41,12 @@ namespace Osiris {
         Entity FindEntityByName(const std::string& name);
         std::vector<Entity> GetAllEntities();
 
-        // Keeps ParentComponent and ChildrenComponent in sync while preserving world transform.
-        // An invalid newParent unparents; requests that would create a cycle are ignored.
-        void SetParent(Entity child, Entity newParent);
+        // Keeps ParentComponent and ChildrenComponent in sync. An invalid newParent unparents;
+        // requests that would create a cycle are ignored. preserveWorldTransform (default true)
+        // rewrites the child's TransformComponent so its world pose doesn't jump on reparent —
+        // pass false when the caller is about to set the child's Transform explicitly anyway
+        // (e.g. bulk hierarchy construction), to skip the wasted GetWorldTransform/decompose.
+        void SetParent(Entity child, Entity newParent, bool preserveWorldTransform = true);
         Entity GetParent(Entity entity);
         std::vector<Entity> GetChildren(Entity entity);
         glm::mat4 GetWorldTransform(Entity entity) const;

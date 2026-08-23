@@ -36,6 +36,8 @@ namespace Osiris {
         // Dynamic bodies, matching ApplyImpulse's intended use.
         virtual void SetBodyVelocity(PhysicsBodyHandle handle, const glm::vec3& linearVelocity,
                                      const glm::vec3& angularVelocity) = 0;
+        virtual void SetBodyPosition(PhysicsBodyHandle handle, const glm::vec3& position,
+                                     const glm::vec3& rotationEuler) = 0;
 
         // Live body origin (matches whatever position RigidBodyDesc created it at). Only
         // meaningful for Dynamic/Kinematic bodies — static bodies never move, so nothing

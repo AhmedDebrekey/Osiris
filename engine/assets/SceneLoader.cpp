@@ -4,16 +4,31 @@
 
 #include "SceneLoader.h"
 
+#include <array>
 #include <fstream>
+#include <functional>
 #include <unordered_map>
 #include <nlohmann/json.hpp>
 
 #include "AudioLoader.h"
+#include "MeshLoader.h"
+#include "TextureLoader.h"
 #include "core/AssetManager.h"
 #include "core/Log.h"
 
 namespace Osiris {
     namespace {
+        using BoxMeshKey = std::array<float, 3>;
+
+        struct BoxMeshKeyHash {
+            size_t operator()(const BoxMeshKey& key) const noexcept {
+                size_t hash = std::hash<float>{}(key[0]);
+                hash ^= std::hash<float>{}(key[1]) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+                hash ^= std::hash<float>{}(key[2]) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+                return hash;
+            }
+        };
+
         glm::vec3 ReadVec3(const nlohmann::json& parent, const char* key, const glm::vec3& fallback) {
             if (!parent.contains(key)) return fallback;
             const auto& j = parent[key];
@@ -64,6 +79,8 @@ namespace Osiris {
         file >> json;
 
         std::unordered_map<std::string, AudioBufferHandle> audioCache;
+        std::unordered_map<BoxMeshKey, Mesh, BoxMeshKeyHash> boxMeshCache;
+        std::unordered_map<std::string, MaterialHandle> boxMaterialCache;
 
         for (auto& entityJson : json["entities"]) {
             std::string name = entityJson.value("name", std::string());
@@ -80,6 +97,27 @@ namespace Osiris {
 
             Entity entity = scene.CreateEntity(name);
             entity.GetComponent<TransformComponent>() = savedTransform;
+
+            if (entityJson.contains("box")) {
+                auto& j = entityJson["box"];
+                const glm::vec3 halfExtents = ReadVec3(j, "halfExtents", ColliderComponent{}.halfExtents);
+                const BoxMeshKey meshKey = { halfExtents.x, halfExtents.y, halfExtents.z };
+
+                auto cachedMesh = boxMeshCache.find(meshKey);
+                if (cachedMesh == boxMeshCache.end()) {
+                    cachedMesh = boxMeshCache.emplace(meshKey, MeshLoader::CreateBox(halfExtents, rhi)).first;
+                }
+                entity.AddComponent<MeshComponent>(cachedMesh->second);
+
+                const std::string texturePath = j.value("texture", std::string());
+                auto cachedMaterial = boxMaterialCache.find(texturePath);
+                if (cachedMaterial == boxMaterialCache.end()) {
+                    TextureHandle texture = TextureLoader::LoadFromFile(AssetManager::GetPath(texturePath), rhi);
+                    MaterialHandle material = rhi->CreateMaterial({.albedo = texture});
+                    cachedMaterial = boxMaterialCache.emplace(texturePath, material).first;
+                }
+                entity.AddComponent<MaterialComponent>(cachedMaterial->second);
+            }
 
             if (entityJson.contains("spotLight")) {
                 auto& j = entityJson["spotLight"];

@@ -1,7 +1,18 @@
+_G.CTF = _G.CTF or {
+    flagCarrier = {},
+    flagHome = {},
+    scores = {
+        Player1_Tank = 0,
+        Player2_Tank = 0,
+    },
+}
+
 local tankSpeed = 4.0
+local carrySpeedFactor = 0.6
 local tankTurnSpeed = math.rad(90.0)
 local turretTurnSpeed = 90.0
 local projectileImpulse = 25.0
+local projectileCooldown = 0.5
 local projectileHalfExtents = vec3.new(0.12, 0.12, 0.12)
 
 local controlSets = {
@@ -30,6 +41,9 @@ local rigidBody = nil
 local turret = nil
 local projectileMaterialSource = nil
 local projectileCount = 0
+local projectileCooldownRemaining = 0.0
+local spawnPosition = nil
+local spawnYaw = 0.0
 
 local function readAxis(positive, negative)
     local value = 0.0
@@ -38,14 +52,19 @@ local function readAxis(positive, negative)
     return value
 end
 
+local function isCarryingFlag()
+    return CTF.flagCarrier["P1_Flag"] == self
+        or CTF.flagCarrier["P2_Flag"] == self
+end
+
 local function fireProjectile()
-    if turret == nil or not turret:IsValid() then return end
-    if projectileMaterialSource == nil or not projectileMaterialSource:IsValid() then return end
+    if turret == nil or not turret:IsValid() then return false end
+    if projectileMaterialSource == nil or not projectileMaterialSource:IsValid() then return false end
 
     local turretWorldTransform = scene:GetWorldTransform(turret)
     local worldAim = turretWorldTransform:TransformDirection(vec3.new(0.0, 1.0, 0.0))
     local horizontalLength = math.sqrt(worldAim.x * worldAim.x + worldAim.z * worldAim.z)
-    if horizontalLength < 0.001 then return end
+    if horizontalLength < 0.001 then return false end
 
     local aimDirection = vec3.new(worldAim.x / horizontalLength, 0.0, worldAim.z / horizontalLength)
     local turretPosition = turretWorldTransform:GetTranslation()
@@ -76,6 +95,7 @@ local function fireProjectile()
             aimDirection.x * projectileImpulse,
             0.0,
             aimDirection.z * projectileImpulse))
+    return true
 end
 
 function OnStart()
@@ -84,6 +104,10 @@ function OnStart()
     rigidBody = self:GetRigidBody()
     turret = scene:FindEntityByName(tankName .. "_Tank_Head_7")
     projectileMaterialSource = scene:FindEntityByName("Arena_Floor")
+
+    local transform = self:GetTransform()
+    spawnPosition = vec3.new(transform.position.x, transform.position.y, transform.position.z)
+    spawnYaw = transform.rotation.y
 
     if controls == nil then
         print("tank_controller: no controls configured for " .. tankName)
@@ -99,6 +123,8 @@ end
 function OnUpdate(dt)
     if controls == nil or rigidBody == nil then return end
 
+    projectileCooldownRemaining = math.max(0.0, projectileCooldownRemaining - dt)
+
     local hullTransform = self:GetTransform()
     local pitch = math.rad(hullTransform.rotation.x)
     local yaw = math.rad(hullTransform.rotation.y)
@@ -109,10 +135,14 @@ function OnUpdate(dt)
     local forward = vec3.new(forwardX / forwardLength, 0.0, forwardZ / forwardLength)
     local throttle = readAxis(controls.throttleForward, controls.throttleReverse)
     local turn = readAxis(controls.turnLeft, controls.turnRight)
+    local moveSpeed = tankSpeed
+    if isCarryingFlag() then
+        moveSpeed = moveSpeed * carrySpeedFactor
+    end
 
     physics:SetBodyVelocity(
         rigidBody.bodyHandle,
-        vec3.new(forward.x * throttle * tankSpeed, 0.0, forward.z * throttle * tankSpeed),
+        vec3.new(forward.x * throttle * moveSpeed, 0.0, forward.z * throttle * moveSpeed),
         vec3.new(0.0, turn * tankTurnSpeed, 0.0))
 
     if turret ~= nil and turret:IsValid() then
@@ -126,8 +156,10 @@ function OnUpdate(dt)
         turretTransform.rotation.z = turretTransform.rotation.z + turretTurn * turretTurnSpeed * dt
     end
 
-    if input:IsKeyPressed(controls.fire) then
-        fireProjectile()
+    if projectileCooldownRemaining <= 0.0 and input:IsKeyPressed(controls.fire) then
+        if fireProjectile() then
+            projectileCooldownRemaining = projectileCooldown
+        end
     end
 end
 
@@ -135,7 +167,25 @@ function OnFixedUpdate(fixedDt)
 end
 
 function OnCollision(otherEntity)
-    if otherEntity ~= nil and otherEntity:IsValid() and otherEntity:HasTag() then
-        print(self:GetTag().name .. " collided with " .. otherEntity:GetTag().name)
+    if otherEntity == nil or not otherEntity:IsValid() or not otherEntity:HasTag() then return end
+
+    local otherName = otherEntity:GetTag().name
+    if string.find(otherName, "_Projectile_", 1, true) == nil then return end
+
+    if CTF.flagCarrier["P1_Flag"] == self then
+        CTF.flagCarrier["P1_Flag"] = nil
     end
+    if CTF.flagCarrier["P2_Flag"] == self then
+        CTF.flagCarrier["P2_Flag"] = nil
+    end
+
+    physics:SetBodyPosition(
+        rigidBody.bodyHandle,
+        spawnPosition,
+        vec3.new(0.0, spawnYaw, 0.0))
+    physics:SetBodyVelocity(
+        rigidBody.bodyHandle,
+        vec3.new(0.0, 0.0, 0.0),
+        vec3.new(0.0, 0.0, 0.0))
+    print(self:GetTag().name .. " was hit and respawned")
 end

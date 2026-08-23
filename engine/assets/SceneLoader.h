@@ -14,10 +14,10 @@ namespace Osiris {
 
     class SceneLoader {
     public:
-        // Populates scene from a JSON file — mesh entities go through Scene::SpawnModel (the
-        // same path Lua/the Asset Browser use), everything else is a plain CreateEntity with
-        // whichever component blocks the JSON has. Doesn't create live physics bodies/characters/
-        // audio sources/script instances — call Scene::CreatePhysicsBodies/CreateCharacters/
+        // Populates scene from a JSON file. Mesh entities go through Scene::SpawnModel (the
+        // same path Lua/the Asset Browser use), while box entities use cached procedural meshes
+        // and materials. Doesn't create live physics bodies/characters/
+        // audio sources/script instances. Call Scene::CreatePhysicsBodies/CreateCharacters/
         // CreateAudioSources/CreateScriptInstances afterward, same as scene setup already does.
         static void Load(const std::string& path, Scene& scene, IRHI* rhi, IAudio* audio);
 

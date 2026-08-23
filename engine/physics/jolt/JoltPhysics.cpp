@@ -310,6 +310,14 @@ namespace Osiris {
             m_Bodies[handle.id], JPH::Vec3(angularVelocity.x, angularVelocity.y, angularVelocity.z));
     }
 
+    void JoltPhysics::SetBodyPosition(PhysicsBodyHandle handle, const glm::vec3& position,
+                                      const glm::vec3& rotationEuler) {
+        if (!handle.IsValid() || handle.id >= m_Bodies.size() || m_Bodies[handle.id].IsInvalid()) return;
+        m_PhysicsSystem.GetBodyInterface().SetPositionAndRotation(
+            m_Bodies[handle.id], JPH::RVec3(position.x, position.y, position.z),
+            ToJoltQuat(rotationEuler), JPH::EActivation::Activate);
+    }
+
     glm::vec3 JoltPhysics::GetBodyPosition(PhysicsBodyHandle handle) const {
         if (!handle.IsValid() || handle.id >= m_Bodies.size() || m_Bodies[handle.id].IsInvalid())
             return glm::vec3(0.0f);

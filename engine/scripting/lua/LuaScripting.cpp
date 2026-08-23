@@ -318,6 +318,7 @@ namespace Osiris {
             "DestroyBody", &IPhysics::DestroyBody,
             "ApplyImpulse", &IPhysics::ApplyImpulse,
             "SetBodyVelocity", &IPhysics::SetBodyVelocity,
+            "SetBodyPosition", &IPhysics::SetBodyPosition,
             "GetBodyPosition",     &IPhysics::GetBodyPosition,
             "GetBodyRotationEuler", &IPhysics::GetBodyRotationEuler,
             "CreateCharacter",  &IPhysics::CreateCharacter,

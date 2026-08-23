@@ -1,7 +1,7 @@
 #define SDL_MAIN_HANDLED
 
 #include "../../engine/core/Engine.h"
-#include "assets/MeshLoader.h"
+#include "assets/SceneLoader.h"
 #include "assets/TextureLoader.h"
 #include "core/AssetManager.h"
 #include "editor/Editor.h"
@@ -14,7 +14,8 @@
 namespace {
     constexpr const char* kTankModelPath = "models/toon_toy_tank/scene.gltf";
     constexpr const char* kTankControllerPath = "scripts/tank_controller.lua";
-    constexpr const char* kSensorTestScriptPath = "scripts/sensor_test.lua";
+    constexpr const char* kFlagModelPath = "models/Flag/Flag.gltf";
+    constexpr const char* kFlagScriptPath = "scripts/flag.lua";
 }
 
 int main() {
@@ -26,10 +27,6 @@ int main() {
         return -1;
     }
 
-    TextureHandle greyTexture = Osiris::TextureLoader::LoadFromFile(
-        Osiris::AssetManager::GetPath("textures/grey.png"), engine.GetRHI());
-    MaterialHandle greyMaterial = engine.GetRHI()->CreateMaterial({.albedo = greyTexture});
-
     Osiris::HDRImageData environmentHDR = Osiris::TextureLoader::LoadHDR(
         Osiris::AssetManager::GetPath("hdr/EveningRoad.hdr"));
     if (!environmentHDR.pixels.empty()) {
@@ -40,32 +37,9 @@ int main() {
     }
 
     Osiris::Scene scene;
-
-    auto addStaticBox = [&](const std::string& name, const glm::vec3& position,
-                            const glm::vec3& halfExtents) {
-        Osiris::Entity entity = scene.CreateEntity(name);
-        entity.GetComponent<Osiris::TransformComponent>().position = position;
-        entity.AddComponent<Osiris::MeshComponent>(
-            Osiris::MeshLoader::CreateBox(halfExtents, engine.GetRHI()));
-        entity.AddComponent<Osiris::MaterialComponent>(greyMaterial);
-        entity.AddComponent<Osiris::ColliderComponent>(halfExtents);
-        entity.AddComponent<Osiris::RigidBodyComponent>(Osiris::BodyMotionType::Static);
-        return entity;
-    };
-
-    addStaticBox("Arena_Floor", {0.0f, -0.25f, 0.0f}, {9.0f, 0.25f, 7.0f});
-    addStaticBox("Arena_Wall_North", {0.0f, 0.75f, -7.25f}, {9.25f, 0.75f, 0.25f});
-    addStaticBox("Arena_Wall_South", {0.0f, 0.75f, 7.25f}, {9.25f, 0.75f, 0.25f});
-    addStaticBox("Arena_Wall_East", {9.25f, 0.75f, 0.0f}, {0.25f, 0.75f, 7.5f});
-    addStaticBox("Arena_Wall_West", {-9.25f, 0.75f, 0.0f}, {0.25f, 0.75f, 7.5f});
-    addStaticBox("Arena_Obstacle_North", {0.0f, 0.6f, -3.5f}, {1.5f, 0.6f, 0.5f});
-    addStaticBox("Arena_Obstacle_South", {0.0f, 0.6f, 3.5f}, {1.5f, 0.6f, 0.5f});
-
-    Osiris::Entity sensorTestZone = addStaticBox(
-        "Sensor_Test_Zone", {0.0f, 0.6f, 0.0f}, {0.75f, 0.6f, 1.5f});
-    sensorTestZone.GetComponent<Osiris::RigidBodyComponent>().isSensor = true;
-    sensorTestZone.AddComponent<Osiris::ScriptComponent>().scriptPath =
-        Osiris::AssetManager::GetPath(kSensorTestScriptPath);
+    Osiris::SceneLoader::Load(
+        Osiris::AssetManager::GetPath("scenes/sandbox_standoff.json"),
+        scene, engine.GetRHI(), engine.GetAudio());
 
     auto spawnTank = [&](const std::string& name, const glm::vec3& position, float yaw) {
         Osiris::Entity hull = scene.SpawnModel(name, kTankModelPath, engine.GetRHI());
@@ -84,8 +58,27 @@ int main() {
             Osiris::AssetManager::GetPath(kTankControllerPath);
     };
 
-    spawnTank("Player1_Tank", {-3.5f, 0.6f, 0.0f}, -90.0f);
-    spawnTank("Player2_Tank", {3.5f, 0.6f, 0.0f}, 90.0f);
+    auto spawnFlag = [&](const std::string& name, const glm::vec3& position) {
+        Osiris::Entity flag = scene.SpawnModel(name, kFlagModelPath, engine.GetRHI());
+        if (!flag.IsValid()) {
+            OSIRIS_ERROR("Failed to spawn flag model for {}", name);
+            return;
+        }
+
+        auto& transform = flag.GetComponent<Osiris::TransformComponent>();
+        transform.position = position;
+        transform.scale = glm::vec3(0.3f);
+        flag.AddComponent<Osiris::ColliderComponent>(glm::vec3(0.4f, 0.6f, 0.4f));
+        auto& rigidBody = flag.AddComponent<Osiris::RigidBodyComponent>(Osiris::BodyMotionType::Static);
+        rigidBody.isSensor = true;
+        flag.AddComponent<Osiris::ScriptComponent>().scriptPath =
+            Osiris::AssetManager::GetPath(kFlagScriptPath);
+    };
+
+    spawnTank("Player1_Tank", {-6.0f, 0.6f, 0.0f}, -90.0f);
+    spawnTank("Player2_Tank", {6.0f, 0.6f, 0.0f}, 90.0f);
+    spawnFlag("P1_Flag", {-9.5f, 0.6f, 0.0f});
+    spawnFlag("P2_Flag", {9.5f, 0.6f, 0.0f});
 
     scene.CreatePhysicsBodies(engine.GetPhysics());
     scene.CreateScriptInstances(engine.GetScripting());

@@ -1,0 +1,81 @@
+{
+  "entities": [
+    {
+      "name": "Arena_Floor",
+      "transform": { "position": [0, -0.25, 0] },
+      "box": { "halfExtents": [12, 0.25, 8], "texture": "textures/grey.png" },
+      "collider": { "halfExtents": [12, 0.25, 8] },
+      "rigidBody": { "motionType": "Static" }
+    },
+    {
+      "name": "Arena_Wall_North",
+      "transform": { "position": [0, 0.75, -8.25] },
+      "box": { "halfExtents": [12.25, 0.75, 0.25], "texture": "textures/grey.png" },
+      "collider": { "halfExtents": [12.25, 0.75, 0.25] },
+      "rigidBody": { "motionType": "Static" }
+    },
+    {
+      "name": "Arena_Wall_South",
+      "transform": { "position": [0, 0.75, 8.25] },
+      "box": { "halfExtents": [12.25, 0.75, 0.25], "texture": "textures/grey.png" },
+      "collider": { "halfExtents": [12.25, 0.75, 0.25] },
+      "rigidBody": { "motionType": "Static" }
+    },
+    {
+      "name": "Arena_Wall_East",
+      "transform": { "position": [12.25, 0.75, 0] },
+      "box": { "halfExtents": [0.25, 0.75, 8.5], "texture": "textures/grey.png" },
+      "collider": { "halfExtents": [0.25, 0.75, 8.5] },
+      "rigidBody": { "motionType": "Static" }
+    },
+    {
+      "name": "Arena_Wall_West",
+      "transform": { "position": [-12.25, 0.75, 0] },
+      "box": { "halfExtents": [0.25, 0.75, 8.5], "texture": "textures/grey.png" },
+      "collider": { "halfExtents": [0.25, 0.75, 8.5] },
+      "rigidBody": { "motionType": "Static" }
+    },
+    {
+      "name": "Arena_Cover_North",
+      "transform": { "position": [0, 0.6, -4.5] },
+      "box": { "halfExtents": [2, 0.6, 0.5], "texture": "textures/grey.png" },
+      "collider": { "halfExtents": [2, 0.6, 0.5] },
+      "rigidBody": { "motionType": "Static" }
+    },
+    {
+      "name": "Arena_Cover_South",
+      "transform": { "position": [0, 0.6, 4.5] },
+      "box": { "halfExtents": [2, 0.6, 0.5], "texture": "textures/grey.png" },
+      "collider": { "halfExtents": [2, 0.6, 0.5] },
+      "rigidBody": { "motionType": "Static" }
+    },
+    {
+      "name": "Arena_Cover_West",
+      "transform": { "position": [-4.5, 0.6, 0] },
+      "box": { "halfExtents": [0.5, 0.6, 2], "texture": "textures/grey.png" },
+      "collider": { "halfExtents": [0.5, 0.6, 2] },
+      "rigidBody": { "motionType": "Static" }
+    },
+    {
+      "name": "Arena_Cover_East",
+      "transform": { "position": [4.5, 0.6, 0] },
+      "box": { "halfExtents": [0.5, 0.6, 2], "texture": "textures/grey.png" },
+      "collider": { "halfExtents": [0.5, 0.6, 2] },
+      "rigidBody": { "motionType": "Static" }
+    },
+    {
+      "name": "P1_Home",
+      "transform": { "position": [-9.5, 0.6, 0] },
+      "collider": { "halfExtents": [1.5, 0.6, 2] },
+      "rigidBody": { "motionType": "Static", "isSensor": true },
+      "script": { "path": "assets/scripts/home_zone.lua" }
+    },
+    {
+      "name": "P2_Home",
+      "transform": { "position": [9.5, 0.6, 0] },
+      "collider": { "halfExtents": [1.5, 0.6, 2] },
+      "rigidBody": { "motionType": "Static", "isSensor": true },
+      "script": { "path": "assets/scripts/home_zone.lua" }
+    }
+  ]
+}

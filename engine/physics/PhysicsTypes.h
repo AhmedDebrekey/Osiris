@@ -31,6 +31,7 @@ namespace Osiris {
         BoxColliderDesc collider;
         BodyMotionType  motionType              = BodyMotionType::Static;
         bool            lockRotationToYAxis     = false;
+        bool            isSensor                = false;
         glm::vec3       position                = {0.0f, 0.0f, 0.0f};
         glm::vec3       rotationEuler           = {0.0f, 0.0f, 0.0f}; // degrees, matches TransformComponent
         uint64_t        userData                = 0;

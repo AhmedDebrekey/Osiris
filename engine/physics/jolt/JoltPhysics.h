@@ -26,10 +26,12 @@ namespace Osiris {
         void Shutdown() override;
         void Update(float deltaTime) override;
         std::vector<std::pair<uint64_t, uint64_t>> DrainCollisionEvents() override;
+        std::vector<std::pair<uint64_t, uint64_t>> DrainContactEndedEvents() override;
 
         void OnContactAdded(const JPH::Body& inBody1, const JPH::Body& inBody2,
                             const JPH::ContactManifold& inManifold,
                             JPH::ContactSettings& ioSettings) override;
+        void OnContactRemoved(const JPH::SubShapeIDPair& inSubShapePair) override;
 
         PhysicsBodyHandle CreateBody(const RigidBodyDesc& desc) override;
         void DestroyBody(PhysicsBodyHandle handle) override;
@@ -101,6 +103,7 @@ namespace Osiris {
 
         std::mutex m_CollisionEventsMutex;
         std::vector<std::pair<uint64_t, uint64_t>> m_CollisionEvents;
+        std::vector<std::pair<uint64_t, uint64_t>> m_ContactEndedEvents;
 
         struct CharacterEntry {
             JPH::Ref<JPH::CharacterVirtual> character;

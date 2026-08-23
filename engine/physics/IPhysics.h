@@ -22,6 +22,7 @@ namespace Osiris {
         virtual void Update(float deltaTime) = 0;
 
         virtual std::vector<std::pair<uint64_t, uint64_t>> DrainCollisionEvents() = 0;
+        virtual std::vector<std::pair<uint64_t, uint64_t>> DrainContactEndedEvents() = 0;
 
         virtual PhysicsBodyHandle CreateBody(const RigidBodyDesc& desc) = 0;
         virtual void DestroyBody(PhysicsBodyHandle handle) = 0;

@@ -129,6 +129,7 @@ namespace Osiris {
             "collider",            &RigidBodyDesc::collider,
             "motionType",          &RigidBodyDesc::motionType,
             "lockRotationToYAxis", &RigidBodyDesc::lockRotationToYAxis,
+            "isSensor",            &RigidBodyDesc::isSensor,
             "position",            &RigidBodyDesc::position,
             "rotationEuler",       &RigidBodyDesc::rotationEuler);
 
@@ -144,6 +145,7 @@ namespace Osiris {
         m_Lua.new_usertype<RigidBodyComponent>("RigidBody",
             "motionType",          &RigidBodyComponent::motionType,
             "lockRotationToYAxis", &RigidBodyComponent::lockRotationToYAxis,
+            "isSensor",            &RigidBodyComponent::isSensor,
             "bodyHandle",          &RigidBodyComponent::bodyHandle);
 
         // Fields don't push to the live OpenAL source on their own — call the matching audio: function.
@@ -213,11 +215,13 @@ namespace Osiris {
             "HasRigidBody", &Entity::HasComponent<RigidBodyComponent>,
 
             "AddBoxRigidBody", [this](Entity& entity, glm::vec3 halfExtents,
-                                       BodyMotionType motionType, bool lockRotationToYAxis) {
+                                       BodyMotionType motionType, bool lockRotationToYAxis,
+                                       bool isSensor) {
                 if (entity.HasComponent<ColliderComponent>() || entity.HasComponent<RigidBodyComponent>()) return;
                 entity.AddComponent<ColliderComponent>(halfExtents);
                 auto& rigidBody = entity.AddComponent<RigidBodyComponent>(motionType);
                 rigidBody.lockRotationToYAxis = lockRotationToYAxis;
+                rigidBody.isSensor = isSensor;
                 entity.GetScene()->RebuildPhysicsBody(entity, m_Physics);
             },
 
@@ -236,6 +240,11 @@ namespace Osiris {
             "SetRigidBodyLockRotationToYAxis", [this](Entity& entity, bool lockRotationToYAxis) {
                 if (!entity.HasComponent<RigidBodyComponent>()) return;
                 entity.GetComponent<RigidBodyComponent>().lockRotationToYAxis = lockRotationToYAxis;
+                entity.GetScene()->RebuildPhysicsBody(entity, m_Physics);
+            },
+            "SetRigidBodyIsSensor", [this](Entity& entity, bool isSensor) {
+                if (!entity.HasComponent<RigidBodyComponent>()) return;
+                entity.GetComponent<RigidBodyComponent>().isSensor = isSensor;
                 entity.GetScene()->RebuildPhysicsBody(entity, m_Physics);
             },
 
@@ -402,6 +411,7 @@ namespace Osiris {
         instance.onUpdate      = env["OnUpdate"];
         instance.onFixedUpdate = env["OnFixedUpdate"];
         instance.onCollision   = env["OnCollision"];
+        instance.onCollisionEnd = env["OnCollisionEnd"];
 
         uint32_t index = AllocateSlot(m_Instances, std::move(instance),
             [](const ScriptInstance& s) { return !s.entity.IsValid(); });
@@ -422,6 +432,18 @@ namespace Osiris {
         if (!result.valid()) {
             sol::error err = result;
             OSIRIS_ERROR("LuaScripting: OnCollision() error in '{}': {}", instance.scriptPath, err.what());
+        }
+    }
+
+    void LuaScripting::DispatchCollisionEnd(ScriptInstanceHandle handle, Entity otherEntity) {
+        if (!handle.IsValid() || handle.id >= m_Instances.size()) return;
+        ScriptInstance& instance = m_Instances[handle.id];
+        if (!instance.entity.IsValid() || !instance.onCollisionEnd.valid()) return;
+
+        sol::protected_function_result result = instance.onCollisionEnd(otherEntity);
+        if (!result.valid()) {
+            sol::error err = result;
+            OSIRIS_ERROR("LuaScripting: OnCollisionEnd() error in '{}': {}", instance.scriptPath, err.what());
         }
     }
 

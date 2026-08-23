@@ -91,6 +91,7 @@ namespace Osiris {
     struct RigidBodyComponent {
         BodyMotionType    motionType          = BodyMotionType::Static;
         bool              lockRotationToYAxis = false;
+        bool              isSensor            = false;
         PhysicsBodyHandle bodyHandle;
     };
 

@@ -139,6 +139,7 @@ namespace Osiris {
         {
             std::lock_guard lock(m_CollisionEventsMutex);
             m_CollisionEvents.clear();
+            m_ContactEndedEvents.clear();
         }
 
         m_JobSystem.reset();
@@ -169,10 +170,31 @@ namespace Osiris {
         return events;
     }
 
+    std::vector<std::pair<uint64_t, uint64_t>> JoltPhysics::DrainContactEndedEvents() {
+        std::vector<std::pair<uint64_t, uint64_t>> events;
+        std::lock_guard lock(m_CollisionEventsMutex);
+        events.swap(m_ContactEndedEvents);
+        return events;
+    }
+
     void JoltPhysics::OnContactAdded(const JPH::Body& inBody1, const JPH::Body& inBody2,
                                      const JPH::ContactManifold&, JPH::ContactSettings&) {
         std::lock_guard lock(m_CollisionEventsMutex);
         m_CollisionEvents.emplace_back(inBody1.GetUserData(), inBody2.GetUserData());
+    }
+
+    void JoltPhysics::OnContactRemoved(const JPH::SubShapeIDPair& inSubShapePair) {
+        // This callback runs while all bodies are locked, so the regular BodyInterface would deadlock.
+        // No zero-checking here, same as OnContactAdded: 0 is Jolt's "body not found" sentinel, but
+        // it's also a perfectly valid entt::entity handle (the first entity Scene ever creates gets
+        // it), so filtering on it would silently drop real events. Scene::DispatchCollisionEvents's
+        // own m_Registry.valid() checks are the correct place to reject an unresolvable pair.
+        const JPH::BodyInterface& bodyInterface = m_PhysicsSystem.GetBodyInterfaceNoLock();
+        const uint64_t body1UserData = bodyInterface.GetUserData(inSubShapePair.GetBody1ID());
+        const uint64_t body2UserData = bodyInterface.GetUserData(inSubShapePair.GetBody2ID());
+
+        std::lock_guard lock(m_CollisionEventsMutex);
+        m_ContactEndedEvents.emplace_back(body1UserData, body2UserData);
     }
 
     void JoltPhysics::StepCharacters(float fixedDeltaTime) {
@@ -239,6 +261,7 @@ namespace Osiris {
         boxShape->SetDensity(kDynamicBodyDensity);
 
         JPH::BodyCreationSettings settings(boxShape, position, rotation, motionType, layer);
+        settings.mIsSensor = desc.isSensor;
         if (desc.lockRotationToYAxis) {
             settings.mAllowedDOFs = JPH::EAllowedDOFs::TranslationX
                 | JPH::EAllowedDOFs::TranslationY

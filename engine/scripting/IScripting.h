@@ -26,6 +26,7 @@ namespace Osiris {
         virtual ScriptInstanceHandle CreateInstance(Entity entity, const std::string& scriptPath) = 0;
         virtual void DestroyInstance(ScriptInstanceHandle handle) = 0;
         virtual void DispatchCollision(ScriptInstanceHandle handle, Entity otherEntity) = 0;
+        virtual void DispatchCollisionEnd(ScriptInstanceHandle handle, Entity otherEntity) = 0;
 
         // Runs OnStart() once (lazily) then OnUpdate(dt) — call once per rendered frame.
         virtual void Update(float deltaTime) = 0;

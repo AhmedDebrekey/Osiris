@@ -18,6 +18,7 @@ namespace Osiris {
         ScriptInstanceHandle CreateInstance(Entity entity, const std::string& scriptPath) override;
         void DestroyInstance(ScriptInstanceHandle handle) override;
         void DispatchCollision(ScriptInstanceHandle handle, Entity otherEntity) override;
+        void DispatchCollisionEnd(ScriptInstanceHandle handle, Entity otherEntity) override;
 
         void Update(float deltaTime) override;
         void FixedUpdate(float deltaTime) override;
@@ -33,6 +34,7 @@ namespace Osiris {
             sol::protected_function onUpdate;
             sol::protected_function onFixedUpdate;
             sol::protected_function onCollision;
+            sol::protected_function onCollisionEnd;
             bool started = false;
         };
 

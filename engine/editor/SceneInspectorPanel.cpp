@@ -256,6 +256,7 @@ namespace Osiris {
                 rigidBodyChanged = true;
             }
             if (ImGui::Checkbox("Lock Rotation to Y Axis", &rigidBody.lockRotationToYAxis)) rigidBodyChanged = true;
+            if (ImGui::Checkbox("Sensor", &rigidBody.isSensor)) rigidBodyChanged = true;
             ImGui::Text("Body handle: %s", rigidBody.bodyHandle.IsValid() ? "valid" : "invalid");
             ImGui::TextDisabled("Changing creation settings rebuilds the live Jolt body (destroy +\nrecreate). A Collider is required on this entity too.");
         })) {

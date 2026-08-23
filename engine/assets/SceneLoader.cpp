@@ -107,6 +107,7 @@ namespace Osiris {
                 else if (motionTypeStr == "Kinematic") rigidBody.motionType = BodyMotionType::Kinematic;
                 else                                   rigidBody.motionType = BodyMotionType::Static;
                 rigidBody.lockRotationToYAxis = j.value("lockRotationToYAxis", rigidBody.lockRotationToYAxis);
+                rigidBody.isSensor = j.value("isSensor", rigidBody.isSensor);
             }
 
             if (entityJson.contains("audioSource")) {
@@ -227,6 +228,7 @@ namespace Osiris {
                 entityJson["rigidBody"] = {
                     {"motionType", motionTypeNames[static_cast<int>(rigidBody.motionType)]},
                     {"lockRotationToYAxis", rigidBody.lockRotationToYAxis},
+                    {"isSensor", rigidBody.isSensor},
                 };
             }
 

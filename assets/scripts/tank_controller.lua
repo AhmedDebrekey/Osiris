@@ -67,7 +67,7 @@ local function fireProjectile()
 
     projectile:AddBoxMesh(projectileHalfExtents)
     projectile:AddMaterial(projectileMaterialSource:GetMaterial().material)
-    projectile:AddBoxRigidBody(projectileHalfExtents, BodyMotionType.Dynamic, false)
+    projectile:AddBoxRigidBody(projectileHalfExtents, BodyMotionType.Dynamic, false, false)
     projectile:AddScript("assets/scripts/projectile.lua")
 
     physics:ApplyImpulse(

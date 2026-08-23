@@ -14,6 +14,7 @@
 namespace {
     constexpr const char* kTankModelPath = "models/toon_toy_tank/scene.gltf";
     constexpr const char* kTankControllerPath = "scripts/tank_controller.lua";
+    constexpr const char* kSensorTestScriptPath = "scripts/sensor_test.lua";
 }
 
 int main() {
@@ -49,6 +50,7 @@ int main() {
         entity.AddComponent<Osiris::MaterialComponent>(greyMaterial);
         entity.AddComponent<Osiris::ColliderComponent>(halfExtents);
         entity.AddComponent<Osiris::RigidBodyComponent>(Osiris::BodyMotionType::Static);
+        return entity;
     };
 
     addStaticBox("Arena_Floor", {0.0f, -0.25f, 0.0f}, {9.0f, 0.25f, 7.0f});
@@ -58,6 +60,12 @@ int main() {
     addStaticBox("Arena_Wall_West", {-9.25f, 0.75f, 0.0f}, {0.25f, 0.75f, 7.5f});
     addStaticBox("Arena_Obstacle_North", {0.0f, 0.6f, -3.5f}, {1.5f, 0.6f, 0.5f});
     addStaticBox("Arena_Obstacle_South", {0.0f, 0.6f, 3.5f}, {1.5f, 0.6f, 0.5f});
+
+    Osiris::Entity sensorTestZone = addStaticBox(
+        "Sensor_Test_Zone", {0.0f, 0.6f, 0.0f}, {0.75f, 0.6f, 1.5f});
+    sensorTestZone.GetComponent<Osiris::RigidBodyComponent>().isSensor = true;
+    sensorTestZone.AddComponent<Osiris::ScriptComponent>().scriptPath =
+        Osiris::AssetManager::GetPath(kSensorTestScriptPath);
 
     auto spawnTank = [&](const std::string& name, const glm::vec3& position, float yaw) {
         Osiris::Entity hull = scene.SpawnModel(name, kTankModelPath, engine.GetRHI());

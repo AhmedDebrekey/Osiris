@@ -376,6 +376,7 @@ namespace Osiris {
         desc.collider.halfExtents = collider.halfExtents;
         desc.motionType          = rigidBody.motionType;
         desc.lockRotationToYAxis = rigidBody.lockRotationToYAxis;
+        desc.isSensor            = rigidBody.isSensor;
         desc.userData            = static_cast<uint64_t>(entity.GetHandle());
         Entity parent = GetParent(entity);
         if (parent.IsValid()) {
@@ -419,27 +420,34 @@ namespace Osiris {
     }
 
     void Scene::DispatchCollisionEvents(IPhysics* physics, IScripting* scripting) {
-        for (const auto& [aHandleValue, bHandleValue] : physics->DrainCollisionEvents()) {
+        const auto dispatchPair = [&](uint64_t aHandleValue, uint64_t bHandleValue, bool contactEnded) {
             const entt::entity aHandle = static_cast<entt::entity>(aHandleValue);
             const entt::entity bHandle = static_cast<entt::entity>(bHandleValue);
 
             if (m_Registry.valid(aHandle) && m_Registry.valid(bHandle)) {
                 Entity a(aHandle, this);
                 if (a.HasComponent<ScriptComponent>()) {
-                    scripting->DispatchCollision(
-                        a.GetComponent<ScriptComponent>().instanceHandle,
-                        Entity(bHandle, this));
+                    const auto instanceHandle = a.GetComponent<ScriptComponent>().instanceHandle;
+                    if (contactEnded) scripting->DispatchCollisionEnd(instanceHandle, Entity(bHandle, this));
+                    else scripting->DispatchCollision(instanceHandle, Entity(bHandle, this));
                 }
             }
 
             if (m_Registry.valid(aHandle) && m_Registry.valid(bHandle)) {
                 Entity b(bHandle, this);
                 if (b.HasComponent<ScriptComponent>()) {
-                    scripting->DispatchCollision(
-                        b.GetComponent<ScriptComponent>().instanceHandle,
-                        Entity(aHandle, this));
+                    const auto instanceHandle = b.GetComponent<ScriptComponent>().instanceHandle;
+                    if (contactEnded) scripting->DispatchCollisionEnd(instanceHandle, Entity(aHandle, this));
+                    else scripting->DispatchCollision(instanceHandle, Entity(aHandle, this));
                 }
             }
+        };
+
+        for (const auto& [aHandleValue, bHandleValue] : physics->DrainCollisionEvents()) {
+            dispatchPair(aHandleValue, bHandleValue, false);
+        }
+        for (const auto& [aHandleValue, bHandleValue] : physics->DrainContactEndedEvents()) {
+            dispatchPair(aHandleValue, bHandleValue, true);
         }
     }
 

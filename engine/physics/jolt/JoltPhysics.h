@@ -4,6 +4,7 @@
 #include "physics/IPhysics.h"
 
 #include <memory>
+#include <mutex>
 #include <vector>
 
 // The Jolt headers don't include Jolt.h themselves — Jolt.h must always come first.
@@ -13,16 +14,22 @@
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/Body/BodyID.h>
 #include <Jolt/Physics/Character/CharacterVirtual.h>
+#include <Jolt/Physics/Collision/ContactListener.h>
 
 namespace Osiris {
     // Jolt-backed implementation of IPhysics. All Jolt types stay confined to this class —
     // IPhysics.h itself never includes a Jolt header, matching how VulkanRHI is the only
     // place raw Vulkan calls are allowed.
-    class JoltPhysics final : public IPhysics {
+    class JoltPhysics final : public IPhysics, public JPH::ContactListener {
     public:
         bool Init() override;
         void Shutdown() override;
         void Update(float deltaTime) override;
+        std::vector<std::pair<uint64_t, uint64_t>> DrainCollisionEvents() override;
+
+        void OnContactAdded(const JPH::Body& inBody1, const JPH::Body& inBody2,
+                            const JPH::ContactManifold& inManifold,
+                            JPH::ContactSettings& ioSettings) override;
 
         PhysicsBodyHandle CreateBody(const RigidBodyDesc& desc) override;
         void DestroyBody(PhysicsBodyHandle handle) override;
@@ -91,6 +98,9 @@ namespace Osiris {
         float m_Accumulator = 0.0f;
 
         std::vector<JPH::BodyID> m_Bodies;
+
+        std::mutex m_CollisionEventsMutex;
+        std::vector<std::pair<uint64_t, uint64_t>> m_CollisionEvents;
 
         struct CharacterEntry {
             JPH::Ref<JPH::CharacterVirtual> character;

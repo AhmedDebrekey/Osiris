@@ -119,6 +119,8 @@ int main() {
             engine.GetScripting()->FixedUpdate(deltaTime);
             engine.GetPhysics()->Update(deltaTime);
             scene.SyncPhysicsTransforms(engine.GetPhysics());
+            scene.DispatchCollisionEvents(engine.GetPhysics(), engine.GetScripting());
+            scene.FlushDestroyQueue(engine.GetPhysics(), engine.GetAudio(), engine.GetScripting());
         }
 
         Osiris::Camera& renderCamera = engine.IsPlaying() ? tankCamera : editorCamera;

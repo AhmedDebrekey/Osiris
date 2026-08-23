@@ -29,6 +29,11 @@ namespace Osiris {
         // removes it from the registry.
         void DestroyEntity(Entity entity, IPhysics* physics, IAudio* audio, IScripting* scripting);
 
+        // Script callbacks queue destruction so their Lua environment stays alive until the
+        // callback returns. FlushDestroyQueue performs the normal teardown at a safe point.
+        void QueueDestroyEntity(Entity entity);
+        void FlushDestroyQueue(IPhysics* physics, IAudio* audio, IScripting* scripting);
+
         // Loads a model file (relativePath resolved through AssetManager; glTF via MeshLoader
         // today) and mirrors its node-local transforms under one movable root entity.
         // The one place this logic lives; main.cpp, Lua, and asset-browser spawning all call it.
@@ -64,6 +69,9 @@ namespace Osiris {
 
         // Writes each non-Static body's live world pose back into its local TransformComponent.
         void SyncPhysicsTransforms(IPhysics* physics);
+
+        // Drains physics contact events and dispatches them to scripted entities on the main thread.
+        void DispatchCollisionEvents(IPhysics* physics, IScripting* scripting);
 
         // Creates a live OpenAL source per AudioSourceComponent entity; auto-plays if autoPlay=true.
         void CreateAudioSources(IAudio* audio);
@@ -117,6 +125,7 @@ namespace Osiris {
 
         // Play mode snapshot — see CapturePlaySnapshot/RestorePlaySnapshot.
         std::unordered_map<entt::entity, TransformComponent> m_PlaySnapshot;
+        std::vector<entt::entity> m_DestroyQueue;
     };
     template<typename T, typename... Args>
     T& Entity::AddComponent(Args&&... args) {

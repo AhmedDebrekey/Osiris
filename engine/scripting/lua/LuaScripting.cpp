@@ -66,7 +66,12 @@ namespace Osiris {
 
         m_Lua.new_usertype<glm::mat4>("mat4",
             sol::no_constructor,
-            "GetTranslation", [](const glm::mat4& matrix) { return glm::vec3(matrix[3]); });
+            "GetTranslation", [](const glm::mat4& matrix) { return glm::vec3(matrix[3]); },
+            "TransformDirection", [](const glm::mat4& matrix, const glm::vec3& direction) {
+                const glm::vec3 transformed = glm::vec3(matrix * glm::vec4(direction, 0.0f));
+                const float length = glm::length(transformed);
+                return length > 0.000001f ? transformed / length : glm::vec3(0.0f);
+            });
 
         m_Lua.new_usertype<TransformComponent>("Transform",
             "position",    &TransformComponent::position,
@@ -207,6 +212,15 @@ namespace Osiris {
             "GetRigidBody", &Entity::GetComponent<RigidBodyComponent>,
             "HasRigidBody", &Entity::HasComponent<RigidBodyComponent>,
 
+            "AddBoxRigidBody", [this](Entity& entity, glm::vec3 halfExtents,
+                                       BodyMotionType motionType, bool lockRotationToYAxis) {
+                if (entity.HasComponent<ColliderComponent>() || entity.HasComponent<RigidBodyComponent>()) return;
+                entity.AddComponent<ColliderComponent>(halfExtents);
+                auto& rigidBody = entity.AddComponent<RigidBodyComponent>(motionType);
+                rigidBody.lockRotationToYAxis = lockRotationToYAxis;
+                entity.GetScene()->RebuildPhysicsBody(entity, m_Physics);
+            },
+
             // Field assignment can't trigger a rebuild on its own — these do what
             // Scene::RebuildPhysicsBody does in C++ (set + destroy/recreate) in one call.
             "SetColliderHalfExtents", [this](Entity& entity, glm::vec3 halfExtents) {
@@ -284,11 +298,7 @@ namespace Osiris {
             "GetParent",        &Scene::GetParent,
             "GetChildren",      &Scene::GetChildren,
             "GetWorldTransform", &Scene::GetWorldTransform,
-            // Wrapped so Lua doesn't need to pass physics/audio/scripting itself — same trio
-            // Scene::DestroyEntity's C++ callers would otherwise have to thread through by hand.
-            "DestroyEntity", [this](Scene& scene, Entity entity) {
-                scene.DestroyEntity(entity, m_Physics, m_Audio, this);
-            },
+            "DestroyEntity", &Scene::QueueDestroyEntity,
             // Returns the model root; its primitive entities are children of that root.
             "SpawnModel", [this](Scene& scene, const std::string& name, const std::string& relativePath) {
                 return scene.SpawnModel(name, relativePath, m_RHI);
@@ -339,6 +349,7 @@ namespace Osiris {
         keyTable["Escape"] = SDL_SCANCODE_ESCAPE;
         keyTable["LeftShift"] = SDL_SCANCODE_LSHIFT;
         keyTable["LeftCtrl"] = SDL_SCANCODE_LCTRL;
+        keyTable["RightCtrl"] = SDL_SCANCODE_RCTRL;
         keyTable["Up"] = SDL_SCANCODE_UP;
         keyTable["Down"] = SDL_SCANCODE_DOWN;
         keyTable["Left"] = SDL_SCANCODE_LEFT;
@@ -390,6 +401,7 @@ namespace Osiris {
         instance.onStart       = env["OnStart"];
         instance.onUpdate      = env["OnUpdate"];
         instance.onFixedUpdate = env["OnFixedUpdate"];
+        instance.onCollision   = env["OnCollision"];
 
         uint32_t index = AllocateSlot(m_Instances, std::move(instance),
             [](const ScriptInstance& s) { return !s.entity.IsValid(); });
@@ -399,6 +411,18 @@ namespace Osiris {
     void LuaScripting::DestroyInstance(ScriptInstanceHandle handle) {
         if (!handle.IsValid() || handle.id >= m_Instances.size()) return;
         m_Instances[handle.id] = ScriptInstance{};
+    }
+
+    void LuaScripting::DispatchCollision(ScriptInstanceHandle handle, Entity otherEntity) {
+        if (!handle.IsValid() || handle.id >= m_Instances.size()) return;
+        ScriptInstance& instance = m_Instances[handle.id];
+        if (!instance.entity.IsValid() || !instance.onCollision.valid()) return;
+
+        sol::protected_function_result result = instance.onCollision(otherEntity);
+        if (!result.valid()) {
+            sol::error err = result;
+            OSIRIS_ERROR("LuaScripting: OnCollision() error in '{}': {}", instance.scriptPath, err.what());
+        }
     }
 
     void LuaScripting::Update(float deltaTime) {

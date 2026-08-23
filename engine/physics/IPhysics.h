@@ -3,6 +3,10 @@
 
 #include "PhysicsTypes.h"
 
+#include <cstdint>
+#include <utility>
+#include <vector>
+
 namespace Osiris {
     // Backend-agnostic physics interface, mirroring IRHI: engine/scene and games/testbed
     // only ever talk to IPhysics, never to Jolt types directly.
@@ -16,6 +20,8 @@ namespace Osiris {
         // Steps the simulation using a fixed internal timestep (accumulator pattern) —
         // safe to call once per rendered frame with that frame's (variable) deltaTime.
         virtual void Update(float deltaTime) = 0;
+
+        virtual std::vector<std::pair<uint64_t, uint64_t>> DrainCollisionEvents() = 0;
 
         virtual PhysicsBodyHandle CreateBody(const RigidBodyDesc& desc) = 0;
         virtual void DestroyBody(PhysicsBodyHandle handle) = 0;

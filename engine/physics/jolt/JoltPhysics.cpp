@@ -118,12 +118,15 @@ namespace Osiris {
 
         m_PhysicsSystem.Init(kMaxBodies, kNumBodyMutexes, kMaxBodyPairs, kMaxContactConstraints,
             m_BroadPhaseLayerInterface, m_ObjectVsBroadPhaseLayerFilter, m_ObjectLayerPairFilter);
+        m_PhysicsSystem.SetContactListener(this);
 
         OSIRIS_INFO("JoltPhysics: initialized ({} worker threads)", numThreads);
         return true;
     }
 
     void JoltPhysics::Shutdown() {
+        m_PhysicsSystem.SetContactListener(nullptr);
+
         JPH::BodyInterface& bodyInterface = m_PhysicsSystem.GetBodyInterface();
         for (auto& id : m_Bodies) {
             if (!id.IsInvalid()) {
@@ -133,6 +136,10 @@ namespace Osiris {
         }
         m_Bodies.clear();
         m_Characters.clear(); // releases each CharacterVirtual via JPH::Ref
+        {
+            std::lock_guard lock(m_CollisionEventsMutex);
+            m_CollisionEvents.clear();
+        }
 
         m_JobSystem.reset();
         m_TempAllocator.reset();
@@ -153,6 +160,19 @@ namespace Osiris {
             m_PhysicsSystem.Update(kFixedTimeStep, 1, m_TempAllocator.get(), m_JobSystem.get());
             m_Accumulator -= kFixedTimeStep;
         }
+    }
+
+    std::vector<std::pair<uint64_t, uint64_t>> JoltPhysics::DrainCollisionEvents() {
+        std::vector<std::pair<uint64_t, uint64_t>> events;
+        std::lock_guard lock(m_CollisionEventsMutex);
+        events.swap(m_CollisionEvents);
+        return events;
+    }
+
+    void JoltPhysics::OnContactAdded(const JPH::Body& inBody1, const JPH::Body& inBody2,
+                                     const JPH::ContactManifold&, JPH::ContactSettings&) {
+        std::lock_guard lock(m_CollisionEventsMutex);
+        m_CollisionEvents.emplace_back(inBody1.GetUserData(), inBody2.GetUserData());
     }
 
     void JoltPhysics::StepCharacters(float fixedDeltaTime) {

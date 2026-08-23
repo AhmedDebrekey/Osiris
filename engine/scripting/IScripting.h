@@ -25,6 +25,7 @@ namespace Osiris {
         // Sandboxes scriptPath into an environment bound to entity (exposed as `self`/`scene`).
         virtual ScriptInstanceHandle CreateInstance(Entity entity, const std::string& scriptPath) = 0;
         virtual void DestroyInstance(ScriptInstanceHandle handle) = 0;
+        virtual void DispatchCollision(ScriptInstanceHandle handle, Entity otherEntity) = 0;
 
         // Runs OnStart() once (lazily) then OnUpdate(dt) — call once per rendered frame.
         virtual void Update(float deltaTime) = 0;

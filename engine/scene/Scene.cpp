@@ -65,7 +65,22 @@ namespace Osiris {
         }
     }
 
+    void Scene::QueueDestroyEntity(Entity entity) {
+        if (entity.GetScene() != this || !m_Registry.valid(entity.GetHandle())) return;
+        if (std::find(m_DestroyQueue.begin(), m_DestroyQueue.end(), entity.GetHandle()) != m_DestroyQueue.end()) return;
+        m_DestroyQueue.push_back(entity.GetHandle());
+    }
+
+    void Scene::FlushDestroyQueue(IPhysics* physics, IAudio* audio, IScripting* scripting) {
+        std::vector<entt::entity> destroyQueue;
+        destroyQueue.swap(m_DestroyQueue);
+        for (entt::entity entityHandle : destroyQueue) {
+            DestroyEntity(Entity(entityHandle, this), physics, audio, scripting);
+        }
+    }
+
     void Scene::Clear(IPhysics* physics, IAudio* audio, IScripting* scripting) {
+        m_DestroyQueue.clear();
         for (Entity entity : GetAllEntities()) {
             DestroyEntity(entity, physics, audio, scripting);
         }
@@ -400,6 +415,31 @@ namespace Osiris {
             transform.position = glm::vec3(localTransform[3]);
             // Non-uniformly scaled ancestors can introduce shear that local TRS cannot represent exactly.
             transform.rotation = TransformComponent::ExtractRotation(localTransform, transform.rotation);
+        }
+    }
+
+    void Scene::DispatchCollisionEvents(IPhysics* physics, IScripting* scripting) {
+        for (const auto& [aHandleValue, bHandleValue] : physics->DrainCollisionEvents()) {
+            const entt::entity aHandle = static_cast<entt::entity>(aHandleValue);
+            const entt::entity bHandle = static_cast<entt::entity>(bHandleValue);
+
+            if (m_Registry.valid(aHandle) && m_Registry.valid(bHandle)) {
+                Entity a(aHandle, this);
+                if (a.HasComponent<ScriptComponent>()) {
+                    scripting->DispatchCollision(
+                        a.GetComponent<ScriptComponent>().instanceHandle,
+                        Entity(bHandle, this));
+                }
+            }
+
+            if (m_Registry.valid(aHandle) && m_Registry.valid(bHandle)) {
+                Entity b(bHandle, this);
+                if (b.HasComponent<ScriptComponent>()) {
+                    scripting->DispatchCollision(
+                        b.GetComponent<ScriptComponent>().instanceHandle,
+                        Entity(aHandle, this));
+                }
+            }
         }
     }
 

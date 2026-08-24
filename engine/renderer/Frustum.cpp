@@ -4,6 +4,9 @@
 
 #include "Frustum.h"
 
+#include <algorithm>
+#include <limits>
+
 namespace Osiris {
 
 Frustum Frustum::FromViewProjection(const glm::mat4& vp) {
@@ -54,6 +57,35 @@ bool Frustum::IsVisible(const AABB& bounds, const glm::mat4& model) const {
         }
         if (allOutside) return false;
     }
+    return true;
+}
+
+bool RayIntersectsAABB(const glm::vec3& rayOrigin, const glm::vec3& rayDir,
+    const AABB& bounds, const glm::mat4& model, float& outDistance) {
+    const glm::mat4 invModel = glm::inverse(model);
+    const glm::vec3 localOrigin = glm::vec3(invModel * glm::vec4(rayOrigin, 1.0f));
+    const glm::vec3 localDir = glm::vec3(invModel * glm::vec4(rayDir, 0.0f));
+
+    float tMin = 0.0f;
+    float tMax = std::numeric_limits<float>::max();
+
+    for (int axis = 0; axis < 3; axis++) {
+        if (glm::abs(localDir[axis]) < 1e-8f) {
+            if (localOrigin[axis] < bounds.min[axis] || localOrigin[axis] > bounds.max[axis]) return false;
+            continue;
+        }
+
+        const float invDir = 1.0f / localDir[axis];
+        float t1 = (bounds.min[axis] - localOrigin[axis]) * invDir;
+        float t2 = (bounds.max[axis] - localOrigin[axis]) * invDir;
+        if (t1 > t2) std::swap(t1, t2);
+
+        tMin = glm::max(tMin, t1);
+        tMax = glm::min(tMax, t2);
+        if (tMin > tMax) return false;
+    }
+
+    outDistance = tMin;
     return true;
 }
 

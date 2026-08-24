@@ -5,11 +5,13 @@
 #include "scene/Entity.h"
 #include "scene/Components.h"
 #include "renderer/Camera.h"
+#include "renderer/Frustum.h"
 #include "rhi/RHI.h"
 
 #include <imgui.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <limits>
 
 namespace Osiris {
     void Editor::BeginFrame() {
@@ -47,6 +49,8 @@ namespace Osiris {
         if (viewportTexture != 0) {
             ImGui::Image(viewportTexture,
                 ImVec2(static_cast<float>(viewportWidth), static_cast<float>(viewportHeight)));
+            const bool viewportItemHovered = ImGui::IsItemHovered();
+            const bool viewportClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
             const ImVec2 viewportMin = ImGui::GetItemRectMin();
             const ImVec2 viewportMax = ImGui::GetItemRectMax();
             ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
@@ -76,6 +80,59 @@ namespace Osiris {
                     }
                 }
             }
+
+            // Checked after Manipulate() (not before) so IsOver()/IsUsing() reflect this frame's
+            // gizmo state, not the previous frame's: otherwise grabbing a handle would also fire
+            // a pick underneath it on the same click.
+            if (viewportItemHovered && viewportClicked && !ImGuizmo::IsOver() && !ImGuizmo::IsUsing()) {
+                const ImVec2 mousePos = ImGui::GetMousePos();
+                const float viewportPixelWidth = viewportMax.x - viewportMin.x;
+                const float viewportPixelHeight = viewportMax.y - viewportMin.y;
+                const float ndcX = 2.0f * (mousePos.x - viewportMin.x) / viewportPixelWidth - 1.0f;
+                const float ndcY = 2.0f * (mousePos.y - viewportMin.y) / viewportPixelHeight - 1.0f;
+
+                // GetProjectionMatrix() is already Vulkan-native (Y-down, [0,1] depth), matching
+                // what was actually rasterized to screen, so no extra flip is needed here (unlike
+                // the ImGuizmo projection above, which un-does that flip for ImGuizmo's own
+                // OpenGL-convention assumptions).
+                const glm::mat4 invViewProj =
+                    glm::inverse(camera.GetProjectionMatrix() * camera.GetViewMatrix());
+                glm::vec4 nearPoint = invViewProj * glm::vec4(ndcX, ndcY, 0.0f, 1.0f);
+                glm::vec4 farPoint = invViewProj * glm::vec4(ndcX, ndcY, 1.0f, 1.0f);
+                nearPoint /= nearPoint.w;
+                farPoint /= farPoint.w;
+                const glm::vec3 rayOrigin = glm::vec3(nearPoint);
+                const glm::vec3 rayDir = glm::normalize(glm::vec3(farPoint - nearPoint));
+
+                entt::entity closestEntity = entt::null;
+                float closestDistance = std::numeric_limits<float>::max();
+                for (Entity candidate : scene.GetAllEntities()) {
+                    if (!candidate.HasComponent<MeshComponent>()) continue;
+                    float distance = 0.0f;
+                    const glm::mat4 model = scene.GetWorldTransform(candidate);
+                    const AABB& bounds = candidate.GetComponent<MeshComponent>().mesh.bounds;
+                    if (RayIntersectsAABB(rayOrigin, rayDir, bounds, model, distance)
+                        && distance < closestDistance) {
+                        closestDistance = distance;
+                        closestEntity = candidate.GetHandle();
+                    }
+                }
+                // SpawnModel only puts MeshComponent on per-glTF-node children (possibly nested
+                // several levels deep), never on its own root, so the hit above is always some
+                // sub-mesh part. Walk up to the outermost ancestor, since that's the entity that
+                // actually owns the Collider/RigidBody/Script components a user expects to select.
+                if (closestEntity != entt::null) {
+                    Entity walker(closestEntity, &scene);
+                    Entity ancestor = scene.GetParent(walker);
+                    while (ancestor.IsValid()) {
+                        walker = ancestor;
+                        ancestor = scene.GetParent(walker);
+                    }
+                    closestEntity = walker.GetHandle();
+                }
+                m_SceneInspector.SetSelectedEntity(closestEntity);
+            }
+
             m_AssetBrowser.DrawViewportDropTarget(scene, camera, engine.GetRHI());
         }
         ImGui::End();

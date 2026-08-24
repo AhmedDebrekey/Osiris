@@ -14,6 +14,7 @@ namespace Osiris {
     public:
         static std::vector<AssetEntry> ListModels();
         static std::vector<AssetEntry> ListScenes();
+        static std::vector<AssetEntry> ListScripts();
     };
 }
 

@@ -60,6 +60,7 @@ namespace Osiris {
         virtual uint64_t GetViewportTextureID() const            = 0;
         virtual uint64_t GetShadowCascadeTextureID(uint32_t cascade) const = 0;
         virtual uint64_t GetSpotShadowTextureID(uint32_t index) const = 0;
+        virtual uint64_t GetEditorIconTextureID(EditorIcon icon) const = 0;
         virtual glm::uvec2 GetRenderExtent(bool viewport) const = 0;
 
 

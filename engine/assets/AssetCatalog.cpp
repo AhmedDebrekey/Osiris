@@ -48,4 +48,8 @@ namespace Osiris {
     std::vector<AssetEntry> AssetCatalog::ListScenes() {
         return ListFilesWithExtension("scenes", ".json");
     }
+
+    std::vector<AssetEntry> AssetCatalog::ListScripts() {
+        return ListFilesWithExtension("scripts", ".lua");
+    }
 }

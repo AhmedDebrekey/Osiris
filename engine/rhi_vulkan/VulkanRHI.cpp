@@ -15,8 +15,10 @@
 #include "backends/imgui_impl_vulkan.h"
 
 #include "VulkanUtils.h"
+#include "core/AssetManager.h"
 #include "core/Log.h"
 #include "renderer/MeshType.h"
+#include "assets/TextureLoader.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -1110,6 +1112,20 @@ namespace Osiris {
                 m_SpotShadowMaps[i].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             m_SpotShadowTextureIDs[i] = reinterpret_cast<uint64_t>(descriptorSet);
         }
+
+        const std::pair<EditorIcon, const char*> editorIcons[] = {
+            {EditorIcon::Folder,    "icons/folder.png"},
+            {EditorIcon::GltfModel, "icons/gltfIcon.png"},
+            {EditorIcon::JsonScene, "icons/jsonIcon.png"},
+            {EditorIcon::LuaScript, "icons/luaIcon.png"},
+        };
+        for (const auto& [icon, relativePath] : editorIcons) {
+            const TextureHandle iconTexture = TextureLoader::LoadFromFile(AssetManager::GetPath(relativePath), this);
+            if (!iconTexture.IsValid()) continue;
+            const VkDescriptorSet descriptorSet = ImGui_ImplVulkan_AddTexture(
+                m_Textures[iconTexture.id].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            m_EditorIconTextureIDs[static_cast<size_t>(icon)] = reinterpret_cast<uint64_t>(descriptorSet);
+        }
     }
 
     void VulkanRHI::ShutdownImGui() {
@@ -1120,6 +1136,11 @@ namespace Osiris {
             textureID = 0;
         }
         for (auto& textureID : m_SpotShadowTextureIDs) {
+            if (textureID == 0) continue;
+            ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(textureID));
+            textureID = 0;
+        }
+        for (auto& textureID : m_EditorIconTextureIDs) {
             if (textureID == 0) continue;
             ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(textureID));
             textureID = 0;

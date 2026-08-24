@@ -25,7 +25,7 @@ namespace Osiris {
 
     private:
         void DrawEntityList(Scene& scene, IPhysics* physics, IAudio* audio, IScripting* scripting);
-        void DrawEntityNode(Scene& scene, Entity entity, entt::entity& pendingDelete);
+        void DrawEntityNode(Scene& scene, Entity entity, entt::entity& pendingDelete, IScripting* scripting);
         void DrawComponents(Entity entity, IPhysics* physics, IAudio* audio, IScripting* scripting);
         void DrawAddComponentButton(Entity entity);
 

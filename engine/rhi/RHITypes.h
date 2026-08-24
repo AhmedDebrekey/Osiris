@@ -45,6 +45,15 @@ enum class BufferUsage {
     Transfer
 };
 
+// Fixed set of editor-only UI icons, registered once at ImGui init (see VulkanRHI::InitImGui).
+enum class EditorIcon : uint32_t {
+    Folder,
+    GltfModel,
+    JsonScene,
+    LuaScript,
+    Count,
+};
+
 struct BufferDesc {
     uint64_t    size  = 0;
     BufferUsage usage = BufferUsage::Vertex;

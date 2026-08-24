@@ -1,5 +1,6 @@
 #include "SceneInspectorPanel.h"
 
+#include "core/AssetManager.h"
 #include "scene/Scene.h"
 #include "scene/Entity.h"
 #include "scene/Components.h"
@@ -13,6 +14,9 @@
 namespace Osiris {
     namespace {
         constexpr const char* kSceneEntityPayload = "OSIRIS_SCENE_ENTITY";
+        // Must match AssetBrowserPanel.cpp's kScriptAssetPayload: the source (script rows)
+        // and target (entity rows here) live in different files with no shared header.
+        constexpr const char* kScriptAssetPayload = "OSIRIS_SCRIPT_ASSET";
 
         // Draws drawFn's fields plus a "Remove" button, only if the entity has component T.
         // Returns true the frame "Remove" is clicked — caller does the actual removal, since
@@ -77,6 +81,9 @@ namespace Osiris {
     void SceneInspectorPanel::DrawEntityList(Scene& scene, IPhysics* physics, IAudio* audio, IScripting* scripting) {
         std::vector<Entity> entities = scene.GetAllEntities();
         ImGui::Text("Entities: %d", static_cast<int>(entities.size()));
+        if (ImGui::Button("+ New Entity", ImVec2(-1.0f, 0.0f))) {
+            m_SelectedEntity = scene.CreateEntity("New Entity").GetHandle();
+        }
 
         ImGui::BeginChild("EntityList", ImVec2(0.0f, 150.0f), true);
 
@@ -97,7 +104,7 @@ namespace Osiris {
         entt::entity pendingDelete = entt::null;
         for (Entity entity : entities) {
             if (!entity.HasComponent<ParentComponent>() || !scene.GetParent(entity).IsValid()) {
-                DrawEntityNode(scene, entity, pendingDelete);
+                DrawEntityNode(scene, entity, pendingDelete, scripting);
             }
         }
         ImGui::EndChild();
@@ -107,7 +114,8 @@ namespace Osiris {
         }
     }
 
-    void SceneInspectorPanel::DrawEntityNode(Scene& scene, Entity entity, entt::entity& pendingDelete) {
+    void SceneInspectorPanel::DrawEntityNode(
+        Scene& scene, Entity entity, entt::entity& pendingDelete, IScripting* scripting) {
         const std::vector<Entity> children = scene.GetChildren(entity);
         const std::string& name = entity.GetComponent<TagComponent>().name;
 
@@ -146,12 +154,31 @@ namespace Osiris {
                     scene.SetParent(Entity(draggedHandle, &scene), entity);
                 }
             }
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kScriptAssetPayload)) {
+                // AssetCatalog::ListScripts() returns AssetManager-relative paths (e.g.
+                // "scripts/foo.lua"), same as ListModels(): SpawnModel resolves that prefix
+                // internally for models, but ScriptComponent::scriptPath has no such resolving
+                // wrapper anywhere it's read, so it must be resolved here at the one point we're
+                // turning a catalog entry into a stored path.
+                const std::string scriptPath = AssetManager::GetPath(static_cast<const char*>(payload->Data));
+                // Only one ScriptComponent fits per entity (entt allows one of each type), so a
+                // drop on an already-scripted entity replaces it rather than being rejected:
+                // tear down the live instance first, same as the Remove button does below.
+                if (entity.HasComponent<ScriptComponent>()) {
+                    auto& script = entity.GetComponent<ScriptComponent>();
+                    if (script.instanceHandle.IsValid()) scripting->DestroyInstance(script.instanceHandle);
+                    script.scriptPath = scriptPath;
+                    script.instanceHandle = ScriptInstanceHandle{};
+                } else {
+                    entity.AddComponent<ScriptComponent>().scriptPath = scriptPath;
+                }
+            }
             ImGui::EndDragDropTarget();
         }
 
         if (open && !children.empty()) {
             for (Entity child : children) {
-                DrawEntityNode(scene, child, pendingDelete);
+                DrawEntityNode(scene, child, pendingDelete, scripting);
             }
             ImGui::TreePop();
         }

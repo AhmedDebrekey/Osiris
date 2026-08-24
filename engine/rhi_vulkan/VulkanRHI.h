@@ -106,6 +106,10 @@ namespace Osiris {
         uint64_t GetSpotShadowTextureID(uint32_t index) const override {
             return index < m_SpotShadowTextureIDs.size() ? m_SpotShadowTextureIDs[index] : 0;
         }
+        uint64_t GetEditorIconTextureID(EditorIcon icon) const override {
+            const size_t index = static_cast<size_t>(icon);
+            return index < m_EditorIconTextureIDs.size() ? m_EditorIconTextureIDs[index] : 0;
+        }
         glm::uvec2 GetRenderExtent(bool viewport) const override;
 
         void BeginShadowPass(uint32_t cascadeIndex) override;
@@ -250,6 +254,8 @@ namespace Osiris {
         static constexpr uint32_t SHADOW_MAP_SIZE      = 2048;
         VulkanImage m_ShadowMaps[SHADOW_CASCADE_COUNT];
         std::array<uint64_t, SHADOW_CASCADE_COUNT> m_ShadowCascadeTextureIDs = {};
+
+        std::array<uint64_t, static_cast<size_t>(EditorIcon::Count)> m_EditorIconTextureIDs = {};
 
         static constexpr uint32_t SPOT_SHADOW_MAP_SIZE = 1024;
         VulkanImage m_SpotShadowMaps[MAX_SPOT_SHADOW_CASTERS];

@@ -5,11 +5,17 @@
 #include "physics/jolt/JoltPhysics.h"
 #include "audio/openal/OpenALAudio.h"
 #include "scripting/lua/LuaScripting.h"
+#include "editor/Editor.h"
 #include "renderer/Camera.h"
 #include "renderer/Light.h"
+#include "scene/Components.h"
+#include "scene/Entity.h"
 #include "scene/Scene.h"
 
 namespace Osiris {
+    Engine::Engine() = default;
+    Engine::~Engine() = default;
+
     bool Engine::Initialize() {
 
         m_Logger.Initialize();
@@ -60,18 +66,13 @@ namespace Osiris {
             return false;
         }
 
-        return true;
-    }
+        // Constructed after AssetManager::SetAssetRoot, since the Asset Browser's catalog scan
+        // (models/scripts/scenes) resolves paths through it during construction.
+        m_Editor = std::make_unique<Editor>();
 
-    void Engine::Run()
-    {
-        while (m_IsRunning)
-        {
-            PollEvents();
-            Update();
-            Render();
-            Present();
-        }
+        m_LastCounter = SDL_GetPerformanceCounter();
+
+        return true;
     }
 
     void Engine::Shutdown() {
@@ -84,8 +85,41 @@ namespace Osiris {
     }
 
     void Engine::BeginFrame() {
+        const uint64_t currentCounter = SDL_GetPerformanceCounter();
+        m_DeltaTime = static_cast<float>(
+            (currentCounter - m_LastCounter) / static_cast<double>(SDL_GetPerformanceFrequency()));
+        m_LastCounter = currentCounter;
+
         PollEvents();
         m_RHI->BeginFrame();
+    }
+
+    void Engine::RunFrame(Scene& scene) {
+        BeginFrame();
+        m_Editor->BeginFrame();
+
+        if (m_Input.IsKeyPressed(SDL_SCANCODE_F5)) {
+            if (m_IsPlaying) ExitPlayMode(scene); else EnterPlayMode(scene);
+        }
+
+        if (!m_IsPlaying) {
+            m_Editor->Draw(scene, m_EditCamera, *this, m_DeltaTime);
+        } else {
+            // Scripts read last frame's synced Transform and call physics:Set*Velocity before
+            // the physics step consumes it: set desired velocity, then step, then sync.
+            m_Scripting->Update(m_DeltaTime);
+            m_Scripting->FixedUpdate(m_DeltaTime);
+            m_Physics->Update(m_DeltaTime);
+            scene.SyncPhysicsTransforms(m_Physics.get());
+            scene.SyncCharacterTransforms(m_Physics.get());
+            scene.DispatchCollisionEvents(m_Physics.get(), m_Scripting.get());
+            scene.FlushDestroyQueue(m_Physics.get(), m_Audio.get(), m_Scripting.get());
+        }
+
+        Camera& renderCamera = m_IsPlaying ? m_PlayCamera : m_EditCamera;
+        RenderFrame(scene, renderCamera, m_Editor->IsDebugLightViewEnabled(), m_Editor->GetDebugCascade());
+        RenderImGui();
+        EndFrame();
     }
 
     void Engine::EndFrame() const {
@@ -122,6 +156,7 @@ namespace Osiris {
         // doesn't start from whatever pose they were created/last-simulated at.
         scene.CreatePhysicsBodies(m_Physics.get());
         scene.CreateCharacters(m_Physics.get());
+        scene.CreateAudioSources(m_Audio.get());
         scene.CapturePlaySnapshot();
         scene.ResetScriptInstances(m_Scripting.get());
         scene.PlayAutoPlayAudioSources(m_Audio.get());
@@ -134,7 +169,24 @@ namespace Osiris {
         m_IsPlaying = false;
     }
 
+    void Engine::SyncPlayCamera(Scene& scene) {
+        Entity camEntity = scene.FindCameraEntity();
+        if (!camEntity.IsValid()) return;
+
+        const auto& transform = camEntity.GetComponent<TransformComponent>();
+        const float eyeHeight = camEntity.GetComponent<CameraComponent>().eyeHeight;
+
+        const float pitch = glm::radians(transform.rotation.x);
+        const float yaw = glm::radians(transform.rotation.y);
+        const glm::vec3 front(-sin(yaw) * cos(pitch), sin(pitch), -cos(yaw) * cos(pitch));
+
+        m_PlayCamera.SetPosition(transform.position + glm::vec3(0.0f, eyeHeight, 0.0f));
+        m_PlayCamera.SetOrientation(front, glm::vec3(0.0f, 1.0f, 0.0f));
+    }
+
     void Engine::RenderFrame(Scene& scene, Camera& camera, bool debugLightView, int debugCascade) {
+        if (m_IsPlaying) SyncPlayCamera(scene);
+
         m_Audio->SetListenerTransform(camera.GetPosition(), camera.GetFront(), glm::vec3(0.0f, 1.0f, 0.0f));
         scene.SyncAudioSources(m_Audio.get());
 
@@ -187,17 +239,5 @@ namespace Osiris {
         m_Input.Update();
         m_RHI->BeginImGuiFrame();
         m_IsRunning = !m_Window.ShouldClose();
-    }
-
-    void Engine::Update() {
-    }
-
-    void Engine::Render() {
-        m_RHI->BeginFrame();
-        m_RHI->EndFrame();
-        m_RHI->Present();
-    }
-
-    void Engine::Present() {
     }
 }

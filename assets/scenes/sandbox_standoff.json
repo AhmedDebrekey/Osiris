@@ -76,6 +76,11 @@
       "collider": { "halfExtents": [1.5, 0.6, 2] },
       "rigidBody": { "motionType": "Static", "isSensor": true },
       "script": { "path": "assets/scripts/home_zone.lua" }
+    },
+    {
+      "name": "Tank_Camera",
+      "transform": { "position": [0, 14, 10], "rotation": [-54.4623222080256, 0, 0] },
+      "camera": { "eyeHeight": 0, "isPrimary": true }
     }
   ]
 }

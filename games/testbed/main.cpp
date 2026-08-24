@@ -4,8 +4,6 @@
 #include "assets/SceneLoader.h"
 #include "assets/TextureLoader.h"
 #include "core/AssetManager.h"
-#include "editor/Editor.h"
-#include "renderer/Camera.h"
 #include "scene/Scene.h"
 
 #include <iostream>
@@ -83,51 +81,8 @@ int main() {
     scene.CreatePhysicsBodies(engine.GetPhysics());
     scene.CreateScriptInstances(engine.GetScripting());
 
-    Osiris::Camera editorCamera(
-        glm::vec3(0.0f, 1.5f, 4.0f),
-        glm::vec3(0.0f, 0.0f, -1.0f));
-    const glm::vec3 tankCameraPosition(0.0f, 14.0f, 10.0f);
-    Osiris::Camera tankCamera(tankCameraPosition, glm::vec3(0.0f, 0.0f, -1.0f));
-    tankCamera.SetOrientation(
-        glm::normalize(glm::vec3(0.0f) - tankCameraPosition),
-        glm::vec3(0.0f, 1.0f, 0.0f));
-
-    Osiris::Editor editor;
-
-    uint64_t lastCounter = SDL_GetPerformanceCounter();
-    const double frequency = static_cast<double>(SDL_GetPerformanceFrequency());
-
     while (engine.IsRunning()) {
-        const uint64_t currentCounter = SDL_GetPerformanceCounter();
-        const float deltaTime = static_cast<float>((currentCounter - lastCounter) / frequency);
-        lastCounter = currentCounter;
-
-        engine.BeginFrame();
-        editor.BeginFrame();
-
-        if (engine.GetInput()->IsKeyPressed(SDL_SCANCODE_F5)) {
-            if (engine.IsPlaying()) engine.ExitPlayMode(scene);
-            else engine.EnterPlayMode(scene);
-        }
-
-        if (!engine.IsPlaying()) {
-            editor.Draw(scene, editorCamera, engine, deltaTime);
-        } else {
-            // Scripts (tank_controller.lua) read last frame's synced Transform and call
-            // physics:SetBodyVelocity before the physics step consumes it, same ordering the old
-            // C++ character controller used: set desired velocity, then step, then sync.
-            engine.GetScripting()->Update(deltaTime);
-            engine.GetScripting()->FixedUpdate(deltaTime);
-            engine.GetPhysics()->Update(deltaTime);
-            scene.SyncPhysicsTransforms(engine.GetPhysics());
-            scene.DispatchCollisionEvents(engine.GetPhysics(), engine.GetScripting());
-            scene.FlushDestroyQueue(engine.GetPhysics(), engine.GetAudio(), engine.GetScripting());
-        }
-
-        Osiris::Camera& renderCamera = engine.IsPlaying() ? tankCamera : editorCamera;
-        engine.RenderFrame(scene, renderCamera, editor.IsDebugLightViewEnabled(), editor.GetDebugCascade());
-        engine.RenderImGui();
-        engine.EndFrame();
+        engine.RunFrame(scene);
     }
 
     engine.Shutdown();

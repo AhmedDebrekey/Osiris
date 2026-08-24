@@ -29,6 +29,16 @@ namespace Osiris {
         return glm::normalize(glm::vec3(rot * glm::vec4(0.0f, -1.0f, 0.0f, 0.0f)));
     }
 
+    glm::vec3 TransformComponent::GetForwardXZ() const {
+        const float yaw = glm::radians(rotation.y);
+        return glm::vec3(-sin(yaw), 0.0f, -cos(yaw));
+    }
+
+    glm::vec3 TransformComponent::GetRightXZ() const {
+        const float yaw = glm::radians(rotation.y);
+        return glm::vec3(cos(yaw), 0.0f, -sin(yaw));
+    }
+
     glm::vec3 TransformComponent::ExtractRotation(const glm::mat4& matrix, const glm::vec3& reference) {
         glm::mat3 rotationMatrix(matrix);
         rotationMatrix[0] = glm::normalize(rotationMatrix[0]);

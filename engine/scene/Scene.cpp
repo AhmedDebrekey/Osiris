@@ -455,7 +455,12 @@ namespace Osiris {
         const auto view = m_Registry.view<TransformComponent, AudioSourceComponent>();
         for (auto entity : view) {
             auto& audioSrc  = view.get<AudioSourceComponent>(entity);
-            if (!audioSrc.clip.IsValid()) continue; // no clip assigned yet — nothing to create a source from
+            if (!audioSrc.clip.IsValid()) continue; // no clip assigned yet, nothing to create a source from
+            // Sources are created once at scene setup (see AudioSourceComponent's own inspector
+            // caveat) and never rebuilt on edit, unlike Collider/RigidBody: skip an entity that
+            // already has a live handle so calling this again (e.g. every EnterPlayMode) doesn't
+            // leak a second OpenAL source for it.
+            if (audioSrc.sourceHandle.IsValid()) continue;
 
             AudioSourceDesc desc{};
             desc.buffer           = audioSrc.clip;

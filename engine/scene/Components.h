@@ -27,6 +27,13 @@ namespace Osiris {
 
         glm::vec3 GetForward() const; // local rotation-only; rest direction is (0,-1,0)
 
+        // Horizontal-only (ignores pitch/roll, never has a Y component): built from rotation.y
+        // alone, same yaw convention tank_controller.lua's own forward-vector math already uses.
+        // For WASD-style ground movement, where a fixed walk speed regardless of look angle is
+        // the expected behavior, not GetForward()'s full 3D direction (meant for spot lights).
+        glm::vec3 GetForwardXZ() const;
+        glm::vec3 GetRightXZ() const;
+
         // Inverse of GetModelMatrix(): decomposes matrix into position/rotation/scale, matching
         // this type's Rx*Ry*Rz composition exactly. Used wherever a resolved world (or
         // parent-relative) matrix needs writing back into a plain TRS transform — SetParent,

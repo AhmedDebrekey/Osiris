@@ -57,7 +57,16 @@ namespace Osiris {
             sol::constructors<glm::vec3(), glm::vec3(float), glm::vec3(float, float, float)>(),
             "x", &glm::vec3::x,
             "y", &glm::vec3::y,
-            "z", &glm::vec3::z);
+            "z", &glm::vec3::z,
+            sol::meta_function::addition, [](const glm::vec3& a, const glm::vec3& b) { return a + b; },
+            sol::meta_function::subtraction, [](const glm::vec3& a, const glm::vec3& b) { return a - b; },
+            sol::meta_function::unary_minus, [](const glm::vec3& v) { return -v; },
+            // Lua's `a * b` calls __mul(a, b) in that literal order regardless of which operand's
+            // metatable supplied it, so vec3*number and number*vec3 need separate overloads here
+            // or the second form (e.g. "moveSpeed * move") fails to resolve.
+            sol::meta_function::multiplication, sol::overload(
+                [](const glm::vec3& v, float scalar) { return v * scalar; },
+                [](float scalar, const glm::vec3& v) { return v * scalar; }));
 
         m_Lua.new_usertype<glm::vec2>("vec2",
             sol::constructors<glm::vec2(), glm::vec2(float), glm::vec2(float, float)>(),
@@ -74,10 +83,12 @@ namespace Osiris {
             });
 
         m_Lua.new_usertype<TransformComponent>("Transform",
-            "position",    &TransformComponent::position,
-            "rotation",    &TransformComponent::rotation, // euler degrees
-            "scale",       &TransformComponent::scale,
-            "GetForward",  &TransformComponent::GetForward);
+            "position",     &TransformComponent::position,
+            "rotation",     &TransformComponent::rotation, // euler degrees
+            "scale",        &TransformComponent::scale,
+            "GetForward",   &TransformComponent::GetForward,
+            "GetForwardXZ", &TransformComponent::GetForwardXZ,
+            "GetRightXZ",   &TransformComponent::GetRightXZ);
 
         m_Lua.new_usertype<TagComponent>("Tag",
             "name", &TagComponent::name);

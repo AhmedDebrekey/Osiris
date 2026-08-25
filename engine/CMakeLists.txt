@@ -60,6 +60,8 @@ add_library(OsirisEngine STATIC
         scripting/ScriptTemplate.cpp
         scripting/lua/LuaScripting.h
         scripting/lua/LuaScripting.cpp
+        ui/GameUI.h
+        ui/GameUI.cpp
 )
 
 target_include_directories(OsirisEngine PUBLIC

@@ -9,8 +9,33 @@
 #include "physics/IPhysics.h"
 #include "audio/IAudio.h"
 #include "platform/Input.h"
+#include "ui/GameUI.h"
 
 namespace {
+    Osiris::UIAnchor ParseUIAnchor(const std::string& name) {
+        if (name == "topleft")      return Osiris::UIAnchor::TopLeft;
+        if (name == "topcenter")    return Osiris::UIAnchor::TopCenter;
+        if (name == "topright")     return Osiris::UIAnchor::TopRight;
+        if (name == "centerleft")   return Osiris::UIAnchor::CenterLeft;
+        if (name == "center")       return Osiris::UIAnchor::Center;
+        if (name == "centerright")  return Osiris::UIAnchor::CenterRight;
+        if (name == "bottomleft")   return Osiris::UIAnchor::BottomLeft;
+        if (name == "bottomcenter") return Osiris::UIAnchor::BottomCenter;
+        if (name == "bottomright")  return Osiris::UIAnchor::BottomRight;
+
+        // A typo here would otherwise silently fall back to center with no diagnostic at all.
+        OSIRIS_WARN("LuaScripting: unrecognized ui anchor '{}', defaulting to \"center\"", name);
+        return Osiris::UIAnchor::Center;
+    }
+
+    glm::vec4 ColorFromTable(const sol::table& opts, const glm::vec4& fallback) {
+        sol::object colorObj = opts["color"];
+        if (!colorObj.valid() || !colorObj.is<sol::table>()) return fallback;
+        sol::table c = colorObj.as<sol::table>();
+        return glm::vec4(c.get_or(1, fallback.r), c.get_or(2, fallback.g),
+                          c.get_or(3, fallback.b), c.get_or(4, fallback.a));
+    }
+
     // Same slot-reuse pattern as OpenALAudio/JoltPhysics, duplicated locally (see OpenALAudio.cpp).
     // Generic over the container (not just std::vector) so LuaScripting::m_Instances can be a
     // std::deque — see the comment on that member for why it isn't a vector.
@@ -384,6 +409,40 @@ namespace Osiris {
         mouseButtonTable["Right"]  = SDL_BUTTON_RIGHT;
         mouseButtonTable["Middle"] = SDL_BUTTON_MIDDLE;
         m_Lua["MouseButton"] = mouseButtonTable;
+
+        // Play-mode game UI: draws straight onto ImGui's foreground draw list (see GameUI.cpp),
+        // no window/title bar/chrome involved. Valid to call from OnUpdate/OnFixedUpdate while
+        // playing, since Engine::RunFrame already has an ImGui frame open at that point.
+        sol::table uiTable = m_Lua.create_table();
+        uiTable.set_function("Text", [](sol::table opts) {
+            const float x = opts.get_or("x", 0.5f);
+            const float y = opts.get_or("y", 0.5f);
+            const float size = opts.get_or("size", 20.0f);
+            const std::string anchor = opts.get_or("anchor", std::string("center"));
+            const std::string text = opts.get_or("text", std::string());
+            const glm::vec4 color = ColorFromTable(opts, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+            GameUI::DrawText(x, y, ParseUIAnchor(anchor), text, color, size);
+        });
+        uiTable.set_function("Rect", [](sol::table opts) {
+            const float x = opts.get_or("x", 0.5f);
+            const float y = opts.get_or("y", 0.5f);
+            const float w = opts.get_or("w", 0.1f);
+            const float h = opts.get_or("h", 0.1f);
+            const std::string anchor = opts.get_or("anchor", std::string("center"));
+            const glm::vec4 color = ColorFromTable(opts, glm::vec4(0.0f, 0.0f, 0.0f, 0.5f));
+            GameUI::DrawRect(x, y, w, h, ParseUIAnchor(anchor), color);
+        });
+        m_Lua["ui"] = uiTable;
+
+        // Frame-rate-independent "move current toward target by at most maxDelta," the building
+        // block for fades/tweens (e.g. subtitle alpha) since ui.Text/Rect have no persistent
+        // state of their own to animate on their behalf, unlike a retained-mode UI widget would.
+        m_Lua.set_function("MoveTowards", [](float current, float target, float maxDelta) {
+            const float diff = target - current;
+            if (diff > maxDelta) return current + maxDelta;
+            if (diff < -maxDelta) return current - maxDelta;
+            return target;
+        });
 
         // Routed through spdlog so script output doesn't get lost in a windowed build.
         sol::function tostring = m_Lua["tostring"];

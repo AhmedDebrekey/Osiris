@@ -252,7 +252,10 @@ void main() {
     vec3 ambient = (kDambient * diffuseIBL + specularIBL) * ao;
 
     // ── Final color ───────────────────────────────────────────
-    vec3 color = ambient + Lo;
+    // Shadow maps only physically block direct light, but leaving ambient untouched in shadow
+    // (shadow==0) reads as too flat/bright for this engine's stylistic target, so dim it partway
+    // instead of fully to black, which would look unnaturally harsh for an IBL-lit scene.
+    vec3 color = ambient * mix(0.5, 1.0, shadow) + Lo;
 
 
     // Tone mapping (ACES filmic approximation)

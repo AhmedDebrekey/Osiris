@@ -51,6 +51,7 @@ enum class EditorIcon : uint32_t {
     GltfModel,
     JsonScene,
     LuaScript,
+    WavAudio,
     Count,
 };
 

@@ -1,5 +1,6 @@
 #include "SceneInspectorPanel.h"
 
+#include "assets/AudioLoader.h"
 #include "core/AssetManager.h"
 #include "scene/Scene.h"
 #include "scene/Entity.h"
@@ -14,9 +15,10 @@
 namespace Osiris {
     namespace {
         constexpr const char* kSceneEntityPayload = "OSIRIS_SCENE_ENTITY";
-        // Must match AssetBrowserPanel.cpp's kScriptAssetPayload: the source (script rows)
-        // and target (entity rows here) live in different files with no shared header.
+        // Must match AssetBrowserPanel.cpp's kScriptAssetPayload/kAudioAssetPayload: the source
+        // (asset rows) and target (entity rows here) live in different files with no shared header.
         constexpr const char* kScriptAssetPayload = "OSIRIS_SCRIPT_ASSET";
+        constexpr const char* kAudioAssetPayload = "OSIRIS_AUDIO_ASSET";
 
         // Draws drawFn's fields plus a "Remove" button, only if the entity has component T.
         // Returns true the frame "Remove" is clicked — caller does the actual removal, since
@@ -48,44 +50,16 @@ namespace Osiris {
         }
     }
 
-    void SceneInspectorPanel::Draw(Scene& scene, IPhysics* physics, IAudio* audio, IScripting* scripting) {
-        ImGui::Begin("Scene Inspector");
+    void SceneInspectorPanel::DrawHierarchy(Scene& scene, IPhysics* physics, IAudio* audio, IScripting* scripting) {
+        ImGui::Begin("Scene Hierarchy");
 
-        DrawEntityList(scene, physics, audio, scripting);
-        ImGui::Separator();
-
-        if (m_SelectedEntity != entt::null) {
-            Entity entity(m_SelectedEntity, &scene);
-            if (entity.IsValid() && entity.HasComponent<TagComponent>()) {
-                // Guarded by IsAnyItemActive so Del deletes the entity, not a character out of
-                // whatever text field (e.g. the Tag Name box) happens to be focused.
-                const bool deletePressed = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
-                    && !ImGui::IsAnyItemActive()
-                    && ImGui::IsKeyPressed(ImGuiKey_Delete);
-                if (deletePressed) {
-                    scene.DestroyEntity(entity, physics, audio, scripting);
-                    m_SelectedEntity = entt::null;
-                } else {
-                    DrawComponents(entity, physics, audio, scripting);
-                }
-            } else {
-                m_SelectedEntity = entt::null; // entity no longer exists
-            }
-        } else {
-            ImGui::TextDisabled("Select an entity above to inspect it.");
-        }
-
-        ImGui::End();
-    }
-
-    void SceneInspectorPanel::DrawEntityList(Scene& scene, IPhysics* physics, IAudio* audio, IScripting* scripting) {
         std::vector<Entity> entities = scene.GetAllEntities();
         ImGui::Text("Entities: %d", static_cast<int>(entities.size()));
         if (ImGui::Button("+ New Entity", ImVec2(-1.0f, 0.0f))) {
             m_SelectedEntity = scene.CreateEntity("New Entity").GetHandle();
         }
 
-        ImGui::BeginChild("EntityList", ImVec2(0.0f, 150.0f), true);
+        ImGui::BeginChild("EntityList", ImVec2(0.0f, 0.0f), true);
 
         ImGui::Button("Drop here to make root", ImVec2(-1.0f, 0.0f));
         if (ImGui::BeginDragDropTarget()) {
@@ -104,18 +78,31 @@ namespace Osiris {
         entt::entity pendingDelete = entt::null;
         for (Entity entity : entities) {
             if (!entity.HasComponent<ParentComponent>() || !scene.GetParent(entity).IsValid()) {
-                DrawEntityNode(scene, entity, pendingDelete, scripting);
+                DrawEntityNode(scene, entity, pendingDelete, audio, scripting);
             }
         }
+
+        // NoOpenOverItems: right-clicking an actual entity row still opens that row's own
+        // EntityContextMenu (set up in DrawEntityNode), not this empty-space one.
+        if (ImGui::BeginPopupContextWindow("HierarchyEmptyContext",
+            ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems)) {
+            if (ImGui::MenuItem("Add Entity")) {
+                m_SelectedEntity = scene.CreateEntity("New Entity").GetHandle();
+            }
+            ImGui::EndPopup();
+        }
+
         ImGui::EndChild();
 
         if (pendingDelete != entt::null) {
             scene.DestroyEntity(Entity(pendingDelete, &scene), physics, audio, scripting);
         }
+
+        ImGui::End();
     }
 
     void SceneInspectorPanel::DrawEntityNode(
-        Scene& scene, Entity entity, entt::entity& pendingDelete, IScripting* scripting) {
+        Scene& scene, Entity entity, entt::entity& pendingDelete, IAudio* audio, IScripting* scripting) {
         const std::vector<Entity> children = scene.GetChildren(entity);
         const std::string& name = entity.GetComponent<TagComponent>().name;
 
@@ -154,35 +141,93 @@ namespace Osiris {
                     scene.SetParent(Entity(draggedHandle, &scene), entity);
                 }
             }
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kScriptAssetPayload)) {
-                // AssetCatalog::ListScripts() returns AssetManager-relative paths (e.g.
-                // "scripts/foo.lua"), same as ListModels(): SpawnModel resolves that prefix
-                // internally for models, but ScriptComponent::scriptPath has no such resolving
-                // wrapper anywhere it's read, so it must be resolved here at the one point we're
-                // turning a catalog entry into a stored path.
-                const std::string scriptPath = AssetManager::GetPath(static_cast<const char*>(payload->Data));
-                // Only one ScriptComponent fits per entity (entt allows one of each type), so a
-                // drop on an already-scripted entity replaces it rather than being rejected:
-                // tear down the live instance first, same as the Remove button does below.
-                if (entity.HasComponent<ScriptComponent>()) {
-                    auto& script = entity.GetComponent<ScriptComponent>();
-                    if (script.instanceHandle.IsValid()) scripting->DestroyInstance(script.instanceHandle);
-                    script.scriptPath = scriptPath;
-                    script.instanceHandle = ScriptInstanceHandle{};
-                } else {
-                    entity.AddComponent<ScriptComponent>().scriptPath = scriptPath;
-                }
-            }
+            HandleAssetDrop(entity, audio, scripting);
             ImGui::EndDragDropTarget();
         }
 
         if (open && !children.empty()) {
             for (Entity child : children) {
-                DrawEntityNode(scene, child, pendingDelete, scripting);
+                DrawEntityNode(scene, child, pendingDelete, audio, scripting);
             }
             ImGui::TreePop();
         }
         ImGui::PopID();
+    }
+
+    void SceneInspectorPanel::HandleAssetDrop(Entity entity, IAudio* audio, IScripting* scripting) {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kScriptAssetPayload)) {
+            // AssetCatalog::BuildAssetTree() returns AssetManager-relative paths (e.g.
+            // "scripts/foo.lua"): SpawnModel resolves that prefix internally for models, but
+            // ScriptComponent::scriptPath has no such resolving wrapper anywhere it's read, so it
+            // must be resolved here at the one point we're turning a catalog entry into a stored path.
+            const std::string scriptPath = AssetManager::GetPath(static_cast<const char*>(payload->Data));
+            // Only one ScriptComponent fits per entity (entt allows one of each type), so a drop
+            // on an already-scripted entity replaces it rather than being rejected: tear down the
+            // live instance first, same as the Remove button does in DrawComponents below.
+            if (entity.HasComponent<ScriptComponent>()) {
+                auto& script = entity.GetComponent<ScriptComponent>();
+                if (script.instanceHandle.IsValid()) scripting->DestroyInstance(script.instanceHandle);
+                script.scriptPath = scriptPath;
+                script.instanceHandle = ScriptInstanceHandle{};
+            } else {
+                entity.AddComponent<ScriptComponent>().scriptPath = scriptPath;
+            }
+        }
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kAudioAssetPayload)) {
+            // Unlike scripts, AudioSourceComponent::clipPath is stored AssetManager-relative
+            // (matching SceneLoader.cpp's own read/write convention: it resolves clipPath through
+            // AssetManager::GetPath itself at load time). Resolving it here too, the way the
+            // script branch above does, would double-prefix it on the next Save/Load.
+            const std::string relativePath = static_cast<const char*>(payload->Data);
+            PCMAudioData pcm = AudioLoader::LoadWAV(AssetManager::GetPath(relativePath));
+            if (!pcm.pcmData.empty()) {
+                // One AudioSourceComponent per entity, same reasoning as Script above: a drop on
+                // an already-sourced entity replaces its clip rather than being rejected.
+                // RebuildAudioSource (destroy-if-valid, then recreate from the current fields)
+                // picks up the new clip immediately, same path the Inspector's own field edits use.
+                if (!entity.HasComponent<AudioSourceComponent>()) entity.AddComponent<AudioSourceComponent>();
+                auto& audioSrc = entity.GetComponent<AudioSourceComponent>();
+                audioSrc.clip = audio->CreateBuffer(pcm);
+                audioSrc.clipPath = relativePath;
+                entity.GetScene()->RebuildAudioSource(entity, audio);
+            }
+        }
+    }
+
+    void SceneInspectorPanel::DrawProperties(Scene& scene, IPhysics* physics, IAudio* audio, IScripting* scripting) {
+        ImGui::Begin("Details");
+
+        // Called right after Begin(), before any other widget, so the whole window (not just
+        // some specific widget) counts as the drop target: drag a script/clip from the Asset
+        // Browser anywhere onto this panel to attach it to the selected entity, same as dropping
+        // it on that entity's row in the Scene Hierarchy panel.
+        if (m_SelectedEntity != entt::null && ImGui::BeginDragDropTarget()) {
+            HandleAssetDrop(Entity(m_SelectedEntity, &scene), audio, scripting);
+            ImGui::EndDragDropTarget();
+        }
+
+        if (m_SelectedEntity != entt::null) {
+            Entity entity(m_SelectedEntity, &scene);
+            if (entity.IsValid() && entity.HasComponent<TagComponent>()) {
+                // Guarded by IsAnyItemActive so Del deletes the entity, not a character out of
+                // whatever text field (e.g. the Tag Name box) happens to be focused.
+                const bool deletePressed = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
+                    && !ImGui::IsAnyItemActive()
+                    && ImGui::IsKeyPressed(ImGuiKey_Delete);
+                if (deletePressed) {
+                    scene.DestroyEntity(entity, physics, audio, scripting);
+                    m_SelectedEntity = entt::null;
+                } else {
+                    DrawComponents(entity, physics, audio, scripting);
+                }
+            } else {
+                m_SelectedEntity = entt::null; // entity no longer exists
+            }
+        } else {
+            ImGui::TextDisabled("Select an entity in the Scene Hierarchy to inspect it.");
+        }
+
+        ImGui::End();
     }
 
     void SceneInspectorPanel::DrawComponents(Entity entity, IPhysics* physics, IAudio* audio, IScripting* scripting) {
@@ -318,27 +363,30 @@ namespace Osiris {
             entity.GetScene()->RebuildCharacter(entity, physics);
         }
 
-        if (DrawComponentSection<AudioSourceComponent>(entity, "Audio Source", [](AudioSourceComponent& audioSrc) {
+        bool audioChanged = false;
+        if (DrawComponentSection<AudioSourceComponent>(entity, "Audio Source", [&](AudioSourceComponent& audioSrc) {
             char clipPathBuffer[256] = {};
             strncpy_s(clipPathBuffer, audioSrc.clipPath.c_str(), sizeof(clipPathBuffer) - 1);
             if (ImGui::InputText("Clip Path", clipPathBuffer, sizeof(clipPathBuffer))) {
                 audioSrc.clipPath = clipPathBuffer;
             }
-            ImGui::TextDisabled("Just a label Save Scene writes out — editing it here doesn't\nreload the clip. Set clip/sourceHandle via a fresh scene setup.");
-            ImGui::DragFloat("Gain", &audioSrc.gain, 0.01f, 0.0f, 2.0f);
-            ImGui::DragFloat("Pitch", &audioSrc.pitch, 0.01f, 0.1f, 4.0f);
-            ImGui::Checkbox("Loop", &audioSrc.loop);
-            ImGui::Checkbox("Auto Play", &audioSrc.autoPlay);
-            ImGui::DragFloat("Reference Distance", &audioSrc.referenceDistance, 0.1f, 0.01f, 100.0f);
-            ImGui::DragFloat("Max Distance", &audioSrc.maxDistance, 0.5f, 0.1f, 500.0f);
-            ImGui::DragFloat("Rolloff Factor", &audioSrc.rolloffFactor, 0.05f, 0.0f, 10.0f);
+            ImGui::TextDisabled("Just a label Save Scene writes out: editing it here doesn't\nload a clip. Drag a .wav from the Asset Browser onto this entity instead.");
+            if (ImGui::DragFloat("Gain", &audioSrc.gain, 0.01f, 0.0f, 2.0f)) audioChanged = true;
+            if (ImGui::DragFloat("Pitch", &audioSrc.pitch, 0.01f, 0.1f, 4.0f)) audioChanged = true;
+            if (ImGui::Checkbox("Loop", &audioSrc.loop)) audioChanged = true;
+            if (ImGui::Checkbox("Auto Play", &audioSrc.autoPlay)) audioChanged = true;
+            if (ImGui::DragFloat("Reference Distance", &audioSrc.referenceDistance, 0.1f, 0.01f, 100.0f)) audioChanged = true;
+            if (ImGui::DragFloat("Max Distance", &audioSrc.maxDistance, 0.5f, 0.1f, 500.0f)) audioChanged = true;
+            if (ImGui::DragFloat("Rolloff Factor", &audioSrc.rolloffFactor, 0.05f, 0.0f, 10.0f)) audioChanged = true;
             ImGui::Text("Clip: %s", audioSrc.clip.IsValid() ? "valid" : "invalid");
             ImGui::Text("Source handle: %s", audioSrc.sourceHandle.IsValid() ? "valid" : "invalid");
-            ImGui::TextDisabled("Audio sources are created once at scene setup — editing fields\nhere doesn't push changes to the live OpenAL source.");
+            ImGui::TextDisabled("Editing these rebuilds the live OpenAL source (destroy +\nrecreate), same as Collider/Rigid Body/Character. Restarts\nplayback from the beginning if it was already playing.");
         })) {
             AudioSourceHandle sourceHandle = entity.GetComponent<AudioSourceComponent>().sourceHandle;
             if (sourceHandle.IsValid()) audio->DestroySource(sourceHandle);
             entity.RemoveComponent<AudioSourceComponent>();
+        } else if (audioChanged) {
+            entity.GetScene()->RebuildAudioSource(entity, audio);
         }
 
         if (DrawComponentSection<ScriptComponent>(entity, "Script", [](ScriptComponent& script) {

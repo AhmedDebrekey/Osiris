@@ -1118,6 +1118,7 @@ namespace Osiris {
             {EditorIcon::GltfModel, "icons/gltfIcon.png"},
             {EditorIcon::JsonScene, "icons/jsonIcon.png"},
             {EditorIcon::LuaScript, "icons/luaIcon.png"},
+            {EditorIcon::WavAudio,  "icons/wav-icon.png"},
         };
         for (const auto& [icon, relativePath] : editorIcons) {
             const TextureHandle iconTexture = TextureLoader::LoadFromFile(AssetManager::GetPath(relativePath), this);
@@ -3631,6 +3632,21 @@ void VulkanRHI::UpdateCascades(const glm::mat4& view, const glm::mat4& projectio
             minExtents.y, maxExtents.y,
             0.0f, maxExtents.z - minExtents.z
         );
+
+        // Texel snapping: frustumCenter drifts continuously as the camera moves, so without this
+        // the shadow frustum's world-space footprint shifts by sub-texel amounts every frame,
+        // sampling a slightly different sub-texel position each time and making shadow edges
+        // visibly swim/jitter under camera motion. Find where the world origin lands in this
+        // cascade's shadow space, snap that to the nearest whole texel, and fold the (tiny)
+        // correction into the projection so the whole frustum only ever moves in texel-sized
+        // steps. Standard technique for cascaded shadow maps, not specific to this engine.
+        glm::vec4 shadowOrigin = (lightProj * lightView) * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        shadowOrigin *= static_cast<float>(SHADOW_MAP_SIZE) / 2.0f;
+        glm::vec4 roundOffset = glm::round(shadowOrigin) - shadowOrigin;
+        roundOffset *= 2.0f / static_cast<float>(SHADOW_MAP_SIZE);
+        roundOffset.z = 0.0f;
+        roundOffset.w = 0.0f;
+        lightProj[3] += roundOffset;
 
         m_CascadeSplits[cascadeIndex]       = (nearClip + splitDist * clipRange) * -1.0f;
         m_LightViewMatrices[cascadeIndex] = lightView;

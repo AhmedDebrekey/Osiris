@@ -206,6 +206,7 @@ namespace Osiris {
         }
         ImGui::End();
 
-        m_SceneInspector.Draw(scene, engine.GetPhysics(), engine.GetAudio(), engine.GetScripting());
+        m_SceneInspector.DrawHierarchy(scene, engine.GetPhysics(), engine.GetAudio(), engine.GetScripting());
+        m_SceneInspector.DrawProperties(scene, engine.GetPhysics(), engine.GetAudio(), engine.GetScripting());
     }
 }

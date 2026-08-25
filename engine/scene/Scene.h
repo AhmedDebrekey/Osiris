@@ -73,8 +73,15 @@ namespace Osiris {
         // Drains physics contact events and dispatches them to scripted entities on the main thread.
         void DispatchCollisionEvents(IPhysics* physics, IScripting* scripting);
 
-        // Creates a live OpenAL source per AudioSourceComponent entity; auto-plays if autoPlay=true.
+        // Spawns a live OpenAL source for every AudioSourceComponent entity with a valid clip.
+        // Same shape as CreatePhysicsBodies/RebuildPhysicsBody: this is RebuildAudioSource called
+        // once per matching entity.
         void CreateAudioSources(IAudio* audio);
+
+        // Destroys (if valid) and recreates one entity's audio source, so an edited gain/pitch/
+        // loop/etc. actually takes effect instead of the description CreateSource was built from
+        // originally silently going stale. A no-op if the entity has no clip assigned yet.
+        void RebuildAudioSource(Entity entity, IAudio* audio);
 
         // Keeps each audio source's 3D position current — call once per frame.
         void SyncAudioSources(IAudio* audio);

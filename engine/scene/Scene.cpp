@@ -453,29 +453,39 @@ namespace Osiris {
 
     void Scene::CreateAudioSources(IAudio* audio) {
         const auto view = m_Registry.view<TransformComponent, AudioSourceComponent>();
-        for (auto entity : view) {
-            auto& audioSrc  = view.get<AudioSourceComponent>(entity);
-            if (!audioSrc.clip.IsValid()) continue; // no clip assigned yet, nothing to create a source from
-            // Sources are created once at scene setup (see AudioSourceComponent's own inspector
-            // caveat) and never rebuilt on edit, unlike Collider/RigidBody: skip an entity that
-            // already has a live handle so calling this again (e.g. every EnterPlayMode) doesn't
-            // leak a second OpenAL source for it.
-            if (audioSrc.sourceHandle.IsValid()) continue;
-
-            AudioSourceDesc desc{};
-            desc.buffer           = audioSrc.clip;
-            desc.gain             = audioSrc.gain;
-            desc.pitch            = audioSrc.pitch;
-            desc.loop             = audioSrc.loop;
-            desc.referenceDistance = audioSrc.referenceDistance;
-            desc.maxDistance      = audioSrc.maxDistance;
-            desc.rolloffFactor    = audioSrc.rolloffFactor;
-
-            audioSrc.sourceHandle = audio->CreateSource(desc);
-            const glm::vec3 worldPosition = glm::vec3(GetWorldTransform(Entity(entity, this))[3]);
-            audio->SetSourcePosition(audioSrc.sourceHandle, worldPosition);
-            if (audioSrc.autoPlay) audio->PlaySource(audioSrc.sourceHandle);
+        for (auto entityHandle : view) {
+            RebuildAudioSource(Entity(entityHandle, this), audio);
         }
+    }
+
+    void Scene::RebuildAudioSource(Entity entity, IAudio* audio) {
+        if (!entity.HasComponent<AudioSourceComponent>()) return;
+
+        auto& audioSrc = entity.GetComponent<AudioSourceComponent>();
+        if (audioSrc.sourceHandle.IsValid()) {
+            audio->DestroySource(audioSrc.sourceHandle);
+            audioSrc.sourceHandle = AudioSourceHandle{};
+        }
+        if (!audioSrc.clip.IsValid()) return; // no clip assigned yet, nothing to create a source from
+
+        AudioSourceDesc desc{};
+        desc.buffer            = audioSrc.clip;
+        desc.gain              = audioSrc.gain;
+        desc.pitch             = audioSrc.pitch;
+        desc.loop              = audioSrc.loop;
+        desc.referenceDistance = audioSrc.referenceDistance;
+        desc.maxDistance       = audioSrc.maxDistance;
+        desc.rolloffFactor     = audioSrc.rolloffFactor;
+
+        audioSrc.sourceHandle = audio->CreateSource(desc);
+        const glm::vec3 worldPosition = glm::vec3(GetWorldTransform(entity)[3]);
+        audio->SetSourcePosition(audioSrc.sourceHandle, worldPosition);
+        // Deliberately doesn't start playback itself, even when autoPlay is set: this runs from
+        // Edit-mode Inspector edits and asset drops too (not just Play-mode setup), and a source
+        // should exist and be positioned there without being audible. Engine::EnterPlayMode
+        // already calls Scene::PlayAutoPlayAudioSources right after CreateAudioSources, which is
+        // the actual, single place autoPlay sources start, matching how physics/characters exist
+        // in Edit mode without simulating until Play mode's own update step runs.
     }
 
     void Scene::SyncAudioSources(IAudio* audio) {

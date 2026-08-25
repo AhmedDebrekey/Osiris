@@ -1,0 +1,11 @@
+Model Information:
+* title:	House with interior
+* source:	https://sketchfab.com/3d-models/house-with-interior-91fdc865f0c84c1ca1273be9a7e36c46
+* author:	vikista (https://sketchfab.com/vikista)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "House with interior" (https://sketchfab.com/3d-models/house-with-interior-91fdc865f0c84c1ca1273be9a7e36c46) by vikista (https://sketchfab.com/vikista) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

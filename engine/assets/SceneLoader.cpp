@@ -86,21 +86,22 @@ namespace Osiris {
             std::string name = entityJson.value("name", std::string());
             const TransformComponent savedTransform = ReadTransform(entityJson);
 
+            Entity entity;
+            const bool isModelEntry = entityJson.contains("mesh");
             if (entityJson.contains("mesh")) {
                 std::string meshPath = entityJson["mesh"];
-                Entity root = scene.SpawnModel(name, meshPath, rhi);
-                if (root.IsValid()) {
-                    root.GetComponent<TransformComponent>() = savedTransform;
-                }
-                continue;
+                entity = scene.SpawnModel(name, meshPath, rhi);
+            } else {
+                entity = scene.CreateEntity(name);
             }
 
-            Entity entity = scene.CreateEntity(name);
+            if (!entity.IsValid()) continue;
             entity.GetComponent<TransformComponent>() = savedTransform;
 
-            if (entityJson.contains("box")) {
+            if (entityJson.contains("box") && !isModelEntry) {
                 auto& j = entityJson["box"];
                 const glm::vec3 halfExtents = ReadVec3(j, "halfExtents", ColliderComponent{}.halfExtents);
+                const std::string texturePath = j.value("texture", std::string());
                 const BoxMeshKey meshKey = { halfExtents.x, halfExtents.y, halfExtents.z };
 
                 auto cachedMesh = boxMeshCache.find(meshKey);
@@ -109,14 +110,20 @@ namespace Osiris {
                 }
                 entity.AddComponent<MeshComponent>(cachedMesh->second);
 
-                const std::string texturePath = j.value("texture", std::string());
                 auto cachedMaterial = boxMaterialCache.find(texturePath);
                 if (cachedMaterial == boxMaterialCache.end()) {
-                    TextureHandle texture = TextureLoader::LoadFromFile(AssetManager::GetPath(texturePath), rhi);
+                    TextureHandle texture;
+                    if (!texturePath.empty()) {
+                        texture = TextureLoader::LoadFromFile(AssetManager::GetPath(texturePath), rhi);
+                    }
                     MaterialHandle material = rhi->CreateMaterial({.albedo = texture});
                     cachedMaterial = boxMaterialCache.emplace(texturePath, material).first;
                 }
                 entity.AddComponent<MaterialComponent>(cachedMaterial->second);
+
+                auto& boxSource = entity.AddComponent<BoxSourceComponent>();
+                boxSource.halfExtents = halfExtents;
+                boxSource.texturePath = texturePath;
             }
 
             if (entityJson.contains("spotLight")) {
@@ -172,7 +179,8 @@ namespace Osiris {
             }
 
             if (entityJson.contains("script")) {
-                entity.AddComponent<ScriptComponent>().scriptPath = entityJson["script"].value("path", std::string());
+                entity.AddComponent<ScriptComponent>().scriptPath = AssetManager::GetRelativePath(
+                    entityJson["script"].value("path", std::string()));
             }
 
             if (entityJson.contains("camera")) {
@@ -189,6 +197,16 @@ namespace Osiris {
                 character.height           = j.value("height", character.height);
                 character.maxSlopeAngleDeg = j.value("maxSlopeAngleDeg", character.maxSlopeAngleDeg);
                 character.mass             = j.value("mass", character.mass);
+            }
+
+            if (entityJson.contains("interactable")) {
+                auto& j = entityJson["interactable"];
+                auto& interactable = entity.AddComponent<InteractableComponent>();
+                interactable.prompt = j.value("prompt", interactable.prompt);
+                interactable.maxDistance = j.value("maxDistance", interactable.maxDistance);
+                const int keyCode = glm::clamp(j.value("keyCode", static_cast<int>(interactable.keyCode)),
+                    0, SDL_NUM_SCANCODES - 1);
+                interactable.keyCode = static_cast<SDL_Scancode>(keyCode);
             }
         }
 
@@ -217,6 +235,11 @@ namespace Osiris {
             const std::string& name = entity.GetComponent<TagComponent>().name;
             const TransformComponent& transform = entity.GetComponent<TransformComponent>();
 
+            nlohmann::json entityJson = {
+                {"name", name},
+                {"transform", WriteTransform(transform)},
+            };
+
             if (entity.HasComponent<ModelSourceComponent>()) {
                 const std::string& relativePath = entity.GetComponent<ModelSourceComponent>().relativePath;
                 Entity parent = scene.GetParent(entity);
@@ -228,19 +251,15 @@ namespace Osiris {
                     && parent.GetComponent<ModelSourceComponent>().relativePath == relativePath) {
                     continue;
                 }
-                nlohmann::json entityJson = {
-                    {"name", name},
-                    {"mesh", relativePath},
-                    {"transform", WriteTransform(transform)},
+                entityJson["mesh"] = relativePath;
+            } else if (entity.HasComponent<BoxSourceComponent>()) {
+                const auto& boxSource = entity.GetComponent<BoxSourceComponent>();
+                entityJson["box"] = {
+                    {"halfExtents", WriteVec3(boxSource.halfExtents)},
+                    {"texture", boxSource.texturePath},
                 };
-                WriteParent(entityJson, scene, entity);
-                json["entities"].push_back(entityJson);
-                continue;
             }
 
-            nlohmann::json entityJson;
-            entityJson["name"]      = name;
-            entityJson["transform"] = WriteTransform(transform);
             WriteParent(entityJson, scene, entity);
 
             if (entity.HasComponent<SpotLightComponent>()) {
@@ -285,7 +304,8 @@ namespace Osiris {
             }
 
             if (entity.HasComponent<ScriptComponent>()) {
-                entityJson["script"] = { {"path", entity.GetComponent<ScriptComponent>().scriptPath} };
+                entityJson["script"] = { {"path", AssetManager::GetRelativePath(
+                    entity.GetComponent<ScriptComponent>().scriptPath)} };
             }
 
             if (entity.HasComponent<CameraComponent>()) {
@@ -300,6 +320,15 @@ namespace Osiris {
                     {"height", character.height},
                     {"maxSlopeAngleDeg", character.maxSlopeAngleDeg},
                     {"mass", character.mass},
+                };
+            }
+
+            if (entity.HasComponent<InteractableComponent>()) {
+                const auto& interactable = entity.GetComponent<InteractableComponent>();
+                entityJson["interactable"] = {
+                    {"prompt", interactable.prompt},
+                    {"maxDistance", interactable.maxDistance},
+                    {"keyCode", static_cast<int>(interactable.keyCode)},
                 };
             }
 

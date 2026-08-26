@@ -522,8 +522,10 @@ namespace Osiris {
         const auto view = m_Registry.view<ScriptComponent>();
         for (auto entity : view) {
             auto& script = view.get<ScriptComponent>(entity);
-            CreateScriptFileIfMissing(script.scriptPath);
-            script.instanceHandle = scripting->CreateInstance(Entity(entity, this), script.scriptPath);
+            script.scriptPath = AssetManager::GetRelativePath(script.scriptPath);
+            const std::string resolvedPath = AssetManager::GetPath(script.scriptPath);
+            CreateScriptFileIfMissing(resolvedPath);
+            script.instanceHandle = scripting->CreateInstance(Entity(entity, this), resolvedPath);
         }
     }
 

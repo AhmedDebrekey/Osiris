@@ -17,6 +17,8 @@ namespace Osiris {
     // valid to call between IRHI::BeginImGuiFrame() and IRHI::RenderImGui(). Engine::RunFrame
     // already satisfies that for every script's IScripting::Update() call while playing.
     namespace GameUI {
+        void BeginFrame();
+
         // x/y are normalized [0,1] fractions of the current viewport, anchored per `anchor`.
         // fontSize is a target pixel height; ImGui's default font is soft-scaled to it (no
         // custom font is baked yet, see LuaScripting.cpp's "ui" table binding).
@@ -25,6 +27,10 @@ namespace Osiris {
 
         // w/h are also normalized [0,1] fractions of the viewport.
         void DrawRect(float x, float y, float w, float h, UIAnchor anchor, const glm::vec4& color);
+
+        // Queued separately so Engine can draw it after every other game-facing UI command.
+        void FadeToBlack(float alpha);
+        void DrawQueuedOverlays();
     }
 }
 

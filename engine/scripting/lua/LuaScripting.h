@@ -12,7 +12,7 @@
 namespace Osiris {
     class LuaScripting : public IScripting {
     public:
-        bool Init(IRHI* rhi, IPhysics* physics, IAudio* audio, Input* input) override;
+        bool Init(IRHI* rhi, IPhysics* physics, IAudio* audio, Input* input, Camera* playCamera) override;
         void Shutdown() override;
 
         ScriptInstanceHandle CreateInstance(Entity entity, const std::string& scriptPath) override;
@@ -56,6 +56,7 @@ namespace Osiris {
         IPhysics* m_Physics = nullptr;
         IAudio*   m_Audio   = nullptr;
         Input*    m_Input   = nullptr;
+        Camera*   m_PlayCamera = nullptr;
     };
 }
 

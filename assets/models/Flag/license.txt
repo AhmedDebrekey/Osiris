@@ -1,0 +1,10 @@
+Model Information:
+* title: Flag
+* source: project-local asset supplied without embedded provenance
+* author: not recorded
+
+License Status:
+* license type: not recorded
+* redistribution status: unverified
+
+Record the original author, source, and license here before distributing this asset outside the project.

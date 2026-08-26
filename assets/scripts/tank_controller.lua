@@ -1,11 +1,11 @@
-_G.CTF = _G.CTF or {
-    flagCarrier = {},
-    flagHome = {},
-    scores = {
-        Player1_Tank = 0,
-        Player2_Tank = 0,
-    },
-}
+_G.CTF = _G.CTF or {}
+CTF.flagCarrier = CTF.flagCarrier or {}
+CTF.flagHome = CTF.flagHome or {}
+CTF.scores = CTF.scores or {Player1_Tank = 0, Player2_Tank = 0}
+CTF.tankSpawn = CTF.tankSpawn or {}
+CTF.projectiles = CTF.projectiles or {}
+CTF.roundOver = CTF.roundOver or false
+CTF.inputLocked = CTF.inputLocked or false
 
 local tankSpeed = 4.0
 local carrySpeedFactor = 0.6
@@ -44,6 +44,7 @@ local projectileCount = 0
 local projectileCooldownRemaining = 0.0
 local spawnPosition = nil
 local spawnYaw = 0.0
+local observedResetSerial = 0
 
 local function readAxis(positive, negative)
     local value = 0.0
@@ -53,8 +54,14 @@ local function readAxis(positive, negative)
 end
 
 local function isCarryingFlag()
-    return CTF.flagCarrier["P1_Flag"] == self
-        or CTF.flagCarrier["P2_Flag"] == self
+    local myName = self:GetTag().name
+    for _, carrier in pairs(CTF.flagCarrier) do
+        if carrier ~= nil and carrier:IsValid() and carrier:HasTag()
+            and carrier:GetTag().name == myName then
+            return true
+        end
+    end
+    return false
 end
 
 local function fireProjectile()
@@ -87,7 +94,8 @@ local function fireProjectile()
     projectile:AddBoxMesh(projectileHalfExtents)
     projectile:AddMaterial(projectileMaterialSource:GetMaterial().material)
     projectile:AddBoxRigidBody(projectileHalfExtents, BodyMotionType.Dynamic, false, false)
-    projectile:AddScript("assets/scripts/projectile.lua")
+    projectile:AddScript("scripts/projectile.lua")
+    table.insert(CTF.projectiles, projectile)
 
     physics:ApplyImpulse(
         projectile:GetRigidBody().bodyHandle,
@@ -108,6 +116,16 @@ function OnStart()
     local transform = self:GetTransform()
     spawnPosition = vec3.new(transform.position.x, transform.position.y, transform.position.z)
     spawnYaw = transform.rotation.y
+    CTF.tankSpawn[tankName] = {
+        position = vec3.new(spawnPosition.x, spawnPosition.y, spawnPosition.z),
+        yaw = spawnYaw,
+    }
+    if turret ~= nil and turret:IsValid() then
+        local turretRotation = turret:GetTransform().rotation
+        CTF.tankSpawn[tankName].turretRotation = vec3.new(
+            turretRotation.x, turretRotation.y, turretRotation.z)
+    end
+    observedResetSerial = CTF.resetSerial
 
     if controls == nil then
         print("tank_controller: no controls configured for " .. tankName)
@@ -122,6 +140,19 @@ end
 
 function OnUpdate(dt)
     if controls == nil or rigidBody == nil then return end
+
+    if observedResetSerial ~= CTF.resetSerial then
+        observedResetSerial = CTF.resetSerial
+        projectileCooldownRemaining = 0.0
+    end
+
+    if CTF.roundOver or CTF.inputLocked then
+        physics:SetBodyVelocity(
+            rigidBody.bodyHandle,
+            vec3.new(0.0, 0.0, 0.0),
+            vec3.new(0.0, 0.0, 0.0))
+        return
+    end
 
     projectileCooldownRemaining = math.max(0.0, projectileCooldownRemaining - dt)
 
@@ -167,16 +198,18 @@ function OnFixedUpdate(fixedDt)
 end
 
 function OnCollision(otherEntity)
+    if CTF.roundOver or CTF.inputLocked then return end
     if otherEntity == nil or not otherEntity:IsValid() or not otherEntity:HasTag() then return end
 
     local otherName = otherEntity:GetTag().name
     if string.find(otherName, "_Projectile_", 1, true) == nil then return end
 
-    if CTF.flagCarrier["P1_Flag"] == self then
-        CTF.flagCarrier["P1_Flag"] = nil
-    end
-    if CTF.flagCarrier["P2_Flag"] == self then
-        CTF.flagCarrier["P2_Flag"] = nil
+    local myName = self:GetTag().name
+    for flagName, carrier in pairs(CTF.flagCarrier) do
+        if carrier ~= nil and carrier:IsValid() and carrier:HasTag()
+            and carrier:GetTag().name == myName then
+            CTF.flagCarrier[flagName] = nil
+        end
     end
 
     physics:SetBodyPosition(
@@ -187,5 +220,8 @@ function OnCollision(otherEntity)
         rigidBody.bodyHandle,
         vec3.new(0.0, 0.0, 0.0),
         vec3.new(0.0, 0.0, 0.0))
+    CTF.lastEvent = myName .. " WAS HIT"
+    CTF.eventTimer = 1.5
+    camera.Shake({strength = 0.7, duration = 0.3, frequency = 26.0})
     print(self:GetTag().name .. " was hit and respawned")
 end

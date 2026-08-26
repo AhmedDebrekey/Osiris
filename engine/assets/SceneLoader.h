@@ -23,10 +23,8 @@ namespace Osiris {
 
         // Writes scene back out to a JSON file matching Load's format. Entities with a
         // ModelSourceComponent (i.e. spawned via Scene::SpawnModel) are grouped back into a
-        // single "mesh" entry per spawn call. Entities with a MeshComponent but no
-        // ModelSourceComponent (procedurally-generated meshes — MeshLoader::CreateBox/CreatePlane)
-        // have no source path to write, so their mesh/material is silently skipped; their other
-        // components (Collider, RigidBody, etc.) are still saved.
+        // single "mesh" entry per spawn call. BoxSourceComponent preserves procedural box inputs.
+        // A raw MeshComponent without either source component still has no recoverable provenance.
         static void Save(const std::string& path, Scene& scene);
     };
 

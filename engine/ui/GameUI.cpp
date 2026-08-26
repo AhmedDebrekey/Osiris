@@ -23,6 +23,14 @@ namespace {
 }
 
 namespace Osiris::GameUI {
+    namespace {
+        float s_FadeToBlackAlpha = 0.0f;
+    }
+
+    void BeginFrame() {
+        s_FadeToBlackAlpha = 0.0f;
+    }
+
     void DrawText(float x, float y, UIAnchor anchor, const std::string& text,
                   const glm::vec4& color, float fontSize) {
         if (text.empty()) return;
@@ -59,5 +67,15 @@ namespace Osiris::GameUI {
 
         const ImU32 col = ImGui::ColorConvertFloat4ToU32(ImVec4(color.r, color.g, color.b, color.a));
         drawList->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y), col);
+    }
+
+    void FadeToBlack(float alpha) {
+        s_FadeToBlackAlpha = glm::clamp(alpha, 0.0f, 1.0f);
+    }
+
+    void DrawQueuedOverlays() {
+        if (s_FadeToBlackAlpha <= 0.0f) return;
+        DrawRect(0.0f, 0.0f, 1.0f, 1.0f, UIAnchor::TopLeft,
+            glm::vec4(0.0f, 0.0f, 0.0f, s_FadeToBlackAlpha));
     }
 }

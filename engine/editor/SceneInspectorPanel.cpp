@@ -157,11 +157,9 @@ namespace Osiris {
 
     void SceneInspectorPanel::HandleAssetDrop(Entity entity, IAudio* audio, IScripting* scripting) {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kScriptAssetPayload)) {
-            // AssetCatalog::BuildAssetTree() returns AssetManager-relative paths (e.g.
-            // "scripts/foo.lua"): SpawnModel resolves that prefix internally for models, but
-            // ScriptComponent::scriptPath has no such resolving wrapper anywhere it's read, so it
-            // must be resolved here at the one point we're turning a catalog entry into a stored path.
-            const std::string scriptPath = AssetManager::GetPath(static_cast<const char*>(payload->Data));
+            // ScriptComponent stores the same AssetManager-relative path the catalog provides.
+            // Scene::CreateScriptInstances resolves it only when the file is actually loaded.
+            const std::string scriptPath = static_cast<const char*>(payload->Data);
             // Only one ScriptComponent fits per entity (entt allows one of each type), so a drop
             // on an already-scripted entity replaces it rather than being rejected: tear down the
             // live instance first, same as the Remove button does in DrawComponents below.
@@ -294,6 +292,16 @@ namespace Osiris {
         })) {
             entity.RemoveComponent<ModelSourceComponent>();
         }
+
+        if (DrawComponentSection<BoxSourceComponent>(entity, "Box Source", [](BoxSourceComponent& source) {
+            ImGui::Text("Half extents: %.3f, %.3f, %.3f",
+                source.halfExtents.x, source.halfExtents.y, source.halfExtents.z);
+            ImGui::Text("Texture: %s", source.texturePath.empty() ? "<default>" : source.texturePath.c_str());
+            ImGui::TextDisabled("Read-only source metadata used by Save Scene. Recreate the box\nto change its generated mesh or material.");
+        })) {
+            entity.RemoveComponent<BoxSourceComponent>();
+        }
+
         if (DrawComponentSection<InteractableComponent>(entity, "Interactable", [](InteractableComponent& interactable) {
             char buffer[256] = {};
             strncpy_s(buffer, interactable.prompt.c_str(), sizeof(buffer) - 1);
@@ -415,7 +423,7 @@ namespace Osiris {
             char buffer[256] = {};
             strncpy_s(buffer, script.scriptPath.c_str(), sizeof(buffer) - 1);
             if (ImGui::InputText("Path", buffer, sizeof(buffer))) {
-                script.scriptPath = buffer;
+                script.scriptPath = AssetManager::GetRelativePath(buffer);
             }
             ImGui::Text("Instance: %s", script.instanceHandle.IsValid() ? "valid" : "invalid");
             ImGui::TextDisabled("Scripts are loaded once at scene setup — editing the path here\ndoesn't reload it. A newly-added Script component won't run\nuntil the next full scene setup.");

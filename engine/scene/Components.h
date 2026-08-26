@@ -117,8 +117,8 @@ namespace Osiris {
         AudioSourceHandle sourceHandle;
     };
 
-    // Attaches Lua behavior to an entity. Scene::CreateScriptInstances loads scriptPath, writing
-    // a fresh OnStart/OnUpdate/OnFixedUpdate stub if the file doesn't exist yet.
+    // Attaches Lua behavior to an entity. scriptPath is AssetManager-relative. Scene resolves it
+    // when loading, writing a fresh OnStart/OnUpdate/OnFixedUpdate stub if the file doesn't exist.
     struct ScriptComponent {
         std::string scriptPath;
         ScriptInstanceHandle instanceHandle;
@@ -143,6 +143,13 @@ namespace Osiris {
     // opaque GPU handles, so SceneLoader::Save needs this to recover the source path.
     struct ModelSourceComponent {
         std::string relativePath;
+    };
+
+    // Records the inputs used to build a procedural box. Mesh/MaterialComponent only retain
+    // opaque GPU handles, so SceneLoader needs this data to reproduce the box on load.
+    struct BoxSourceComponent {
+        glm::vec3 halfExtents = {0.5f, 0.5f, 0.5f};
+        std::string texturePath;
     };
 
     struct InteractableComponent {

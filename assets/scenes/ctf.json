@@ -1,0 +1,119 @@
+{
+  "entities": [
+    {
+      "name": "CTF_Game",
+      "transform": { "position": [0, 0, 0] },
+      "script": { "path": "scripts/ctf_game.lua" }
+    },
+    {
+      "name": "Arena_Floor",
+      "transform": { "position": [0, -0.25, 0] },
+      "box": { "halfExtents": [12, 0.25, 8], "texture": "textures/grey.png" },
+      "collider": { "halfExtents": [12, 0.25, 8] },
+      "rigidBody": { "motionType": "Static" }
+    },
+    {
+      "name": "Arena_Wall_North",
+      "transform": { "position": [0, 0.75, -8.25] },
+      "box": { "halfExtents": [12.25, 0.75, 0.25], "texture": "textures/grey.png" },
+      "collider": { "halfExtents": [12.25, 0.75, 0.25] },
+      "rigidBody": { "motionType": "Static" }
+    },
+    {
+      "name": "Arena_Wall_South",
+      "transform": { "position": [0, 0.75, 8.25] },
+      "box": { "halfExtents": [12.25, 0.75, 0.25], "texture": "textures/grey.png" },
+      "collider": { "halfExtents": [12.25, 0.75, 0.25] },
+      "rigidBody": { "motionType": "Static" }
+    },
+    {
+      "name": "Arena_Wall_East",
+      "transform": { "position": [12.25, 0.75, 0] },
+      "box": { "halfExtents": [0.25, 0.75, 8.5], "texture": "textures/grey.png" },
+      "collider": { "halfExtents": [0.25, 0.75, 8.5] },
+      "rigidBody": { "motionType": "Static" }
+    },
+    {
+      "name": "Arena_Wall_West",
+      "transform": { "position": [-12.25, 0.75, 0] },
+      "box": { "halfExtents": [0.25, 0.75, 8.5], "texture": "textures/grey.png" },
+      "collider": { "halfExtents": [0.25, 0.75, 8.5] },
+      "rigidBody": { "motionType": "Static" }
+    },
+    {
+      "name": "Arena_Cover_North",
+      "transform": { "position": [0, 0.6, -4.5] },
+      "box": { "halfExtents": [2, 0.6, 0.5], "texture": "textures/grey.png" },
+      "collider": { "halfExtents": [2, 0.6, 0.5] },
+      "rigidBody": { "motionType": "Static" }
+    },
+    {
+      "name": "Arena_Cover_South",
+      "transform": { "position": [0, 0.6, 4.5] },
+      "box": { "halfExtents": [2, 0.6, 0.5], "texture": "textures/grey.png" },
+      "collider": { "halfExtents": [2, 0.6, 0.5] },
+      "rigidBody": { "motionType": "Static" }
+    },
+    {
+      "name": "Arena_Cover_West",
+      "transform": { "position": [-4.5, 0.6, 0] },
+      "box": { "halfExtents": [0.5, 0.6, 2], "texture": "textures/grey.png" },
+      "collider": { "halfExtents": [0.5, 0.6, 2] },
+      "rigidBody": { "motionType": "Static" }
+    },
+    {
+      "name": "Arena_Cover_East",
+      "transform": { "position": [4.5, 0.6, 0] },
+      "box": { "halfExtents": [0.5, 0.6, 2], "texture": "textures/grey.png" },
+      "collider": { "halfExtents": [0.5, 0.6, 2] },
+      "rigidBody": { "motionType": "Static" }
+    },
+    {
+      "name": "P1_Home",
+      "transform": { "position": [-9.5, 0.6, 0] },
+      "collider": { "halfExtents": [1.5, 0.6, 2] },
+      "rigidBody": { "motionType": "Static", "isSensor": true },
+      "script": { "path": "scripts/home_zone.lua" }
+    },
+    {
+      "name": "P2_Home",
+      "transform": { "position": [9.5, 0.6, 0] },
+      "collider": { "halfExtents": [1.5, 0.6, 2] },
+      "rigidBody": { "motionType": "Static", "isSensor": true },
+      "script": { "path": "scripts/home_zone.lua" }
+    },
+    {
+      "name": "Player1_Tank",
+      "mesh": "models/toon_toy_tank/scene.gltf",
+      "transform": { "position": [-6, 0.5, 0], "rotation": [0, -90, 0], "scale": [1, 1, 1] },
+      "collider": { "halfExtents": [0.85, 0.5, 1.15] },
+      "rigidBody": { "motionType": "Dynamic", "lockRotationToYAxis": true },
+      "script": { "path": "scripts/tank_controller.lua" }
+    },
+    {
+      "name": "Player2_Tank",
+      "mesh": "models/toon_toy_tank/scene.gltf",
+      "transform": { "position": [6, 0.5, 0], "rotation": [0, 90, 0], "scale": [1, 1, 1] },
+      "collider": { "halfExtents": [0.85, 0.5, 1.15] },
+      "rigidBody": { "motionType": "Dynamic", "lockRotationToYAxis": true },
+      "script": { "path": "scripts/tank_controller.lua" }
+    },
+    {
+      "name": "P1_Flag",
+      "mesh": "models/Flag/Flag.gltf",
+      "transform": { "position": [-9.5, 0.6, 0], "rotation": [0, 0, 0], "scale": [0.3, 0.3, 0.3] },
+      "script": { "path": "scripts/flag.lua" }
+    },
+    {
+      "name": "P2_Flag",
+      "mesh": "models/Flag/Flag.gltf",
+      "transform": { "position": [9.5, 0.6, 0], "rotation": [0, 0, 0], "scale": [0.3, 0.3, 0.3] },
+      "script": { "path": "scripts/flag.lua" }
+    },
+    {
+      "name": "Tank_Camera",
+      "transform": { "position": [0, 14, 10], "rotation": [-54.4623222080256, 0, 0] },
+      "camera": { "eyeHeight": 0, "isPrimary": true }
+    }
+  ]
+}

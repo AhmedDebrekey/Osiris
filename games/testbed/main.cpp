@@ -1,6 +1,7 @@
 #define SDL_MAIN_HANDLED
 
 #include "../../engine/core/Engine.h"
+#include "assets/SceneLoader.h"
 #include "assets/TextureLoader.h"
 #include "core/AssetManager.h"
 #include "scene/Scene.h"
@@ -27,7 +28,15 @@ int main() {
 
     Osiris::Scene scene;
 
+    Osiris::SceneLoader::Load(
+        Osiris::AssetManager::GetPath("scenes/ctf.json"),
+        scene,
+        engine.GetRHI(),
+        engine.GetAudio());
     scene.CreatePhysicsBodies(engine.GetPhysics());
+    scene.CreateCharacters(engine.GetPhysics());
+    scene.CreateAudioSources(engine.GetAudio());
+    scene.StopAllAudioSources(engine.GetAudio());
     scene.CreateScriptInstances(engine.GetScripting());
 
     while (engine.IsRunning()) {

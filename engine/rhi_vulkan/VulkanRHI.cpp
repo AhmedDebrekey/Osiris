@@ -485,7 +485,7 @@ namespace Osiris {
             vkDestroyDebugUtilsMessengerEXT(m_Instance, m_DebugMessenger, nullptr);
 #endif
         vkDestroyInstance(m_Instance, nullptr);
-    }
+     }
 
     void VulkanRHI::BeginFrame() {
         vkWaitForFences(m_Device.logicalDevice, 1, &m_Frames[m_CurrentFrame].inFlightFence, VK_TRUE, UINT64_MAX);
@@ -1235,6 +1235,10 @@ namespace Osiris {
             ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(m_ViewportTextureID));
             m_ViewportTextureID = 0;
         }
+        if (m_PostProcessPreviewTextureID != 0) {
+            ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(m_PostProcessPreviewTextureID));
+            m_PostProcessPreviewTextureID = 0;
+        }
         ImGui_ImplVulkan_Shutdown();
         ImGui_ImplSDL2_Shutdown();
         ImGui::DestroyContext();
@@ -1464,6 +1468,10 @@ namespace Osiris {
             ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(m_ViewportTextureID));
             m_ViewportTextureID = 0;
         }
+        if (m_PostProcessPreviewTextureID != 0) {
+            ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(m_PostProcessPreviewTextureID));
+            m_PostProcessPreviewTextureID = 0;
+        }
         DestroyViewportResources();
 
         if (!CreateViewportResources(width, height)) {
@@ -1555,8 +1563,6 @@ namespace Osiris {
             vkDestroyImageView(m_Device.logicalDevice, m_PostProcessPreviewImage.imageView, nullptr);
         if (m_PostProcessPreviewImage.image != VK_NULL_HANDLE)
             vmaDestroyImage(m_Allocator, m_PostProcessPreviewImage.image, m_PostProcessPreviewImage.allocation);
-        if (m_PostProcessPreviewTextureID != 0)
-            ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(m_PostProcessPreviewTextureID));
 
         m_ViewportColorImage = {};
         m_ViewportDepthImage = {};

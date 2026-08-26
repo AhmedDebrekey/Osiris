@@ -1,6 +1,7 @@
 #include "LuaScripting.h"
 
 #include "core/Log.h"
+#include "core/AssetManager.h"
 #include "rhi/RHI.h"
 #include "scene/Scene.h"
 #include "scene/Components.h"
@@ -9,6 +10,7 @@
 #include "physics/IPhysics.h"
 #include "audio/IAudio.h"
 #include "platform/Input.h"
+#include "renderer/Camera.h"
 #include "ui/GameUI.h"
 
 namespace {
@@ -56,11 +58,12 @@ namespace {
 }
 
 namespace Osiris {
-    bool LuaScripting::Init(IRHI* rhi, IPhysics* physics, IAudio* audio, Input* input) {
+    bool LuaScripting::Init(IRHI* rhi, IPhysics* physics, IAudio* audio, Input* input, Camera* playCamera) {
         m_RHI     = rhi;
         m_Physics = physics;
         m_Audio   = audio;
         m_Input   = input;
+        m_PlayCamera = playCamera;
 
         m_Lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::string, sol::lib::table, sol::lib::os);
         BindAPI();
@@ -230,6 +233,10 @@ namespace Osiris {
         m_Lua.new_usertype<ModelSourceComponent>("ModelSource",
             "relativePath", &ModelSourceComponent::relativePath);
 
+        m_Lua.new_usertype<BoxSourceComponent>("BoxSource",
+            "halfExtents", &BoxSourceComponent::halfExtents,
+            "texturePath", &BoxSourceComponent::texturePath);
+
         // Each accessor binds a specific template instantiation directly, not a reflection layer.
         m_Lua.new_usertype<Entity>("Entity",
             "IsValid", &Entity::IsValid,
@@ -304,6 +311,9 @@ namespace Osiris {
             "GetModelSource", &Entity::GetComponent<ModelSourceComponent>,
             "HasModelSource", &Entity::HasComponent<ModelSourceComponent>,
 
+            "GetBoxSource", &Entity::GetComponent<BoxSourceComponent>,
+            "HasBoxSource", &Entity::HasComponent<BoxSourceComponent>,
+
             "GetInteractable", &Entity::GetComponent<InteractableComponent>,
             "HasInteractable", &Entity::HasComponent<InteractableComponent>,
             "AddInteractable", &Entity::AddComponent<InteractableComponent>,
@@ -314,6 +324,10 @@ namespace Osiris {
             "AddBoxMesh", [this](Entity& entity, glm::vec3 halfExtents) {
                 if (entity.HasComponent<MeshComponent>()) return;
                 entity.AddComponent<MeshComponent>(MeshLoader::CreateBox(halfExtents, m_RHI));
+                auto& source = entity.HasComponent<BoxSourceComponent>()
+                    ? entity.GetComponent<BoxSourceComponent>()
+                    : entity.AddComponent<BoxSourceComponent>();
+                source.halfExtents = halfExtents;
             },
             "AddPlaneMesh", [this](Entity& entity, float width, float height) {
                 if (entity.HasComponent<MeshComponent>()) return;
@@ -335,9 +349,11 @@ namespace Osiris {
             // this entity existed, so a script-spawned entity needs its own entry point.
             "AddScript", [this](Entity& entity, const std::string& scriptPath) {
                 if (entity.HasComponent<ScriptComponent>()) return;
-                CreateScriptFileIfMissing(scriptPath);
-                ScriptInstanceHandle instanceHandle = CreateInstance(entity, scriptPath);
-                entity.AddComponent<ScriptComponent>(scriptPath, instanceHandle);
+                const std::string relativePath = AssetManager::GetRelativePath(scriptPath);
+                const std::string resolvedPath = AssetManager::GetPath(relativePath);
+                CreateScriptFileIfMissing(resolvedPath);
+                ScriptInstanceHandle instanceHandle = CreateInstance(entity, resolvedPath);
+                entity.AddComponent<ScriptComponent>(relativePath, instanceHandle);
             });
 
         // Script-created entities only get Tag+Transform — everything else (mesh, material,
@@ -442,7 +458,20 @@ namespace Osiris {
             const glm::vec4 color = ColorFromTable(opts, glm::vec4(0.0f, 0.0f, 0.0f, 0.5f));
             GameUI::DrawRect(x, y, w, h, ParseUIAnchor(anchor), color);
         });
+        uiTable.set_function("FadeToBlack", [](float alpha) {
+            GameUI::FadeToBlack(alpha);
+        });
         m_Lua["ui"] = uiTable;
+
+        sol::table cameraTable = m_Lua.create_table();
+        cameraTable.set_function("Shake", [this](sol::table opts) {
+            if (!m_PlayCamera) return;
+            const float strength = opts.get_or("strength", 1.0f);
+            const float duration = opts.get_or("duration", 0.25f);
+            const float frequency = opts.get_or("frequency", 24.0f);
+            m_PlayCamera->Shake(strength, duration, frequency);
+        });
+        m_Lua["camera"] = cameraTable;
 
         // Bound the same way physics/audio/input are: a usertype plus a raw pointer to the RHI's
         // one live instance (set as the "postprocess" global in Init()), so a script writing

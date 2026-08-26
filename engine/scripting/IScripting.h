@@ -11,15 +11,16 @@ namespace Osiris {
     class IPhysics;
     class IAudio;
     class Input;
+    class Camera;
 
     // Mirrors IPhysics/IAudio — no raw sol2/lua_State types outside the backend.
     class IScripting {
     public:
         virtual ~IScripting() = default;
 
-        // Physics/audio/input are handed to every script instance as globals — see LuaScripting::BindAPI.
-        // rhi isn't a Lua global itself (too broad a surface); it only backs Entity mesh-creation helpers.
-        virtual bool Init(IRHI* rhi, IPhysics* physics, IAudio* audio, Input* input) = 0;
+        // Physics/audio/input and the Play camera are handed to scripts as focused globals.
+        // rhi isn't a Lua global itself; it only backs Entity mesh-creation helpers and postprocess.
+        virtual bool Init(IRHI* rhi, IPhysics* physics, IAudio* audio, Input* input, Camera* playCamera) = 0;
         virtual void Shutdown() = 0;
 
         // Sandboxes scriptPath into an environment bound to entity (exposed as `self`/`scene`).

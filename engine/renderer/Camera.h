@@ -20,8 +20,13 @@ namespace Osiris
         glm::mat4 GetViewMatrix() const;
         glm::mat4 GetProjectionMatrix() const;
         glm::vec3 GetFront() const;
+        glm::vec3 GetRenderPosition() const;
+        glm::vec3 GetRenderFront() const;
         // Movement and look can be gated independently when another system owns either one.
         void Update(const Input& input, float deltaTime, bool applyMovement = true, bool applyLook = true);
+        void Shake(float strength, float duration, float frequency = 24.0f);
+        void UpdateShake(float deltaTime);
+        void ClearShake();
         glm::vec3 GetPosition() const;
         void SetPosition(const glm::vec3& position);
         void SetOrientation(const glm::vec3& front, const glm::vec3& up);
@@ -42,6 +47,14 @@ namespace Osiris
         float m_Fov;
         float m_zNear;
         float m_zFar;
+
+        glm::vec2 m_ShakePosition = glm::vec2(0.0f);
+        glm::vec2 m_ShakeRotation = glm::vec2(0.0f);
+        float m_ShakeStrength = 0.0f;
+        float m_ShakeDuration = 0.0f;
+        float m_ShakeRemaining = 0.0f;
+        float m_ShakeElapsed = 0.0f;
+        float m_ShakeFrequency = 24.0f;
 
     };
 }

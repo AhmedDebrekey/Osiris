@@ -11,6 +11,7 @@ namespace Osiris {
     public:
         static void SetAssetRoot(const std::string& root);
         static std::string GetPath(const std::string& relativePath);
+        static std::string GetRelativePath(const std::string& path);
 
     private:
         static std::string s_AssetRoot;

@@ -62,7 +62,7 @@ namespace Osiris {
         }
 
         m_Scripting = std::make_unique<LuaScripting>();
-        if (!m_Scripting->Init(m_RHI.get(), m_Physics.get(), m_Audio.get(), &m_Input)) {
+        if (!m_Scripting->Init(m_RHI.get(), m_Physics.get(), m_Audio.get(), &m_Input, &m_PlayCamera)) {
             OSIRIS_ERROR("Failed to initialize scripting!");
             return false;
         }
@@ -77,12 +77,14 @@ namespace Osiris {
     }
 
     void Engine::Shutdown() {
+
         m_Scripting->Shutdown();
         m_Audio->Shutdown();
         m_Physics->Shutdown();
         m_RHI->ShutdownImGui();
         m_RHI->Shutdown();
         m_Window.Shutdown();
+
     }
 
     void Engine::BeginFrame() {
@@ -93,6 +95,7 @@ namespace Osiris {
 
         PollEvents();
         m_RHI->BeginFrame();
+        GameUI::BeginFrame();
     }
 
     void Engine::RunFrame(Scene& scene) {
@@ -176,12 +179,14 @@ namespace Osiris {
         scene.CapturePlaySnapshot();
         scene.ResetScriptInstances(m_Scripting.get());
         scene.PlayAutoPlayAudioSources(m_Audio.get());
+        m_PlayCamera.ClearShake();
         m_IsPlaying = true;
     }
 
     void Engine::ExitPlayMode(Scene& scene) {
         scene.RestorePlaySnapshot(m_Physics.get());
         scene.StopAllAudioSources(m_Audio.get());
+        m_PlayCamera.ClearShake();
         m_IsPlaying = false;
     }
 
@@ -201,7 +206,10 @@ namespace Osiris {
     }
 
     void Engine::RenderFrame(Scene& scene, Camera& camera, bool debugLightView, int debugCascade) {
-        if (m_IsPlaying) SyncPlayCamera(scene);
+        if (m_IsPlaying) {
+            SyncPlayCamera(scene);
+            m_PlayCamera.UpdateShake(m_DeltaTime);
+        }
 
         m_Audio->SetListenerTransform(camera.GetPosition(), camera.GetFront(), glm::vec3(0.0f, 1.0f, 0.0f));
         scene.SyncAudioSources(m_Audio.get());
@@ -212,13 +220,15 @@ namespace Osiris {
 
         auto activeSpotLights = scene.GatherSpotLights(camera.GetPosition());
         m_RHI->UpdateSpotLights(activeSpotLights);
+        const glm::vec3 renderPosition = camera.GetRenderPosition();
+        const glm::vec3 renderFront = camera.GetRenderFront();
         m_RHI->UpdateCamera(camera.GetViewMatrix(), camera.GetProjectionMatrix(),
-            glm::vec4(camera.GetPosition(), 0.0f), camera.GetFront());
+            glm::vec4(renderPosition, 0.0f), renderFront);
 
         if (debugLightView) {
             const glm::mat4 lightView = m_RHI->GetLightViewMatrix(debugCascade);
             const glm::mat4 lightProj = m_RHI->GetLightProjMatrix(debugCascade);
-            m_RHI->SetCameraBuffer(lightView, lightProj, glm::vec4(camera.GetPosition(), 0.0f));
+            m_RHI->SetCameraBuffer(lightView, lightProj, glm::vec4(renderPosition, 0.0f));
         }
 
         for (uint32_t i = 0; i < 3; i++) {
@@ -247,6 +257,7 @@ namespace Osiris {
     }
 
     void Engine::RenderImGui() const {
+        if (m_IsPlaying) GameUI::DrawQueuedOverlays();
         m_RHI->RenderImGui(!m_IsPlaying);
     }
 

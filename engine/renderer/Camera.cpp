@@ -27,7 +27,11 @@ namespace Osiris
     }
 
     glm::mat4 Camera::GetViewMatrix() const {
-        return glm::lookAt(m_Position, m_Position + m_Front, m_Up);
+        const glm::vec3 renderPosition = GetRenderPosition();
+        const glm::vec3 renderFront = GetRenderFront();
+        const glm::vec3 right = glm::normalize(glm::cross(renderFront, m_Up));
+        const glm::vec3 renderUp = glm::normalize(glm::cross(right, renderFront));
+        return glm::lookAt(renderPosition, renderPosition + renderFront, renderUp);
     }
 
     glm::mat4 Camera::GetProjectionMatrix() const {
@@ -40,6 +44,18 @@ namespace Osiris
 
     glm::vec3 Camera::GetFront() const {
         return m_Front;
+    }
+
+    glm::vec3 Camera::GetRenderPosition() const {
+        const glm::vec3 right = glm::normalize(glm::cross(m_Front, m_Up));
+        return m_Position + right * m_ShakePosition.x + m_Up * m_ShakePosition.y;
+    }
+
+    glm::vec3 Camera::GetRenderFront() const {
+        const glm::vec3 right = glm::normalize(glm::cross(m_Front, m_Up));
+        const float pitchOffset = std::tan(glm::radians(m_ShakeRotation.x));
+        const float yawOffset = std::tan(glm::radians(m_ShakeRotation.y));
+        return glm::normalize(m_Front + m_Up * pitchOffset + right * yawOffset);
     }
 
     void Camera::Update(const Input& input, float deltaTime, bool applyMovement, bool applyLook) {
@@ -74,6 +90,47 @@ namespace Osiris
             m_Position -= m_Up * m_Speed * deltaTime;
         if (input.IsKeyHeld(SDL_SCANCODE_E))
             m_Position += m_Up * m_Speed * deltaTime;
+    }
+
+    void Camera::Shake(float strength, float duration, float frequency) {
+        if (strength <= 0.0f || duration <= 0.0f) {
+            ClearShake();
+            return;
+        }
+
+        m_ShakeStrength = glm::clamp(strength, 0.0f, 20.0f);
+        m_ShakeDuration = duration;
+        m_ShakeRemaining = duration;
+        m_ShakeElapsed = 0.0f;
+        m_ShakeFrequency = glm::clamp(frequency, 0.1f, 100.0f);
+    }
+
+    void Camera::UpdateShake(float deltaTime) {
+        if (m_ShakeRemaining <= 0.0f) return;
+
+        m_ShakeElapsed += glm::max(deltaTime, 0.0f);
+        m_ShakeRemaining = glm::max(m_ShakeRemaining - glm::max(deltaTime, 0.0f), 0.0f);
+        if (m_ShakeRemaining <= 0.0f) {
+            ClearShake();
+            return;
+        }
+
+        constexpr float twoPi = 6.28318530718f;
+        const float phase = m_ShakeElapsed * m_ShakeFrequency * twoPi;
+        const float amplitude = m_ShakeStrength * (m_ShakeRemaining / m_ShakeDuration);
+        m_ShakeRotation.x = std::sin(phase * 1.13f) * amplitude;
+        m_ShakeRotation.y = std::sin(phase * 1.47f + 1.7f) * amplitude;
+        m_ShakePosition.x = std::sin(phase * 0.91f + 0.4f) * amplitude * 0.015f;
+        m_ShakePosition.y = std::sin(phase * 1.31f + 2.2f) * amplitude * 0.01f;
+    }
+
+    void Camera::ClearShake() {
+        m_ShakePosition = glm::vec2(0.0f);
+        m_ShakeRotation = glm::vec2(0.0f);
+        m_ShakeStrength = 0.0f;
+        m_ShakeDuration = 0.0f;
+        m_ShakeRemaining = 0.0f;
+        m_ShakeElapsed = 0.0f;
     }
 
     glm::vec3 Camera::GetPosition() const {

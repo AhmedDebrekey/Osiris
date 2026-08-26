@@ -24,6 +24,17 @@ namespace Osiris {
         float depthBiasSlope     = 1.75f;
     };
 
+    // Mirrored by hand in postprocess.frag's PostProcessUBO: plain floats only, so C++ and
+    // GLSL std140 agree on layout with no manual padding needed (unlike vec3/vec4/mat4 mixes
+    // elsewhere, e.g. CameraBufferFull).
+    struct PostProcessSettings {
+        float vignetteIntensity   = 1.0f; // 0 = no effect, 1 = full strength
+        float vignetteInnerRadius = 0.35f; // distance from center where darkening starts
+        float vignetteOuterRadius = 0.75f; // distance from center where it reaches full strength
+        float chromaticAberrationIntensity = 0.0f; // 0 = off, 1 = full strength, off by default
+        float filmGrainIntensity = 0.0f; // 0 = off, 1 = full strength, off by default
+    };
+
     // Keep in sync with triangle.vert / triangle.frag.
     constexpr uint32_t MAX_SPOT_LIGHTS         = 8;
     constexpr uint32_t MAX_SPOT_SHADOW_CASTERS = 3;

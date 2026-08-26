@@ -227,6 +227,28 @@ namespace Osiris {
 
         m_SkyboxPipelineLayout = m_PipelineManager->GetLayout(m_SkyboxPipeline);
 
+        VkDescriptorSetLayout postProcessLayouts[] = { m_PostProcessDescriptorLayout };
+
+        m_PostProcessPipeline = m_PipelineManager->GetOrCreate({
+            .vertexShader     = "assets/shaders/postprocess.vert.spv",
+            .fragmentShader   = "assets/shaders/postprocess.frag.spv",
+            .colorAttachment  = true,
+            .colorFormat      = m_SwapChain.swapChainImageFormat,
+            .depthAttachment  = false,
+            .depthFormat      = VK_FORMAT_UNDEFINED,
+            .depthTest        = false,
+            .depthWrite       = false,
+            .depthBias        = false,
+            .cullMode         = VK_CULL_MODE_NONE,
+            .vertexInput      = false, // fullscreen triangle in postprocess.vert, no vertex buffer
+            .setLayoutCount   = 1,
+            .pSetLayouts      = postProcessLayouts,
+            .pushConstantSize = sizeof(float), // wall-clock seconds, for animated film grain
+            .pushConstantStages = VK_SHADER_STAGE_FRAGMENT_BIT,
+        });
+
+        m_PostProcessPipelineLayout = m_PipelineManager->GetLayout(m_PostProcessPipeline);
+
         if (!CreateDescriptorPool()) {
             OSIRIS_ERROR("Failed to create descriptor pool!");
             return false;
@@ -234,6 +256,65 @@ namespace Osiris {
 
         if (!CreateDescriptorSet()) {
             OSIRIS_ERROR("Failed to create descriptor set!");
+            return false;
+        }
+
+        const VkSamplerCreateInfo postProcessSamplerInfo = {
+            .sType        = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+            .magFilter    = VK_FILTER_LINEAR,
+            .minFilter    = VK_FILTER_LINEAR,
+            .mipmapMode   = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+            .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            .anisotropyEnable = VK_FALSE,
+            .maxAnisotropy    = 1.0f,
+            .compareEnable    = VK_FALSE,
+            .borderColor      = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+            .unnormalizedCoordinates = VK_FALSE,
+        };
+        VK_CHECK(vkCreateSampler(m_Device.logicalDevice, &postProcessSamplerInfo, nullptr, &m_PostProcessSampler));
+
+        std::array<VkDescriptorSetLayout, MAX_FRAMES_IN_FLIGHT> postProcessSetLayouts;
+        postProcessSetLayouts.fill(m_PostProcessDescriptorLayout);
+        const VkDescriptorSetAllocateInfo postProcessSetAllocInfo = {
+            .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .descriptorPool     = m_DescriptorPool,
+            .descriptorSetCount = MAX_FRAMES_IN_FLIGHT,
+            .pSetLayouts        = postProcessSetLayouts.data(),
+        };
+        VK_CHECK(vkAllocateDescriptorSets(m_Device.logicalDevice, &postProcessSetAllocInfo, m_PostProcessDescriptorSets.data()));
+
+        const BufferDesc postProcessSettingsBufferDesc = {
+            .size       = sizeof(PostProcessSettings),
+            .usage      = BufferUsage::Uniform,
+            .cpuVisible = true,
+        };
+        m_PostProcessSettingsBuffer = CreateBuffer(postProcessSettingsBufferDesc);
+
+        // Binding 1 points at the same shared settings buffer every frame, its contents change
+        // via UploadDynamicBuffer (a host-visible memory write, not a validated "in use" Vulkan
+        // call) rather than the buffer identity ever changing, so unlike binding 0's sampler
+        // (rewritten every DrawPostProcessFullscreen call) this only needs writing once per slot.
+        const VkDescriptorBufferInfo postProcessSettingsBufferInfo = {
+            .buffer = m_Buffers.at(m_PostProcessSettingsBuffer.id).buffer,
+            .offset = 0,
+            .range  = sizeof(PostProcessSettings),
+        };
+        for (uint32_t frame = 0; frame < MAX_FRAMES_IN_FLIGHT; frame++) {
+            const VkWriteDescriptorSet settingsWrite = {
+                .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet          = m_PostProcessDescriptorSets[frame],
+                .dstBinding      = 1,
+                .descriptorCount = 1,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .pBufferInfo     = &postProcessSettingsBufferInfo,
+            };
+            vkUpdateDescriptorSets(m_Device.logicalDevice, 1, &settingsWrite, 0, nullptr);
+        }
+
+        if (!CreateSceneColorImage()) {
+            OSIRIS_ERROR("Failed to create scene color image!");
             return false;
         }
 
@@ -362,6 +443,8 @@ namespace Osiris {
         }
 
         DestroyViewportResources();
+        DestroySceneColorImage();
+        vkDestroySampler(m_Device.logicalDevice, m_PostProcessSampler, nullptr);
 
         vkDestroyCommandPool(m_Device.logicalDevice, m_CommandPool, nullptr);
 
@@ -384,6 +467,7 @@ namespace Osiris {
 
         vkDestroyDescriptorSetLayout(m_Device.logicalDevice, m_FrameDescriptorLayout, nullptr);
         vkDestroyDescriptorSetLayout(m_Device.logicalDevice, m_MaterialDescriptorLayout, nullptr);
+        vkDestroyDescriptorSetLayout(m_Device.logicalDevice, m_PostProcessDescriptorLayout, nullptr);
         vkDestroyDescriptorSetLayout(m_Device.logicalDevice, m_BRDFLutComputeLayout, nullptr);
         vkDestroyDescriptorSetLayout(m_Device.logicalDevice, m_EquirectToCubemapLayout, nullptr);
         vkDestroyDescriptorSetLayout(m_Device.logicalDevice, m_IrradianceConvolveLayout, nullptr);
@@ -1165,9 +1249,13 @@ namespace Osiris {
 
     void VulkanRHI::RenderImGui(bool separatePass) {
         ImGui::Render();
+        // A swapchain-recreate bailout in BeginFrame() leaves this frame's command buffer never
+        // put into the recording state; skip the rest the same way EndFrame() already does rather
+        // than issue vkCmd* calls against a buffer nothing began recording this frame.
+        if (!m_FrameStarted) return;
+        VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
 
         if (separatePass && m_RenderingViewport) {
-            VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
             vkCmdEndRendering(cmd);
 
             m_RenderGraph.Reset();
@@ -1178,6 +1266,46 @@ namespace Osiris {
             m_RenderGraph.Compile();
             m_RenderGraph.Execute(cmd);
             m_ViewportImageInitialized = true;
+
+            // Edit-mode debug preview: never touches m_ViewportColorImage or what the normal
+            // viewport shows, this renders the post-processed result into a separate image that
+            // Editor.cpp only displays when GetPostProcessPreviewEnabled() is on. m_ViewportColorImage
+            // is already ShaderRead from the pass above, exactly what this needs to sample it.
+            if (m_PostProcessPreviewEnabled) {
+                m_RenderGraph.Reset();
+                m_RenderGraph.ImportTexture(m_ColorBufferRG, m_PostProcessPreviewImage.image, ResourceState::Undefined);
+                m_RenderGraph.AddPass("PostProcessPreviewPass", PassType::Graphics)
+                    .Write({m_ColorBufferRG, ResourceState::ColorWrite})
+                    .SetExecute(nullptr);
+                m_RenderGraph.Compile();
+                m_RenderGraph.Execute(cmd);
+
+                const VkRenderingAttachmentInfo previewAttachment = {
+                    .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                    .imageView = m_PostProcessPreviewImage.imageView,
+                    .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                    .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                };
+                const VkRenderingInfo previewRenderingInfo = {
+                    .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                    .renderArea = {.offset = {0, 0}, .extent = m_ViewportExtent},
+                    .layerCount = 1,
+                    .colorAttachmentCount = 1,
+                    .pColorAttachments = &previewAttachment,
+                };
+                vkCmdBeginRendering(cmd, &previewRenderingInfo);
+                DrawPostProcessFullscreen(cmd, m_ViewportColorImage.imageView, m_ViewportExtent);
+                vkCmdEndRendering(cmd);
+
+                m_RenderGraph.Reset();
+                m_RenderGraph.ImportTexture(m_ColorBufferRG, m_PostProcessPreviewImage.image, ResourceState::ColorWrite);
+                m_RenderGraph.AddPass("PostProcessPreviewSamplePass", PassType::Graphics)
+                    .Read({m_ColorBufferRG, ResourceState::ShaderRead})
+                    .SetExecute(nullptr);
+                m_RenderGraph.Compile();
+                m_RenderGraph.Execute(cmd);
+            }
 
             m_RenderGraph.Reset();
             m_RenderGraph.ImportTexture(m_ColorBufferRG,
@@ -1215,10 +1343,51 @@ namespace Osiris {
             };
             vkCmdBeginRendering(cmd, &renderingInfo);
             m_RenderingViewport = false;
+        } else if (!separatePass) {
+            // Play mode: post-processing always applies, no toggle. The forward pass rendered
+            // into m_SceneColorImage instead of the swapchain (see BeginForwardPass) specifically
+            // so there's something to sample here before the swapchain becomes the final image.
+            vkCmdEndRendering(cmd);
+
+            m_RenderGraph.Reset();
+            m_RenderGraph.ImportTexture(m_ColorBufferRG, m_SceneColorImage.image, ResourceState::ColorWrite);
+            m_RenderGraph.AddPass("SceneColorSamplePass", PassType::Graphics)
+                .Read({m_ColorBufferRG, ResourceState::ShaderRead})
+                .SetExecute(nullptr);
+            m_RenderGraph.Compile();
+            m_RenderGraph.Execute(cmd);
+
+            m_RenderGraph.Reset();
+            m_RenderGraph.ImportTexture(m_ColorBufferRG,
+                m_SwapChain.swapChainImages[m_ImageIndex], ResourceState::Undefined);
+            m_RenderGraph.AddPass("PostProcessPass", PassType::Graphics)
+                .Write({m_ColorBufferRG, ResourceState::ColorWrite})
+                .SetExecute(nullptr);
+            m_RenderGraph.Compile();
+            m_RenderGraph.Execute(cmd);
+
+            const VkRenderingAttachmentInfo postProcessAttachment = {
+                .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                .imageView = m_SwapChain.swapChainImageViews[m_ImageIndex],
+                .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+            };
+            const VkRenderingInfo postProcessRenderingInfo = {
+                .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                .renderArea = {.offset = {0, 0}, .extent = m_SwapChain.swapChainExtent},
+                .layerCount = 1,
+                .colorAttachmentCount = 1,
+                .pColorAttachments = &postProcessAttachment,
+            };
+            // Left open on purpose: ImGui's Play-mode game UI (ui.Text/ui.Rect) draws directly
+            // into this same instance right after, same as it always drew into the forward
+            // pass's own rendering before this pass existed.
+            vkCmdBeginRendering(cmd, &postProcessRenderingInfo);
+            DrawPostProcessFullscreen(cmd, m_SceneColorImage.imageView, m_SwapChain.swapChainExtent);
         }
 
-        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(),
-                                        m_Frames[m_CurrentFrame].commandBuffer);
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
     }
 
     void VulkanRHI::Dispatch(uint32_t x, uint32_t y, uint32_t z) {
@@ -1247,12 +1416,12 @@ namespace Osiris {
     void VulkanRHI::BeginForwardPass() {
         if (!m_FrameStarted) return;
         m_RenderingViewport = false;
-        VulkanImage swapChainImage = {
-            .image = m_SwapChain.swapChainImages[m_ImageIndex],
-            .imageView = m_SwapChain.swapChainImageViews[m_ImageIndex],
-            .format = m_SwapChain.swapChainImageFormat,
-        };
-        BeginScenePass(swapChainImage, m_DepthImage, m_SwapChain.swapChainExtent, ResourceState::Undefined);
+        // Renders into m_SceneColorImage, not the swapchain directly, so RenderImGui's Play-mode
+        // branch has something to run the post-process pass against before it reaches the
+        // swapchain (see the !separatePass branch there).
+        BeginScenePass(m_SceneColorImage, m_DepthImage, m_SwapChain.swapChainExtent,
+            m_SceneColorImageInitialized ? ResourceState::ShaderRead : ResourceState::Undefined);
+        m_SceneColorImageInitialized = true;
     }
 
     void VulkanRHI::BeginViewportForwardPass() {
@@ -1354,6 +1523,22 @@ namespace Osiris {
             m_ViewportColorImage.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         m_ViewportTextureID = reinterpret_cast<uint64_t>(descriptorSet);
         m_ViewportImageInitialized = false;
+
+        // Post-process debug preview, same size as the viewport, never written to unless
+        // GetPostProcessPreviewEnabled() is on (see RenderImGui).
+        VK_CHECK(vmaCreateImage(m_Allocator, &colorInfo, &allocationInfo,
+            &m_PostProcessPreviewImage.image, &m_PostProcessPreviewImage.allocation, nullptr));
+        m_PostProcessPreviewImage.format = m_SwapChain.swapChainImageFormat;
+
+        VkImageViewCreateInfo previewViewInfo = colorViewInfo;
+        previewViewInfo.image = m_PostProcessPreviewImage.image;
+        VK_CHECK(vkCreateImageView(m_Device.logicalDevice, &previewViewInfo, nullptr,
+            &m_PostProcessPreviewImage.imageView));
+
+        const VkDescriptorSet previewDescriptorSet = ImGui_ImplVulkan_AddTexture(
+            m_PostProcessPreviewImage.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        m_PostProcessPreviewTextureID = reinterpret_cast<uint64_t>(previewDescriptorSet);
+
         return true;
     }
 
@@ -1366,11 +1551,112 @@ namespace Osiris {
             vkDestroyImageView(m_Device.logicalDevice, m_ViewportDepthImage.imageView, nullptr);
         if (m_ViewportDepthImage.image != VK_NULL_HANDLE)
             vmaDestroyImage(m_Allocator, m_ViewportDepthImage.image, m_ViewportDepthImage.allocation);
+        if (m_PostProcessPreviewImage.imageView != VK_NULL_HANDLE)
+            vkDestroyImageView(m_Device.logicalDevice, m_PostProcessPreviewImage.imageView, nullptr);
+        if (m_PostProcessPreviewImage.image != VK_NULL_HANDLE)
+            vmaDestroyImage(m_Allocator, m_PostProcessPreviewImage.image, m_PostProcessPreviewImage.allocation);
+        if (m_PostProcessPreviewTextureID != 0)
+            ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(m_PostProcessPreviewTextureID));
 
         m_ViewportColorImage = {};
         m_ViewportDepthImage = {};
         m_ViewportExtent = {};
         m_ViewportImageInitialized = false;
+        m_PostProcessPreviewImage = {};
+        m_PostProcessPreviewTextureID = 0;
+    }
+
+    bool VulkanRHI::CreateSceneColorImage() {
+        const VkImageCreateInfo colorInfo = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .imageType = VK_IMAGE_TYPE_2D,
+            .format = m_SwapChain.swapChainImageFormat,
+            .extent = {m_SwapChain.swapChainExtent.width, m_SwapChain.swapChainExtent.height, 1},
+            .mipLevels = 1,
+            .arrayLayers = 1,
+            .samples = VK_SAMPLE_COUNT_1_BIT,
+            .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        };
+        const VmaAllocationCreateInfo allocationInfo = {.usage = VMA_MEMORY_USAGE_GPU_ONLY};
+        VK_CHECK(vmaCreateImage(m_Allocator, &colorInfo, &allocationInfo,
+            &m_SceneColorImage.image, &m_SceneColorImage.allocation, nullptr));
+        m_SceneColorImage.format = m_SwapChain.swapChainImageFormat;
+
+        const VkImageViewCreateInfo colorViewInfo = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image = m_SceneColorImage.image,
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format = m_SceneColorImage.format,
+            .subresourceRange = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+        };
+        VK_CHECK(vkCreateImageView(m_Device.logicalDevice, &colorViewInfo, nullptr,
+            &m_SceneColorImage.imageView));
+
+        m_SceneColorImageInitialized = false;
+        return true;
+    }
+
+    void VulkanRHI::DestroySceneColorImage() {
+        if (m_SceneColorImage.imageView != VK_NULL_HANDLE)
+            vkDestroyImageView(m_Device.logicalDevice, m_SceneColorImage.imageView, nullptr);
+        if (m_SceneColorImage.image != VK_NULL_HANDLE)
+            vmaDestroyImage(m_Allocator, m_SceneColorImage.image, m_SceneColorImage.allocation);
+        m_SceneColorImage = {};
+        m_SceneColorImageInitialized = false;
+    }
+
+    // Assumes rendering is already begun on the destination the caller wants this drawn into.
+    // Repoints this frame-in-flight slot's descriptor set at srcView every call rather than
+    // keeping a set per source image, Play and the Edit preview never run in the same frame so
+    // nothing ever needs both bindings valid at once within a single slot.
+    void VulkanRHI::DrawPostProcessFullscreen(VkCommandBuffer cmd, VkImageView srcView, VkExtent2D extent) {
+        const VkDescriptorSet descriptorSet = m_PostProcessDescriptorSets[m_CurrentFrame];
+
+        UploadDynamicBuffer(m_PostProcessSettingsBuffer, &m_PostProcessSettings, sizeof(PostProcessSettings));
+
+        const VkDescriptorImageInfo imageInfo = {
+            .sampler     = m_PostProcessSampler,
+            .imageView   = srcView,
+            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        };
+        const VkWriteDescriptorSet write = {
+            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet          = descriptorSet,
+            .dstBinding      = 0,
+            .descriptorCount = 1,
+            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .pImageInfo      = &imageInfo,
+        };
+        vkUpdateDescriptorSets(m_Device.logicalDevice, 1, &write, 0, nullptr);
+
+        const VkViewport viewport = {
+            .x = 0.0f, .y = 0.0f,
+            .width = static_cast<float>(extent.width),
+            .height = static_cast<float>(extent.height),
+            .minDepth = 0.0f, .maxDepth = 1.0f,
+        };
+        vkCmdSetViewport(cmd, 0, 1, &viewport);
+        const VkRect2D scissor = {.offset = {0, 0}, .extent = extent};
+        vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PostProcessPipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PostProcessPipelineLayout,
+            0, 1, &descriptorSet, 0, nullptr);
+
+        // Wall-clock time, not deltaTime-accumulated, purely so film grain animates frame to
+        // frame instead of looking like a static dirty lens. Doesn't need to be synced with any
+        // other game-time value, it's only ever used to seed the shader's noise hash.
+        const float timeSeconds = static_cast<float>(SDL_GetTicks()) / 1000.0f;
+        vkCmdPushConstants(cmd, m_PostProcessPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
+            0, sizeof(float), &timeSeconds);
+
+        vkCmdDraw(cmd, 3, 1, 0, 0);
     }
 
     void VulkanRHI::BeginScenePass(VulkanImage& colorImage, VulkanImage& depthImage, VkExtent2D extent,
@@ -2279,13 +2565,38 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
         };
         VK_CHECK(vkCreateDescriptorSetLayout(m_Device.logicalDevice, &materialLayoutInfo, nullptr, &m_MaterialDescriptorLayout));
 
+        const VkDescriptorSetLayoutBinding postProcessBindings[] = {
+            {
+                .binding         = 0,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .descriptorCount = 1,
+                .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
+            {
+                .binding         = 1,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorCount = 1,
+                .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
+            },
+        };
+        const VkDescriptorSetLayoutCreateInfo postProcessLayoutInfo = {
+            .sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .bindingCount = 2,
+            .pBindings    = postProcessBindings,
+        };
+        VK_CHECK(vkCreateDescriptorSetLayout(m_Device.logicalDevice, &postProcessLayoutInfo, nullptr, &m_PostProcessDescriptorLayout));
+
         OSIRIS_INFO("Descriptor set layouts created!");
         return true;
     }
 
     bool VulkanRHI::CreateDescriptorPool() {
+        // UNIFORM_BUFFER must cover every UBO binding across every set this pool ever allocates
+        // (frame set: 2, post-process: 1 per frame-in-flight slot); kept with headroom since an
+        // exact-fit count here is what silently broke post-processing (VK_CHECK only logs a
+        // failed vkAllocateDescriptorSets, it doesn't surface it hard).
         VkDescriptorPoolSize poolSizes[] = {
-            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         2 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         16 },
             { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 5003  },
             { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          32 }, // IBL precompute (Phase 6D)
         };
@@ -3550,6 +3861,8 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
         m_DepthImage.image = VK_NULL_HANDLE;
         m_DepthImage.allocation = VK_NULL_HANDLE;
 
+        DestroySceneColorImage();
+
         vkDestroySwapchainKHR(m_Device.logicalDevice, m_SwapChain.swapChain, nullptr);
 
         if  (!CreateSwapChain()) {
@@ -3562,6 +3875,10 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
         }
         if (!CreateDepthResources()) {
             OSIRIS_ERROR("Failed to create depth resources on resize!");
+            return;
+        }
+        if (!CreateSceneColorImage()) {
+            OSIRIS_ERROR("Failed to create scene color image on resize!");
             return;
         }
     }

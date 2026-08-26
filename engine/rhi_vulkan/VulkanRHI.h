@@ -81,6 +81,10 @@ namespace Osiris {
 
         void RenderImGui(bool separatePass) override;
 
+        bool& GetPostProcessPreviewEnabled() override { return m_PostProcessPreviewEnabled; }
+        uint64_t GetPostProcessPreviewTextureID() const override { return m_PostProcessPreviewTextureID; }
+        PostProcessSettings& GetPostProcessSettings() override { return m_PostProcessSettings; }
+
         void Dispatch(uint32_t x, uint32_t y, uint32_t z) override;
 
         DirectionalLight& GetDirectionalLight() override { return m_DirectionalLight; }
@@ -160,6 +164,9 @@ namespace Osiris {
         bool CreateDepthResources();
         bool CreateViewportResources(uint32_t width, uint32_t height);
         void DestroyViewportResources();
+        bool CreateSceneColorImage();
+        void DestroySceneColorImage();
+        void DrawPostProcessFullscreen(VkCommandBuffer cmd, VkImageView srcView, VkExtent2D extent);
         void BeginScenePass(VulkanImage& colorImage, VulkanImage& depthImage, VkExtent2D extent,
                             ResourceState colorInitialState);
         bool CreatePipeline();
@@ -207,6 +214,8 @@ namespace Osiris {
         VkPipelineLayout    m_ShadowPipelineLayout  = VK_NULL_HANDLE;
         VkPipeline          m_SkyboxPipeline        = VK_NULL_HANDLE;
         VkPipelineLayout    m_SkyboxPipelineLayout  = VK_NULL_HANDLE;
+        VkPipeline          m_PostProcessPipeline       = VK_NULL_HANDLE;
+        VkPipelineLayout    m_PostProcessPipelineLayout = VK_NULL_HANDLE;
 
         std::array<VkSemaphore, MAX_FRAMES_IN_FLIGHT> m_ImageAvailableSemaphores;
         std::vector<VkSemaphore> m_RenderFinishedSemaphores;
@@ -222,6 +231,28 @@ namespace Osiris {
         uint64_t           m_ViewportTextureID = 0;
         bool               m_ViewportImageInitialized = false;
         bool               m_RenderingViewport = false;
+
+        // Play mode's forward pass renders here instead of the swapchain directly, so the
+        // post-process pass has something to sample before writing the final result to the
+        // swapchain. Sized to the swapchain, recreated alongside it.
+        VulkanImage        m_SceneColorImage;
+        bool               m_SceneColorImageInitialized = false;
+
+        // Edit-mode-only debug preview: never touches the normal viewport image, this is a
+        // separate texture the post-process pass renders into on demand, sized to the viewport
+        // and recreated alongside it. GetPostProcessPreviewEnabled() gates whether it's generated.
+        VulkanImage        m_PostProcessPreviewImage;
+        uint64_t           m_PostProcessPreviewTextureID = 0;
+        bool               m_PostProcessPreviewEnabled = false;
+
+        VkSampler             m_PostProcessSampler         = VK_NULL_HANDLE;
+        VkDescriptorSetLayout m_PostProcessDescriptorLayout = VK_NULL_HANDLE;
+        // One set per frame-in-flight slot, not a single shared set: DrawPostProcessFullscreen
+        // calls vkUpdateDescriptorSets every frame, and Vulkan forbids updating a set that a
+        // still-pending command buffer (from the other frame in flight) might be reading from.
+        std::array<VkDescriptorSet, MAX_FRAMES_IN_FLIGHT> m_PostProcessDescriptorSets = {};
+        PostProcessSettings m_PostProcessSettings;
+        BufferHandle        m_PostProcessSettingsBuffer;
 
         VulkanContextDesc m_Desc;
 

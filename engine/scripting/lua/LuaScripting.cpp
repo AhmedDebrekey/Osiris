@@ -68,6 +68,7 @@ namespace Osiris {
         m_Lua["physics"] = m_Physics;
         m_Lua["audio"]   = m_Audio;
         m_Lua["input"]   = m_Input;
+        m_Lua["postprocess"] = &m_RHI->GetPostProcessSettings();
 
         OSIRIS_INFO("LuaScripting: initialized (sol2 + Lua)");
         return true;
@@ -442,6 +443,17 @@ namespace Osiris {
             GameUI::DrawRect(x, y, w, h, ParseUIAnchor(anchor), color);
         });
         m_Lua["ui"] = uiTable;
+
+        // Bound the same way physics/audio/input are: a usertype plus a raw pointer to the RHI's
+        // one live instance (set as the "postprocess" global in Init()), so a script writing
+        // postprocess.vignetteIntensity = ... changes the same value the editor's Post-Process
+        // panel sliders show, no separate sync step either direction.
+        m_Lua.new_usertype<PostProcessSettings>("PostProcessSettings",
+            "vignetteIntensity",   &PostProcessSettings::vignetteIntensity,
+            "vignetteInnerRadius", &PostProcessSettings::vignetteInnerRadius,
+            "vignetteOuterRadius", &PostProcessSettings::vignetteOuterRadius,
+            "chromaticAberrationIntensity", &PostProcessSettings::chromaticAberrationIntensity,
+            "filmGrainIntensity", &PostProcessSettings::filmGrainIntensity);
 
         // Frame-rate-independent "move current toward target by at most maxDelta," the building
         // block for fades/tweens (e.g. subtitle alpha) since ui.Text/Rect have no persistent

@@ -80,6 +80,14 @@ namespace Osiris {
         virtual void BeginImGuiFrame()  = 0;
         virtual void RenderImGui(bool separatePass) = 0;
 
+        // Post-processing (vignette/etc.) always applies in Play. In Edit mode it never touches
+        // the normal viewport, this toggle instead generates a separate preview image, shown via
+        // GetPostProcessPreviewTextureID(), the same "swap what the debug view shows" mechanism
+        // the shadow cascade debug view already uses.
+        virtual bool& GetPostProcessPreviewEnabled() = 0;
+        virtual uint64_t GetPostProcessPreviewTextureID() const = 0;
+        virtual PostProcessSettings& GetPostProcessSettings() = 0;
+
         virtual DirectionalLight& GetDirectionalLight() = 0;
         virtual glm::mat4 GetLightViewMatrix(uint32_t cascade) const = 0;
         virtual glm::mat4 GetLightProjMatrix(uint32_t cascade) const = 0;

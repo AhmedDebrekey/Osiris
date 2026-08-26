@@ -101,7 +101,6 @@ namespace Osiris {
 
         if (m_Input.IsKeyPressed(SDL_SCANCODE_F5)) {
             if (m_IsPlaying) ExitPlayMode(scene); else EnterPlayMode(scene);
-            OSIRIS_INFO("User entered or left play mode");
         }
 
         if (!m_IsPlaying) {

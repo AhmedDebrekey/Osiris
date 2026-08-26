@@ -206,6 +206,17 @@ namespace Osiris {
         }
         ImGui::End();
 
+        ImGui::Begin("Post-Process");
+        auto& postProcessSettings = engine.GetRHI()->GetPostProcessSettings();
+        ImGui::SliderFloat("Vignette Intensity", &postProcessSettings.vignetteIntensity, 0.0f, 1.0f);
+        ImGui::SliderFloat("Vignette Inner Radius", &postProcessSettings.vignetteInnerRadius, 0.0f, 1.0f);
+        ImGui::SliderFloat("Vignette Outer Radius", &postProcessSettings.vignetteOuterRadius, 0.0f, 1.0f);
+        ImGui::Separator();
+        ImGui::SliderFloat("Chromatic Aberration", &postProcessSettings.chromaticAberrationIntensity, 0.0f, 1.0f);
+        ImGui::SliderFloat("Film Grain", &postProcessSettings.filmGrainIntensity, 0.0f, 1.0f);
+        ImGui::TextDisabled("Always applied in Play. In Edit mode, see Render Debugger's\nTexture Viewer, \"Post-Process Preview\".");
+        ImGui::End();
+
         m_SceneInspector.DrawHierarchy(scene, engine.GetPhysics(), engine.GetAudio(), engine.GetScripting());
         m_SceneInspector.DrawProperties(scene, engine.GetPhysics(), engine.GetAudio(), engine.GetScripting());
     }

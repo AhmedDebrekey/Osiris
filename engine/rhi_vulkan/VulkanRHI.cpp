@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <fstream>
+#include <SDL.h>
 #include <SDL_vulkan.h>
 
 #include "imgui.h"
@@ -3511,6 +3512,25 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
 
 
     void VulkanRHI::RecreateSwapChain() {
+        // A minimized window reports a 0x0 surface extent, and vkCreateSwapchainKHR rejects that
+        // outright (VUID-VkSwapchainCreateInfoKHR-imageExtent-01689). Block here, pumping events,
+        // until the window is restored to a real size before touching any swapchain resources.
+        int width = 0, height = 0;
+        SDL_GetWindowSize(m_Desc.windowHandle, &width, &height);
+        while (width == 0 || height == 0) {
+            SDL_Event event;
+            SDL_WaitEvent(&event);
+            // SDL_WaitEvent removes the event from the queue, so a discarded SDL_QUIT here would
+            // never reach Window::PollEvents' own SDL_PollEvent loop, meaning the app could never
+            // close while sitting minimized. Push it back so that loop still sees it, and bail out
+            // instead of trying to recreate a swapchain the app is about to shut down anyway.
+            if (event.type == SDL_QUIT) {
+                SDL_PushEvent(&event);
+                return;
+            }
+            SDL_GetWindowSize(m_Desc.windowHandle, &width, &height);
+        }
+
         vkDeviceWaitIdle(m_Device.logicalDevice);
 
         for (const auto semaphore : m_RenderFinishedSemaphores) {

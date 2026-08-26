@@ -140,6 +140,11 @@ namespace Osiris {
         m_Lua.new_usertype<ColliderComponent>("Collider",
             "halfExtents", &ColliderComponent::halfExtents);
 
+        m_Lua.new_usertype<InteractableComponent>("Interactable",
+            "prompt",      &InteractableComponent::prompt,
+            "maxDistance", &InteractableComponent::maxDistance,
+            "keyCode",     &InteractableComponent::keyCode);
+
         m_Lua.new_enum("BodyMotionType",
             "Static",    BodyMotionType::Static,
             "Kinematic", BodyMotionType::Kinematic,
@@ -297,6 +302,10 @@ namespace Osiris {
 
             "GetModelSource", &Entity::GetComponent<ModelSourceComponent>,
             "HasModelSource", &Entity::HasComponent<ModelSourceComponent>,
+
+            "GetInteractable", &Entity::GetComponent<InteractableComponent>,
+            "HasInteractable", &Entity::HasComponent<InteractableComponent>,
+            "AddInteractable", &Entity::AddComponent<InteractableComponent>,
 
             "HasMesh", &Entity::HasComponent<MeshComponent>,
             // Procedural shapes only — same two primitives MeshLoader offers in C++. A script
@@ -483,6 +492,7 @@ namespace Osiris {
         instance.onFixedUpdate = env["OnFixedUpdate"];
         instance.onCollision   = env["OnCollision"];
         instance.onCollisionEnd = env["OnCollisionEnd"];
+        instance.onInteract    = env["OnInteract"];
 
         uint32_t index = AllocateSlot(m_Instances, std::move(instance),
             [](const ScriptInstance& s) { return !s.entity.IsValid(); });
@@ -515,6 +525,18 @@ namespace Osiris {
         if (!result.valid()) {
             sol::error err = result;
             OSIRIS_ERROR("LuaScripting: OnCollisionEnd() error in '{}': {}", instance.scriptPath, err.what());
+        }
+    }
+
+    void LuaScripting::DispatchInteract(ScriptInstanceHandle handle, Entity interactor) {
+        if (!handle.IsValid() || handle.id >= m_Instances.size()) return;
+        ScriptInstance& instance = m_Instances[handle.id];
+        if (!instance.entity.IsValid() || !instance.onInteract.valid()) return;
+
+        sol::protected_function_result result = instance.onInteract(interactor);
+        if (!result.valid()) {
+            sol::error err = result;
+            OSIRIS_ERROR("LuaScripting: OnInteract() error in '{}': {}", instance.scriptPath, err.what());
         }
     }
 

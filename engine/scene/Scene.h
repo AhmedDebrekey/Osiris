@@ -115,6 +115,12 @@ namespace Osiris {
         // The entity Play mode's camera follows (prefers isPrimary=true), or an invalid Entity.
         Entity FindCameraEntity();
 
+        Entity FindNearestInteractableEntity(glm::vec3 rayOrigin, glm::vec3 rayDirection, float& outDistance);
+
+        // Calls target's OnInteract(interactor) if target has a ScriptComponent. No-op otherwise,
+        // same shape as DispatchCollisionEvents' per-entity ScriptComponent check.
+        void DispatchInteract(Entity target, Entity interactor, IScripting* scripting);
+
         std::vector<SpotLightRenderData> GatherSpotLights(const glm::vec3& cameraPosition);
 
         void PreRender(IRHI * irhi);

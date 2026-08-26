@@ -11,6 +11,7 @@
 #include "scene/Components.h"
 #include "scene/Entity.h"
 #include "scene/Scene.h"
+#include "ui/GameUI.h"
 
 namespace Osiris {
     Engine::Engine() = default;
@@ -100,6 +101,7 @@ namespace Osiris {
 
         if (m_Input.IsKeyPressed(SDL_SCANCODE_F5)) {
             if (m_IsPlaying) ExitPlayMode(scene); else EnterPlayMode(scene);
+            OSIRIS_INFO("User entered or left play mode");
         }
 
         if (!m_IsPlaying) {
@@ -114,6 +116,21 @@ namespace Osiris {
             scene.SyncCharacterTransforms(m_Physics.get());
             scene.DispatchCollisionEvents(m_Physics.get(), m_Scripting.get());
             scene.FlushDestroyQueue(m_Physics.get(), m_Audio.get(), m_Scripting.get());
+
+            float outDistance = 0.0f;
+            auto interactableEntity = scene.FindNearestInteractableEntity(m_PlayCamera.GetPosition(), m_PlayCamera.GetFront(), outDistance);
+            if (interactableEntity.IsValid()) {
+                const InteractableComponent& interactable = interactableEntity.GetComponent<InteractableComponent>();
+                if (outDistance < interactable.maxDistance) {
+                    const std::string keyName = SDL_GetScancodeName(interactable.keyCode);
+                    GameUI::DrawText(0.5f, 0.88f, UIAnchor::Center,
+                        "Press " + keyName + " to interact: " + interactable.prompt, glm::vec4(1.0f), 24.0f);
+
+                    if (m_Input.IsKeyPressed(interactable.keyCode)) {
+                        scene.DispatchInteract(interactableEntity, scene.FindCameraEntity(), m_Scripting.get());
+                    }
+                }
+            }
         }
 
         Camera& renderCamera = m_IsPlaying ? m_PlayCamera : m_EditCamera;

@@ -11,6 +11,7 @@
 
 #include <imgui.h>
 #include <cstring>
+#include <SDL2/SDL_keyboard.h>
 
 namespace Osiris {
     namespace {
@@ -293,6 +294,27 @@ namespace Osiris {
         })) {
             entity.RemoveComponent<ModelSourceComponent>();
         }
+        if (DrawComponentSection<InteractableComponent>(entity, "Interactable", [](InteractableComponent& interactable) {
+            char buffer[256] = {};
+            strncpy_s(buffer, interactable.prompt.c_str(), sizeof(buffer) - 1);
+            if (ImGui::InputText("Prompt", buffer, sizeof(buffer))) {
+                interactable.prompt = buffer;
+            }
+            ImGui::DragFloat("Max Distance", &interactable.maxDistance, 0.1f, 0.1f, 100.0f);
+            int keyCode = static_cast<int>(interactable.keyCode);
+            if (ImGui::InputInt("Key Code (SDL Scancode)", &keyCode)) {
+                // Input::IsKeyPressed/IsKeyHeld index a fixed-size array with this value, no
+                // bounds check of their own — clamp here so a stray value typed into this field
+                // can't turn into an out-of-bounds read every frame during Play.
+                if (keyCode < 0) keyCode = 0;
+                if (keyCode >= SDL_NUM_SCANCODES) keyCode = SDL_NUM_SCANCODES - 1;
+                interactable.keyCode = static_cast<SDL_Scancode>(keyCode);
+            }
+            ImGui::TextDisabled("%s", SDL_GetScancodeName(interactable.keyCode));
+            ImGui::TextDisabled("This is what shows when looking at this entity");
+        })) {
+            entity.RemoveComponent<InteractableComponent>();
+        }
 
         if (DrawComponentSection<SpotLightComponent>(entity, "Spot Light", [](SpotLightComponent& light) {
             ImGui::ColorEdit3("Color", &light.color.x);
@@ -443,6 +465,11 @@ namespace Osiris {
             if (!entity.HasComponent<ScriptComponent>()) {
                 anyOffered = true;
                 if (ImGui::MenuItem("Script")) entity.AddComponent<ScriptComponent>();
+            }
+
+            if (!entity.HasComponent<InteractableComponent>()) {
+                anyOffered = true;
+                if (ImGui::MenuItem("Interactable")) entity.AddComponent<InteractableComponent>();
             }
 
             if (!anyOffered) {

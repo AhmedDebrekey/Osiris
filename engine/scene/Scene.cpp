@@ -5,6 +5,7 @@
 #include "Scene.h"
 
 #include <algorithm>
+#include <limits>
 
 #include "renderer/Frustum.h"
 #include "renderer/Camera.h"
@@ -630,6 +631,39 @@ namespace Osiris {
         }
         if (firstFound != entt::null) return Entity(firstFound, this);
         return Entity{};
+    }
+
+    Entity Scene::FindNearestInteractableEntity(glm::vec3 rayOrigin, glm::vec3 rayDirection, float& outDistance) {
+        auto view = m_Registry.view<MeshComponent>();
+        float maxDistance = std::numeric_limits<float>::max();
+        Entity interactableEntity {};
+        for (auto entity : view) {
+            AABB meshBounds = view.get<MeshComponent>(entity).mesh.bounds;
+            const glm::mat4 model = GetWorldTransform(Entity(entity, this));
+            float hitDistance = 0.0f;
+            bool res = RayIntersectsAABB(rayOrigin, rayDirection, meshBounds, model, hitDistance);
+            if (res && hitDistance < maxDistance) {
+                Entity candidate = Entity(entity, this);
+                while (candidate.IsValid()) {
+                    if (candidate.HasComponent<InteractableComponent>()) {
+                        interactableEntity = candidate;
+                        maxDistance = hitDistance;
+                        outDistance = hitDistance;
+                        break;
+                    }
+                    candidate = GetParent(candidate);
+                }
+            }
+        }
+
+        return interactableEntity;
+    }
+
+    void Scene::DispatchInteract(Entity target, Entity interactor, IScripting* scripting) {
+        if (target.HasComponent<ScriptComponent>()) {
+            const auto instanceHandle = target.GetComponent<ScriptComponent>().instanceHandle;
+            scripting->DispatchInteract(instanceHandle, interactor);
+        }
     }
 
     int Scene::GetEntityCount() {

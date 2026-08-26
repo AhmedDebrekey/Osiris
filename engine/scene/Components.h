@@ -9,6 +9,7 @@
 
 #include <entt/entt.hpp>
 #include <glm/glm.hpp>
+#include <SDL2/SDL_scancode.h>
 
 #include "renderer/MeshType.h"
 #include "rhi/RHITypes.h"
@@ -142,6 +143,12 @@ namespace Osiris {
     // opaque GPU handles, so SceneLoader::Save needs this to recover the source path.
     struct ModelSourceComponent {
         std::string relativePath;
+    };
+
+    struct InteractableComponent {
+        std::string prompt;
+        float maxDistance = 10.0f;
+        SDL_Scancode keyCode = SDL_SCANCODE_E;
     };
 }
 

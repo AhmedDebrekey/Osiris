@@ -226,7 +226,7 @@ namespace Osiris {
         }
     }
 
-    void SceneLoader::Save(const std::string& path, Scene& scene) {
+    bool SceneLoader::Save(const std::string& path, Scene& scene) {
         nlohmann::json json;
         json["entities"] = nlohmann::json::array();
 
@@ -338,8 +338,9 @@ namespace Osiris {
         std::ofstream file(path);
         if (!file.is_open()) {
             OSIRIS_ERROR("Failed to open scene file for writing: {}", path);
-            return;
+            return false;
         }
         file << json.dump(2);
+        return file.good();
     }
 } // Osiris

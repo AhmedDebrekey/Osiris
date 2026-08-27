@@ -2,6 +2,7 @@
 
 #include "assets/SceneLoader.h"
 #include "core/AssetManager.h"
+#include "editor/GameExporter.h"
 #include "editor/SceneInspectorPanel.h"
 #include "scene/Scene.h"
 
@@ -10,13 +11,16 @@
 
 namespace Osiris {
     void SceneFileMenu::Draw(Scene& scene, IRHI* rhi, IPhysics* physics, IAudio* audio, IScripting* scripting,
-                              SceneInspectorPanel& sceneInspector) {
+                              SceneInspectorPanel& sceneInspector, uint32_t maxFps, bool showFps) {
         bool openSaveAs = false;
         bool openLoad = false;
+        bool openExport = false;
 
         if (ImGui::BeginMenu("File")) {
             if (ImGui::MenuItem("Save Scene As...")) openSaveAs = true;
             if (ImGui::MenuItem("Load Scene...")) openLoad = true;
+            ImGui::Separator();
+            if (ImGui::MenuItem("Export Game...")) openExport = true;
             ImGui::EndMenu();
         }
 
@@ -33,9 +37,14 @@ namespace Osiris {
             m_SceneList = AssetCatalog::ListScenes();
             ImGui::OpenPopup("Load Scene");
         }
+        if (openExport) {
+            m_ExportStatus.clear();
+            ImGui::OpenPopup("Export Game");
+        }
 
         DrawSaveAsPopup(scene);
         DrawLoadPopup(scene, rhi, physics, audio, scripting, sceneInspector);
+        DrawExportPopup(scene, maxFps, showFps);
     }
 
     void SceneFileMenu::DrawSaveAsPopup(Scene& scene) {
@@ -99,6 +108,51 @@ namespace Osiris {
             }
             ImGui::PopID();
         }
+
+        ImGui::EndPopup();
+    }
+
+    void SceneFileMenu::DrawExportPopup(Scene& scene, uint32_t maxFps, bool showFps) {
+        if (!ImGui::BeginPopup("Export Game")) return;
+
+        ImGui::TextWrapped("Creates a portable Windows folder and ZIP containing the current scene, assets, executable, and runtime DLLs.");
+        ImGui::InputText("Game name", m_ExportNameBuffer, sizeof(m_ExportNameBuffer));
+        ImGui::TextDisabled("Output: exports/<game name>/ and exports/<game name>-win64.zip");
+
+#ifndef NDEBUG
+        ImGui::Spacing();
+        ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.25f, 1.0f),
+            "Export Game is available when running the Release configuration.");
+#endif
+
+        if (!m_ExportStatus.empty()) {
+            ImGui::Separator();
+            const ImVec4 color = m_LastExportSucceeded
+                ? ImVec4(0.45f, 0.9f, 0.45f, 1.0f)
+                : ImVec4(1.0f, 0.45f, 0.4f, 1.0f);
+            ImGui::TextColored(color, "%s", m_ExportStatus.c_str());
+        }
+
+        ImGui::Separator();
+        const bool validName = m_ExportNameBuffer[0] != '\0';
+#ifndef NDEBUG
+        ImGui::BeginDisabled();
+#else
+        if (!validName) ImGui::BeginDisabled();
+#endif
+        if (ImGui::Button("Export")) {
+            const GameExportResult result = GameExporter::Export(
+                scene, m_ExportNameBuffer, maxFps, showFps);
+            m_LastExportSucceeded = result.succeeded;
+            m_ExportStatus = result.message;
+        }
+#ifndef NDEBUG
+        ImGui::EndDisabled();
+#else
+        if (!validName) ImGui::EndDisabled();
+#endif
+        ImGui::SameLine();
+        if (ImGui::Button("Close")) ImGui::CloseCurrentPopup();
 
         ImGui::EndPopup();
     }

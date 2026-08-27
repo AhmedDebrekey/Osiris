@@ -4,13 +4,15 @@
 
 #ifndef OSIRIS_ENGINECONFIG_H
 #define OSIRIS_ENGINECONFIG_H
+#include <cstdint>
 #include <string>
 
 struct WindowDesc {
     std::string title = "Osiris";
     uint32_t width = 1280;
     uint32_t height = 720;
-    bool vsync = true;
+    bool vsync = false;
+    uint32_t maxFps = 120;
     bool fullscreen = false;
 };
 
@@ -20,5 +22,6 @@ struct VulkanContextDesc {
     uint32_t windowWidth = 1280;
     uint32_t windowHeight = 720;
     std::string windowTitle = "Osiris";
+    bool vsync = true;
 };
 #endif //OSIRIS_ENGINECONFIG_H

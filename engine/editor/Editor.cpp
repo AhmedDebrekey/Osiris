@@ -21,7 +21,7 @@ namespace Osiris {
     void Editor::Draw(Scene& scene, Camera& camera, Engine& engine, float deltaTime) {
         if (ImGui::BeginMainMenuBar()) {
             m_SceneFileMenu.Draw(scene, engine.GetRHI(), engine.GetPhysics(), engine.GetAudio(),
-                engine.GetScripting(), m_SceneInspector);
+                engine.GetScripting(), m_SceneInspector, engine.GetMaxFps(), engine.IsFpsVisible());
             ImGui::EndMainMenuBar();
         }
 
@@ -142,6 +142,15 @@ namespace Osiris {
         ImGui::Begin("Stats");
         ImGui::Text("FPS: %.1f", deltaTime > 0.0f ? 1.0f / deltaTime : 0.0f);
         ImGui::Text("Frame time: %.3f ms", deltaTime * 1000.0f);
+        int maxFps = static_cast<int>(engine.GetMaxFps());
+        if (ImGui::InputInt("Max FPS", &maxFps)) {
+            engine.SetMaxFps(static_cast<uint32_t>(glm::max(maxFps, 0)));
+        }
+        ImGui::TextDisabled("0 disables the engine-side frame cap");
+        bool showFps = engine.IsFpsVisible();
+        if (ImGui::Checkbox("Show FPS in Play", &showFps)) {
+            engine.SetFpsVisible(showFps);
+        }
         ImGui::Separator();
         ImGui::Text("Camera: %.2f %.2f %.2f",
             camera.GetPosition().x, camera.GetPosition().y, camera.GetPosition().z);

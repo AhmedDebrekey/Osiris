@@ -25,7 +25,7 @@ namespace Osiris {
         // ModelSourceComponent (i.e. spawned via Scene::SpawnModel) are grouped back into a
         // single "mesh" entry per spawn call. BoxSourceComponent preserves procedural box inputs.
         // A raw MeshComponent without either source component still has no recoverable provenance.
-        static void Save(const std::string& path, Scene& scene);
+        static bool Save(const std::string& path, Scene& scene);
     };
 
 } // Osiris

@@ -2097,12 +2097,21 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
         vkGetPhysicalDeviceSurfacePresentModesKHR(m_Device.physicalDevice, m_Surface, &presentModeCount, presentModes.data());
 
         VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
-        for (const auto& mode : presentModes) {
-            if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
-                presentMode = mode;
-                break;
+        if (!m_Desc.vsync) {
+            for (const auto& mode : presentModes) {
+                if (mode == VK_PRESENT_MODE_MAILBOX_KHR) {
+                    presentMode = mode;
+                    break;
+                }
+                if (mode == VK_PRESENT_MODE_IMMEDIATE_KHR) {
+                    presentMode = mode;
+                }
             }
         }
+        OSIRIS_INFO("VSync {}, Vulkan present mode {}",
+            m_Desc.vsync ? "enabled" : "disabled",
+            presentMode == VK_PRESENT_MODE_FIFO_KHR ? "FIFO"
+                : presentMode == VK_PRESENT_MODE_MAILBOX_KHR ? "Mailbox" : "Immediate");
 
         m_SwapChain.swapChainExtent = surfaceCapabilities.currentExtent;
 

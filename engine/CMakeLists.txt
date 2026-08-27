@@ -52,6 +52,8 @@ add_library(OsirisEngine STATIC
         editor/RenderDebugPanel.cpp
         editor/SceneFileMenu.h
         editor/SceneFileMenu.cpp
+        editor/GameExporter.h
+        editor/GameExporter.cpp
         editor/Editor.h
         editor/Editor.cpp
         scripting/ScriptTypes.h

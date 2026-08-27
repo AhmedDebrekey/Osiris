@@ -13,28 +13,27 @@
 #include "scene/Scene.h"
 #include "ui/GameUI.h"
 
+#include <algorithm>
+#include <cmath>
+#include <filesystem>
+
 namespace Osiris {
     Engine::Engine() = default;
     Engine::~Engine() = default;
 
-    bool Engine::Initialize() {
+    bool Engine::Initialize(const WindowDesc& desc) {
 
         m_Logger.Initialize();
 
-        const WindowDesc desc = {
-            .title = "Osiris",
-            .width = 1280,
-            .height = 720,
-            .vsync = true,
-            .fullscreen = false,
-        };
         m_Window.Initialize(desc);
+        m_MaxFps = desc.maxFps;
 
         VulkanContextDesc vulkanContextDesc = {
             .windowHandle = m_Window.GetNativeWindow(),
             .windowWidth = m_Window.GetWidth(),
             .windowHeight = m_Window.GetHeight(),
             .windowTitle = m_Window.GetTitle(),
+            .vsync = desc.vsync,
         };
 
         auto vulkanIRHI = std::make_unique<VulkanRHI>();
@@ -45,7 +44,16 @@ namespace Osiris {
             return false;
         }
 
-        AssetManager::SetAssetRoot("assets");
+        std::filesystem::path assetRoot = "assets";
+        if (char* executableDirectory = SDL_GetBasePath()) {
+            const std::filesystem::path packagedAssets =
+                std::filesystem::path(executableDirectory) / "assets";
+            if (std::filesystem::is_directory(packagedAssets)) {
+                assetRoot = packagedAssets;
+            }
+            SDL_free(executableDirectory);
+        }
+        AssetManager::SetAssetRoot(assetRoot.lexically_normal().generic_string());
 
         m_RHI->InitImGui();
 
@@ -89,9 +97,17 @@ namespace Osiris {
 
     void Engine::BeginFrame() {
         const uint64_t currentCounter = SDL_GetPerformanceCounter();
+        m_FrameStartCounter = currentCounter;
         m_DeltaTime = static_cast<float>(
             (currentCounter - m_LastCounter) / static_cast<double>(SDL_GetPerformanceFrequency()));
         m_LastCounter = currentCounter;
+        m_FpsSampleSeconds += m_DeltaTime;
+        m_FpsSampleFrames++;
+        if (m_FpsSampleSeconds >= 0.25f) {
+            m_DisplayedFps = static_cast<float>(m_FpsSampleFrames) / m_FpsSampleSeconds;
+            m_FpsSampleSeconds = 0.0f;
+            m_FpsSampleFrames = 0;
+        }
 
         PollEvents();
         m_RHI->BeginFrame();
@@ -100,15 +116,21 @@ namespace Osiris {
 
     void Engine::RunFrame(Scene& scene) {
         BeginFrame();
-        m_Editor->BeginFrame();
+        if (m_EditorEnabled) m_Editor->BeginFrame();
 
-        if (m_Input.IsKeyPressed(SDL_SCANCODE_F5)) {
+        if (m_EditorEnabled && m_Input.IsKeyPressed(SDL_SCANCODE_F5)) {
             if (m_IsPlaying) ExitPlayMode(scene); else EnterPlayMode(scene);
         }
 
         if (!m_IsPlaying) {
-            m_Editor->Draw(scene, m_EditCamera, *this, m_DeltaTime);
+            if (m_EditorEnabled) m_Editor->Draw(scene, m_EditCamera, *this, m_DeltaTime);
         } else {
+            if (m_ShowFps && m_DisplayedFps > 0.0f) {
+                GameUI::DrawText(0.015f, 0.02f, UIAnchor::TopLeft,
+                    "FPS: " + std::to_string(static_cast<uint32_t>(std::round(m_DisplayedFps))),
+                    glm::vec4(1.0f), 18.0f);
+            }
+
             // Scripts read last frame's synced Transform and call physics:Set*Velocity before
             // the physics step consumes it: set desired velocity, then step, then sync.
             m_Scripting->Update(m_DeltaTime);
@@ -136,7 +158,9 @@ namespace Osiris {
         }
 
         Camera& renderCamera = m_IsPlaying ? m_PlayCamera : m_EditCamera;
-        RenderFrame(scene, renderCamera, m_Editor->IsDebugLightViewEnabled(), m_Editor->GetDebugCascade());
+        const bool debugLightView = m_EditorEnabled && m_Editor->IsDebugLightViewEnabled();
+        const int debugCascade = m_EditorEnabled ? m_Editor->GetDebugCascade() : 0;
+        RenderFrame(scene, renderCamera, debugLightView, debugCascade);
         RenderImGui();
         EndFrame();
     }
@@ -144,6 +168,19 @@ namespace Osiris {
     void Engine::EndFrame() const {
         m_RHI->EndFrame();
         m_RHI->Present();
+        LimitFrameRate();
+    }
+
+    void Engine::LimitFrameRate() const {
+        if (m_MaxFps == 0 || m_FrameStartCounter == 0) return;
+
+        const double targetSeconds = 1.0 / static_cast<double>(m_MaxFps);
+        const double elapsedSeconds = static_cast<double>(
+            SDL_GetPerformanceCounter() - m_FrameStartCounter) / SDL_GetPerformanceFrequency();
+        const double remainingSeconds = targetSeconds - elapsedSeconds;
+        if (remainingSeconds <= 0.0) return;
+
+        SDL_Delay(static_cast<uint32_t>(std::ceil(remainingSeconds * 1000.0)));
     }
 
     void Engine::SetEditorViewportSize(uint32_t width, uint32_t height) {
@@ -240,13 +277,18 @@ namespace Osiris {
             m_RHI->EndGPUTimestamp(timingName);
         }
 
-        // All spot shadow slots render every frame, even unclaimed ones, to keep every shadow
-        // map's layout valid for the descriptor set.
+        // Every slot still begins and ends a pass so its map reaches the layout expected by the
+        // descriptor set. Unclaimed slots only clear; redrawing all scene geometry into a shadow
+        // map no light can sample wastes substantial fixed GPU work.
         for (uint32_t i = 0; i < MAX_SPOT_SHADOW_CASTERS; i++) {
             const std::string timingName = "Spot Shadow " + std::to_string(i);
+            const bool slotClaimed = std::ranges::any_of(activeSpotLights,
+                [i](const SpotLightRenderData& light) {
+                    return light.shadowIndex == static_cast<int>(i);
+                });
             m_RHI->BeginGPUTimestamp(timingName);
             m_RHI->BeginSpotShadowPass(i);
-            scene.RenderShadows(m_RHI.get());
+            if (slotClaimed) scene.RenderShadows(m_RHI.get());
             m_RHI->EndSpotShadowPass(i);
             m_RHI->EndGPUTimestamp(timingName);
         }

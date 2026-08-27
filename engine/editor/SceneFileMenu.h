@@ -3,6 +3,8 @@
 
 #include "assets/AssetCatalog.h"
 
+#include <cstdint>
+#include <string>
 #include <vector>
 
 namespace Osiris {
@@ -21,15 +23,19 @@ namespace Osiris {
     public:
         // Call between ImGui::BeginMainMenuBar()/EndMainMenuBar().
         void Draw(Scene& scene, IRHI* rhi, IPhysics* physics, IAudio* audio, IScripting* scripting,
-                  SceneInspectorPanel& sceneInspector);
+                  SceneInspectorPanel& sceneInspector, uint32_t maxFps, bool showFps);
 
     private:
         void DrawSaveAsPopup(Scene& scene);
         void DrawLoadPopup(Scene& scene, IRHI* rhi, IPhysics* physics, IAudio* audio,
                             IScripting* scripting, SceneInspectorPanel& sceneInspector);
+        void DrawExportPopup(Scene& scene, uint32_t maxFps, bool showFps);
 
         char m_SaveNameBuffer[128] = "level_01";
+        char m_ExportNameBuffer[128] = "OsirisGame";
         std::vector<AssetEntry> m_SceneList;
+        std::string m_ExportStatus;
+        bool m_LastExportSucceeded = false;
     };
 }
 

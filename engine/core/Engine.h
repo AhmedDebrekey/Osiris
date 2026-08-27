@@ -26,7 +26,7 @@ namespace Osiris {
         Engine(const Engine &)=delete;
         Engine &operator=(const Engine &)=delete;
 
-        bool Initialize();
+        bool Initialize(const WindowDesc& desc = {});
         void Shutdown();
 
         // Drives one full frame end to end: delta time, input, Play/Edit toggle (F5), the
@@ -50,6 +50,12 @@ namespace Osiris {
 
         // Edit mode (default) vs Play mode — client code gates behavior on this.
         bool IsPlaying() const { return m_IsPlaying; }
+        bool IsEditorEnabled() const { return m_EditorEnabled; }
+        void SetEditorEnabled(bool enabled) { m_EditorEnabled = enabled; }
+        uint32_t GetMaxFps() const { return m_MaxFps; }
+        void SetMaxFps(uint32_t maxFps) { m_MaxFps = maxFps; }
+        bool IsFpsVisible() const { return m_ShowFps; }
+        void SetFpsVisible(bool visible) { m_ShowFps = visible; }
 
         // The only correct way to flip Play/Edit mode: rebuilds live physics bodies/characters
         // from the current Transform, snapshots for restore on exit, resets scripts, starts
@@ -83,6 +89,7 @@ namespace Osiris {
 
     private:
         void PollEvents();
+        void LimitFrameRate() const;
         // Follows the scene's primary CameraComponent entity, if any: position = entity position
         // + eyeHeight, orientation from TransformComponent.rotation (x=pitch, y=yaw, same
         // convention tank_controller.lua already uses for its own forward-vector math). A no-op
@@ -90,6 +97,9 @@ namespace Osiris {
         void SyncPlayCamera(Scene& scene);
         bool m_IsRunning = true;
         bool m_IsPlaying = false;
+        bool m_EditorEnabled = true;
+        bool m_ShowFps = true;
+        uint32_t m_MaxFps = 120;
 
         Window m_Window;
 
@@ -107,7 +117,11 @@ namespace Osiris {
         Camera m_EditCamera{glm::vec3(0.0f, 1.5f, 4.0f), glm::vec3(0.0f, 0.0f, -1.0f)};
 
         uint64_t m_LastCounter = 0;
+        uint64_t m_FrameStartCounter = 0;
         float m_DeltaTime = 0.0f;
+        float m_FpsSampleSeconds = 0.0f;
+        uint32_t m_FpsSampleFrames = 0;
+        float m_DisplayedFps = 0.0f;
     };
 }
 

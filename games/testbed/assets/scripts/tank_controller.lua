@@ -205,6 +205,8 @@ function OnCollision(otherEntity)
     if string.find(otherName, "_Projectile_", 1, true) == nil then return end
 
     local myName = self:GetTag().name
+    if string.find(otherName, myName .. "_Projectile_", 1, true) == 1 then return end
+
     for flagName, carrier in pairs(CTF.flagCarrier) do
         if carrier ~= nil and carrier:IsValid() and carrier:HasTag()
             and carrier:GetTag().name == myName then

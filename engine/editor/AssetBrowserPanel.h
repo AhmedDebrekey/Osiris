@@ -12,7 +12,7 @@ namespace Osiris {
     class IRHI;
     class Scene;
 
-    // Content-Browser-style view of the whole assets/ folder: a folder tree on the left, the
+    // Content-Browser-style view of the active game's assets folder: a folder tree on the left, the
     // selected folder's contents as icon tiles on the right. Mutates the real filesystem (New
     // Folder/New Script/Delete), so BuildAssetTree gets re-run after anything that changes it,
     // including an explicit Refresh for changes made outside the app (e.g. from the OS).
@@ -40,7 +40,7 @@ namespace Osiris {
         void OpenDeleteConfirm(const std::string& relativePath, const std::string& name, bool isDirectory);
 
         AssetTreeNode m_Root;
-        std::string m_SelectedFolder; // relative to assets/; empty = root
+        std::string m_SelectedFolder; // relative to the active game asset root; empty = root
         char m_FilterBuffer[128] = {};
 
         PendingCreate m_PendingCreate = PendingCreate::None;

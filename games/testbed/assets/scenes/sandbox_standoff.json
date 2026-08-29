@@ -68,14 +68,14 @@
       "transform": { "position": [-9.5, 0.6, 0] },
       "collider": { "halfExtents": [1.5, 0.6, 2] },
       "rigidBody": { "motionType": "Static", "isSensor": true },
-      "script": { "path": "assets/scripts/home_zone.lua" }
+      "script": { "path": "scripts/home_zone.lua" }
     },
     {
       "name": "P2_Home",
       "transform": { "position": [9.5, 0.6, 0] },
       "collider": { "halfExtents": [1.5, 0.6, 2] },
       "rigidBody": { "motionType": "Static", "isSensor": true },
-      "script": { "path": "assets/scripts/home_zone.lua" }
+      "script": { "path": "scripts/home_zone.lua" }
     },
     {
       "name": "Tank_Camera",

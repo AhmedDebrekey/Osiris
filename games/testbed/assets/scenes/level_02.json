@@ -13,7 +13,7 @@
       },
       "name": "AudioTest_Emitter",
       "script": {
-        "path": "assets/scripts/audio_trigger.lua"
+        "path": "scripts/audio_trigger.lua"
       },
       "transform": {
         "position": [
@@ -106,7 +106,7 @@
         "motionType": "Static"
       },
       "script": {
-        "path": "assets/scripts/spin_cube.lua"
+        "path": "scripts/spin_cube.lua"
       },
       "transform": {
         "position": [
@@ -378,7 +378,7 @@
     {
       "name": "ScriptController",
       "script": {
-        "path": "assets/scripts/pulse_light.lua"
+        "path": "scripts/pulse_light.lua"
       },
       "transform": {
         "position": [
@@ -401,7 +401,7 @@
     {
       "name": "ModelSpawnController",
       "script": {
-        "path": "assets/scripts/spawn_model.lua"
+        "path": "scripts/spawn_model.lua"
       },
       "transform": {
         "position": [

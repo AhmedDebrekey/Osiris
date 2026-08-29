@@ -226,6 +226,7 @@ add_subdirectory(engine)
 #  Games
 # ============================================================
 add_subdirectory(games/testbed)
+add_subdirectory(games/horror)
 
 # ============================================================
 #  Shader Compilations

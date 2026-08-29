@@ -33,6 +33,9 @@ namespace Osiris {
         float vignetteOuterRadius = 0.75f; // distance from center where it reaches full strength
         float chromaticAberrationIntensity = 0.0f; // 0 = off, 1 = full strength, off by default
         float filmGrainIntensity = 0.0f; // 0 = off, 1 = full strength, off by default
+        float bloomIntensity = 0.0f; // 0 = off, 1 = full strength, off by default
+        float bloomThreshold = 0.8f; // LDR brightness where the soft bright pass starts
+        float bloomRadius = 4.0f; // blur radius in output pixels
     };
 
     // Keep in sync with triangle.vert / triangle.frag.

@@ -45,7 +45,7 @@ int main() {
     std::cout << "Osiris Engine" << std::endl;
     Osiris::Engine engine;
 
-    if (!engine.Initialize()) {
+    if (!engine.Initialize({}, OSIRIS_GAME_ASSET_ROOT)) {
         OSIRIS_ERROR("Failed to initialize engine!");
         return -1;
     }

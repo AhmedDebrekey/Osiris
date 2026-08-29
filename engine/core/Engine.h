@@ -26,7 +26,7 @@ namespace Osiris {
         Engine(const Engine &)=delete;
         Engine &operator=(const Engine &)=delete;
 
-        bool Initialize(const WindowDesc& desc = {});
+        bool Initialize(const WindowDesc& desc = {}, const std::string& gameAssetRoot = "assets");
         void Shutdown();
 
         // Drives one full frame end to end: delta time, input, Play/Edit toggle (F5), the

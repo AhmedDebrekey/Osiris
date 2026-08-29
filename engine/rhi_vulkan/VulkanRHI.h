@@ -50,6 +50,7 @@ namespace Osiris {
         void SetMeshData(const Mesh &mesh) override;
 
         void SetModelMatrix(const glm::mat4 &model) override;
+        void SetEmissive(const glm::vec3& color, float intensity) override;
 
         BufferHandle CreateBuffer(const BufferDesc &) override;
 
@@ -280,6 +281,8 @@ namespace Osiris {
         Mesh m_BoundMesh;
         TextureHandle m_BoundTexture;
         glm::mat4 m_ModelMatrix = glm::mat4(1.0f);
+        glm::vec3 m_EmissiveColor = glm::vec3(1.0f);
+        float m_EmissiveIntensity = 0.0f;
 
         static constexpr uint32_t SHADOW_CASCADE_COUNT = 3;
         static constexpr uint32_t SHADOW_MAP_SIZE      = 2048;

@@ -4,13 +4,16 @@
 #include "core/AssetManager.h"
 #include "scene/Scene.h"
 
-#include <SDL.h>
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
 #include <nlohmann/json.hpp>
 
+#include <array>
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <utility>
 
 namespace Osiris {
     namespace {
@@ -35,28 +38,53 @@ namespace Osiris {
             return value;
         }
 
-        fs::path FindRunningExecutable(const fs::path& binaryDirectory) {
-            const fs::path testbedExecutable = binaryDirectory / "Testbed.exe";
-            if (fs::is_regular_file(testbedExecutable)) return testbedExecutable;
-
-            for (const fs::directory_entry& entry : fs::directory_iterator(binaryDirectory)) {
-                if (entry.is_regular_file() && entry.path().extension() == ".exe") {
-                    return entry.path();
-                }
-            }
-            return {};
+        fs::path GetRunningExecutable() {
+            std::array<wchar_t, 32768> buffer{};
+            const DWORD length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+            if (length == 0 || length >= buffer.size()) return {};
+            return fs::path(std::wstring(buffer.data(), length)).lexically_normal();
         }
 
-        bool WriteLaunchConfig(const fs::path& assetDirectory, const std::string& gameName,
+        bool CopyDirectoryContents(const fs::path& source, const fs::path& destination,
+                                   std::error_code& error) {
+            fs::create_directories(destination, error);
+            if (error) return false;
+
+            for (const fs::directory_entry& entry : fs::recursive_directory_iterator(source)) {
+                const fs::path relativePath = fs::relative(entry.path(), source, error);
+                if (error) return false;
+                const fs::path destinationPath = destination / relativePath;
+
+                if (entry.is_directory()) {
+                    fs::create_directories(destinationPath, error);
+                } else if (entry.is_regular_file()) {
+                    fs::create_directories(destinationPath.parent_path(), error);
+                    if (!error) {
+                        fs::copy_file(entry.path(), destinationPath,
+                            fs::copy_options::overwrite_existing, error);
+                    }
+                }
+                if (error) return false;
+            }
+            return true;
+        }
+
+        bool WriteLaunchConfig(const fs::path& sourceConfigPath, const fs::path& assetDirectory,
+                               const std::string& gameName,
                                uint32_t maxFps, bool showFps) {
-            const nlohmann::json config = {
-                {"name", gameName},
-                {"scene", "scenes/exported_game.json"},
-                {"environment", "hdr/EveningRoad.hdr"},
-                {"autoPlay", true},
-                {"maxFps", maxFps},
-                {"showFps", showFps},
-            };
+            nlohmann::json config = nlohmann::json::object();
+            std::ifstream sourceFile(sourceConfigPath);
+            if (sourceFile.is_open()) {
+                nlohmann::json sourceConfig = nlohmann::json::parse(sourceFile, nullptr, false);
+                if (sourceConfig.is_object()) config = std::move(sourceConfig);
+            }
+
+            config["name"] = gameName;
+            config["scene"] = "scenes/exported_game.json";
+            config["environment"] = config.value("environment", std::string());
+            config["autoPlay"] = true;
+            config["maxFps"] = maxFps;
+            config["showFps"] = showFps;
 
             std::ofstream file(assetDirectory / "game.json");
             if (!file.is_open()) return false;
@@ -92,18 +120,19 @@ namespace Osiris {
 
             const fs::path sourceAssets = fs::absolute(AssetManager::GetAssetRoot()).lexically_normal();
             if (!fs::is_directory(sourceAssets)) {
-                return {false, "The active assets directory could not be found."};
+                return {false, "The active game assets directory could not be found."};
+            }
+            const fs::path engineAssets =
+                fs::absolute(AssetManager::GetEngineAssetRoot()).lexically_normal();
+            if (!fs::is_directory(engineAssets)) {
+                return {false, "The engine assets directory could not be found."};
             }
 
-            char* basePath = SDL_GetBasePath();
-            if (!basePath) return {false, "The executable directory could not be determined."};
-            const fs::path binaryDirectory = fs::path(basePath).lexically_normal();
-            SDL_free(basePath);
-
-            const fs::path sourceExecutable = FindRunningExecutable(binaryDirectory);
+            const fs::path sourceExecutable = GetRunningExecutable();
             if (sourceExecutable.empty()) {
                 return {false, "The running executable could not be found."};
             }
+            const fs::path binaryDirectory = sourceExecutable.parent_path();
 
             const fs::path exportRoot = sourceAssets.parent_path() / "exports";
             const fs::path packageDirectory = exportRoot / gameName;
@@ -120,9 +149,13 @@ namespace Osiris {
             fs::create_directories(packageDirectory, error);
             if (error) return {false, "Could not create the game package folder: " + error.message()};
 
-            fs::copy(sourceAssets, packageAssets,
-                fs::copy_options::recursive | fs::copy_options::overwrite_existing, error);
-            if (error) return {false, "Could not copy the assets: " + error.message()};
+            if (!CopyDirectoryContents(engineAssets, packageAssets, error)) {
+                return {false, "Could not copy the engine assets: " + error.message()};
+            }
+            if (sourceAssets != engineAssets
+                && !CopyDirectoryContents(sourceAssets, packageAssets, error)) {
+                return {false, "Could not copy the game assets: " + error.message()};
+            }
 
             fs::copy_file(sourceExecutable, packageDirectory / (gameName + ".exe"),
                 fs::copy_options::overwrite_existing, error);
@@ -143,7 +176,8 @@ namespace Osiris {
             if (!SceneLoader::Save(exportedScene.generic_string(), scene)) {
                 return {false, "The current scene could not be saved into the export."};
             }
-            if (!WriteLaunchConfig(packageAssets, gameName, maxFps, showFps)) {
+            if (!WriteLaunchConfig(sourceAssets / "game.json", packageAssets,
+                                   gameName, maxFps, showFps)) {
                 return {false, "The exported launch configuration could not be written."};
             }
             if (!WriteReadme(packageDirectory, gameName)) {

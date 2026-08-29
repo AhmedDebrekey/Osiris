@@ -22,6 +22,7 @@ local zoneConfig = {
 }
 
 local config = nil
+local ownerInside = false
 
 function OnStart()
     local zoneName = self:GetTag().name
@@ -31,11 +32,12 @@ function OnStart()
     end
 end
 
-function OnCollision(otherEntity)
+-- Shared by OnCollision (new contact) and OnUpdate (held contact), so a carrier already
+-- standing in the zone still scores once its own flag returns home instead of needing to
+-- leave and re-enter the trigger volume to get re-evaluated.
+local function tryScore()
     if config == nil then return end
     if CTF.roundOver or CTF.inputLocked then return end
-    if otherEntity == nil or not otherEntity:IsValid() or not otherEntity:HasTag() then return end
-    if otherEntity:GetTag().name ~= config.ownerTankName then return end
 
     local carrier = CTF.flagCarrier[config.enemyFlagName]
     if carrier == nil or not carrier:IsValid() or not carrier:HasTag() then return end
@@ -67,5 +69,28 @@ function OnCollision(otherEntity)
         CTF.roundOver = true
         CTF.inputLocked = true
         print("*** " .. config.ownerTankName .. " WINS WITH " .. score .. " CAPTURES! ***")
+    end
+end
+
+function OnCollision(otherEntity)
+    if config == nil then return end
+    if otherEntity == nil or not otherEntity:IsValid() or not otherEntity:HasTag() then return end
+    if otherEntity:GetTag().name ~= config.ownerTankName then return end
+
+    ownerInside = true
+    tryScore()
+end
+
+function OnCollisionEnd(otherEntity)
+    if config == nil then return end
+    if otherEntity == nil or not otherEntity:IsValid() or not otherEntity:HasTag() then return end
+    if otherEntity:GetTag().name ~= config.ownerTankName then return end
+
+    ownerInside = false
+end
+
+function OnUpdate(dt)
+    if ownerInside then
+        tryScore()
     end
 end

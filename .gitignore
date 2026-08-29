@@ -42,7 +42,7 @@
 build/
 Build/
 build-*/
-/exports/
+exports/
 
 # CMake generated files
 CMakeFiles/
@@ -79,3 +79,6 @@ docs/tech-stack.md
 docs/README.md
 docs/scripting_api.html
 .DS_Store
+
+# IDE project files (per-machine, not part of the repo)
+.idea/

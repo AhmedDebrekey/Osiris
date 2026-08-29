@@ -60,6 +60,11 @@ layout(set = 1, binding = 2) uniform sampler2D metallicMap;
 layout(set = 1, binding = 3) uniform sampler2D roughnessMap;
 layout(set = 1, binding = 4) uniform sampler2D aoMap;
 
+layout(push_constant) uniform PushConstants {
+    mat4 model;
+    vec4 emissive;
+} push;
+
 layout(location = 0) out vec4 outColor;
 
 // ── Shadow PCF ──────────────────────────────────────────────
@@ -256,6 +261,7 @@ void main() {
     // (shadow==0) reads as too flat/bright for this engine's stylistic target, so dim it partway
     // instead of fully to black, which would look unnaturally harsh for an IBL-lit scene.
     vec3 color = ambient * mix(0.5, 1.0, shadow) + Lo;
+    color += max(push.emissive.rgb, vec3(0.0)) * max(push.emissive.a, 0.0);
 
 
     // Tone mapping (ACES filmic approximation)

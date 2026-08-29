@@ -1,0 +1,58 @@
+{
+  "entities": [
+    {
+      "mesh": "models/sponza/Sponza.gltf",
+      "name": "Sponza",
+      "transform": {
+        "position": [
+          -6.189009189605713,
+          3.241112232208252,
+          1.3423768281936646
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "camera": {
+        "eyeHeight": 1.5,
+        "isPrimary": true
+      },
+      "character": {
+        "height": 1.7999999523162842,
+        "mass": 70.0,
+        "maxSlopeAngleDeg": 45.0,
+        "radius": 0.30000001192092896
+      },
+      "name": "New Entity",
+      "script": {
+        "path": "scripts/fps_controller.lua"
+      },
+      "transform": {
+        "position": [
+          0.0,
+          4.717395305633545,
+          0.4128760099411011
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    }
+  ]
+}

@@ -10,7 +10,7 @@ namespace Osiris {
         std::string relativePath;
     };
 
-    // One level of the whole assets/ directory tree (AssetCatalog::BuildAssetTree). name/
+    // One level of the active game's asset directory tree (AssetCatalog::BuildAssetTree). name/
     // relativePath are just this node's own segment/path, not the parent's. relativePath is
     // AssetManager-relative, matching AssetEntry's convention. children is only populated for
     // directories, folders sorted before files, both alphabetical.
@@ -25,7 +25,7 @@ namespace Osiris {
     public:
         static std::vector<AssetEntry> ListScenes();
 
-        // Recursively scans the whole assets/ folder into a tree of folders and files, for the
+        // Recursively scans the active game's asset folder into a tree of folders and files, for the
         // Asset Browser's Content-Browser-style view. Rebuild (don't try to patch) after any
         // change made outside the running process's own file operations, since there's no
         // filesystem watcher backing this.

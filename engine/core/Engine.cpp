@@ -21,12 +21,30 @@ namespace Osiris {
     Engine::Engine() = default;
     Engine::~Engine() = default;
 
-    bool Engine::Initialize(const WindowDesc& desc) {
+    bool Engine::Initialize(const WindowDesc& desc, const std::string& gameAssetRoot) {
 
         m_Logger.Initialize();
 
+#ifdef OSIRIS_ENGINE_ASSET_ROOT
+        std::filesystem::path engineAssetRoot = OSIRIS_ENGINE_ASSET_ROOT;
+#else
+        std::filesystem::path engineAssetRoot = "assets";
+#endif
+        std::filesystem::path activeGameAssetRoot = gameAssetRoot;
+        if (char* executableDirectory = SDL_GetBasePath()) {
+            const std::filesystem::path packagedAssets =
+                std::filesystem::path(executableDirectory) / "assets";
+            if (std::filesystem::is_regular_file(packagedAssets / "game.json")) {
+                activeGameAssetRoot = packagedAssets;
+                engineAssetRoot = packagedAssets;
+            }
+            SDL_free(executableDirectory);
+        }
+        AssetManager::SetAssetRoots(
+            activeGameAssetRoot.lexically_normal().generic_string(),
+            engineAssetRoot.lexically_normal().generic_string());
+
         m_Window.Initialize(desc);
-        m_MaxFps = desc.maxFps;
 
         VulkanContextDesc vulkanContextDesc = {
             .windowHandle = m_Window.GetNativeWindow(),
@@ -43,17 +61,6 @@ namespace Osiris {
             OSIRIS_ERROR("Failed to initialize RHI!");
             return false;
         }
-
-        std::filesystem::path assetRoot = "assets";
-        if (char* executableDirectory = SDL_GetBasePath()) {
-            const std::filesystem::path packagedAssets =
-                std::filesystem::path(executableDirectory) / "assets";
-            if (std::filesystem::is_directory(packagedAssets)) {
-                assetRoot = packagedAssets;
-            }
-            SDL_free(executableDirectory);
-        }
-        AssetManager::SetAssetRoot(assetRoot.lexically_normal().generic_string());
 
         m_RHI->InitImGui();
 

@@ -52,6 +52,12 @@ namespace Osiris {
         glm::ivec4    counts; // x = active light count
     };
 
+    // Mirrors the push constant block in triangle.vert / triangle.frag.
+    struct ForwardPushConstants {
+        glm::mat4 model;
+        glm::vec4 emissive; // rgb = color, w = intensity
+    };
+
     template<typename T>
     uint32_t AllocateSlot(std::vector<T>& slots, const T& item, auto isNull) {
         for (uint32_t i = 0; i < slots.size(); i++) {
@@ -160,8 +166,8 @@ namespace Osiris {
         VkDescriptorSetLayout forwardLayouts[] = { m_FrameDescriptorLayout, m_MaterialDescriptorLayout };
 
         m_ForwardPipeline = m_PipelineManager->GetOrCreate({
-            .vertexShader     = "assets/shaders/triangle.vert.spv",
-            .fragmentShader   = "assets/shaders/triangle.frag.spv",
+            .vertexShader     = AssetManager::GetEnginePath("shaders/triangle.vert.spv"),
+            .fragmentShader   = AssetManager::GetEnginePath("shaders/triangle.frag.spv"),
             .colorAttachment  = true,
             .colorFormat      = m_SwapChain.swapChainImageFormat,
             .depthAttachment  = true,
@@ -173,8 +179,8 @@ namespace Osiris {
             .frontFace        = VK_FRONT_FACE_COUNTER_CLOCKWISE,
             .setLayoutCount   = 2,
             .pSetLayouts      = forwardLayouts,
-            .pushConstantSize = sizeof(glm::mat4),
-            .pushConstantStages = VK_SHADER_STAGE_VERTEX_BIT,
+            .pushConstantSize = sizeof(ForwardPushConstants),
+            .pushConstantStages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
         });
 
         m_ForwardPipelineLayout = m_PipelineManager->GetLayout(m_ForwardPipeline);
@@ -182,7 +188,7 @@ namespace Osiris {
         VkDescriptorSetLayout shadowLayouts[] = { m_FrameDescriptorLayout };
 
         m_ShadowPipeline = m_PipelineManager->GetOrCreate({
-            .vertexShader       = "assets/shaders/shadow.vert.spv",
+            .vertexShader       = AssetManager::GetEnginePath("shaders/shadow.vert.spv"),
             .fragmentShader     = "",
             .colorAttachment    = false,
             .colorFormat        = VK_FORMAT_UNDEFINED,
@@ -207,8 +213,8 @@ namespace Osiris {
         VkDescriptorSetLayout skyboxLayouts[] = { m_FrameDescriptorLayout };
 
         m_SkyboxPipeline = m_PipelineManager->GetOrCreate({
-            .vertexShader     = "assets/shaders/skybox.vert.spv",
-            .fragmentShader   = "assets/shaders/skybox.frag.spv",
+            .vertexShader     = AssetManager::GetEnginePath("shaders/skybox.vert.spv"),
+            .fragmentShader   = AssetManager::GetEnginePath("shaders/skybox.frag.spv"),
             .colorAttachment  = true,
             .colorFormat      = m_SwapChain.swapChainImageFormat,
             .depthAttachment  = true,
@@ -230,8 +236,8 @@ namespace Osiris {
         VkDescriptorSetLayout postProcessLayouts[] = { m_PostProcessDescriptorLayout };
 
         m_PostProcessPipeline = m_PipelineManager->GetOrCreate({
-            .vertexShader     = "assets/shaders/postprocess.vert.spv",
-            .fragmentShader   = "assets/shaders/postprocess.frag.spv",
+            .vertexShader     = AssetManager::GetEnginePath("shaders/postprocess.vert.spv"),
+            .fragmentShader   = AssetManager::GetEnginePath("shaders/postprocess.frag.spv"),
             .colorAttachment  = true,
             .colorFormat      = m_SwapChain.swapChainImageFormat,
             .depthAttachment  = false,
@@ -673,6 +679,11 @@ namespace Osiris {
         m_ModelMatrix = model;
     }
 
+    void VulkanRHI::SetEmissive(const glm::vec3& color, float intensity) {
+        m_EmissiveColor = color;
+        m_EmissiveIntensity = intensity;
+    }
+
     BufferHandle VulkanRHI::CreateBuffer(const BufferDesc & desc) {
         VkBufferUsageFlags usage = 0;
         switch (desc.usage) {
@@ -1014,8 +1025,13 @@ namespace Osiris {
     void VulkanRHI::DrawIndexed(uint32_t indexCount) {
         VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
 
-        vkCmdPushConstants(cmd, m_ForwardPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT,
-            0, sizeof(glm::mat4), &m_ModelMatrix);
+        const ForwardPushConstants push = {
+            .model = m_ModelMatrix,
+            .emissive = glm::vec4(m_EmissiveColor, m_EmissiveIntensity),
+        };
+        vkCmdPushConstants(cmd, m_ForwardPipelineLayout,
+            VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+            0, sizeof(ForwardPushConstants), &push);
 
         if (m_BoundMesh.vertexBuffer.IsValid()) {
             const VkBuffer vertexBuffers[] = { m_Buffers[m_BoundMesh.vertexBuffer.id].buffer };
@@ -1206,7 +1222,7 @@ namespace Osiris {
             {EditorIcon::WavAudio,  "icons/wav-icon.png"},
         };
         for (const auto& [icon, relativePath] : editorIcons) {
-            const TextureHandle iconTexture = TextureLoader::LoadFromFile(AssetManager::GetPath(relativePath), this);
+            const TextureHandle iconTexture = TextureLoader::LoadFromFile(AssetManager::GetEnginePath(relativePath), this);
             if (!iconTexture.IsValid()) continue;
             const VkDescriptorSet descriptorSet = ImGui_ImplVulkan_AddTexture(
                 m_Textures[iconTexture.id].imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -2268,8 +2284,8 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
     }
 
     bool VulkanRHI::CreatePipeline() {
-        VkShaderModule vertShaderModule = LoadShader("assets/shaders/triangle.vert.spv");
-        VkShaderModule fragShaderModule = LoadShader("assets/shaders/triangle.frag.spv");
+        VkShaderModule vertShaderModule = LoadShader(AssetManager::GetEnginePath("shaders/triangle.vert.spv"));
+        VkShaderModule fragShaderModule = LoadShader(AssetManager::GetEnginePath("shaders/triangle.frag.spv"));
 
         if (!vertShaderModule || !fragShaderModule) {
             return false;
@@ -2874,7 +2890,7 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
 
         // Pipeline.
         VkPipeline pipeline = m_PipelineManager->GetOrCreateCompute({
-            .computeShader   = "assets/shaders/brdf_lut.comp.spv",
+            .computeShader   = AssetManager::GetEnginePath("shaders/brdf_lut.comp.spv"),
             .setLayoutCount  = 1,
             .pSetLayouts     = &m_BRDFLutComputeLayout,
         });
@@ -3294,7 +3310,7 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
         vkUpdateDescriptorSets(m_Device.logicalDevice, 2, writes, 0, nullptr);
 
         VkPipeline pipeline = m_PipelineManager->GetOrCreateCompute({
-            .computeShader  = "assets/shaders/equirect_to_cubemap.comp.spv",
+            .computeShader  = AssetManager::GetEnginePath("shaders/equirect_to_cubemap.comp.spv"),
             .setLayoutCount = 1,
             .pSetLayouts    = &m_EquirectToCubemapLayout,
         });
@@ -3531,7 +3547,7 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
         vkUpdateDescriptorSets(m_Device.logicalDevice, 2, writes, 0, nullptr);
 
         VkPipeline pipeline = m_PipelineManager->GetOrCreateCompute({
-            .computeShader  = "assets/shaders/irradiance_convolve.comp.spv",
+            .computeShader  = AssetManager::GetEnginePath("shaders/irradiance_convolve.comp.spv"),
             .setLayoutCount = 1,
             .pSetLayouts    = &m_IrradianceConvolveLayout,
         });
@@ -3680,7 +3696,7 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
         VK_CHECK(vkCreateDescriptorSetLayout(m_Device.logicalDevice, &layoutInfo, nullptr, &m_PrefilterConvolveLayout));
 
         VkPipeline pipeline = m_PipelineManager->GetOrCreateCompute({
-            .computeShader      = "assets/shaders/prefilter_env.comp.spv",
+            .computeShader      = AssetManager::GetEnginePath("shaders/prefilter_env.comp.spv"),
             .setLayoutCount     = 1,
             .pSetLayouts        = &m_PrefilterConvolveLayout,
             .pushConstantSize   = sizeof(float),

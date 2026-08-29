@@ -12,6 +12,9 @@ layout(set = 0, binding = 1) uniform PostProcessUBO {
     float vignetteOuterRadius;
     float chromaticAberrationIntensity;
     float filmGrainIntensity;
+    float bloomIntensity;
+    float bloomThreshold;
+    float bloomRadius;
 } settings;
 
 // Wall-clock seconds, so grain animates frame to frame instead of looking like a static dirty
@@ -25,12 +28,40 @@ layout(push_constant) uniform PostProcessPushConstants {
 // absurd fringe at the screen edges.
 const float MAX_ABERRATION_OFFSET = 0.02;
 
+const vec2 BLOOM_DIRECTIONS[8] = vec2[](
+    vec2( 1.0,  0.0), vec2(-1.0,  0.0),
+    vec2( 0.0,  1.0), vec2( 0.0, -1.0),
+    vec2( 0.70710678,  0.70710678), vec2(-0.70710678,  0.70710678),
+    vec2( 0.70710678, -0.70710678), vec2(-0.70710678, -0.70710678)
+);
+
 // Cheap hash, not real noise, good enough for grain. Scaling the UV up first gives it enough
 // spatial frequency to read as per-pixel texture instead of a smooth gradient, since this
 // shader has no actual screen resolution to hash against.
 float Grain(vec2 uv, float time) {
     vec2 seed = uv * 3000.0 + time;
     return fract(sin(dot(seed, vec2(12.9898, 78.233))) * 43758.5453123);
+}
+
+vec3 ExtractBloom(vec2 uv) {
+    vec3 sampleColor = texture(sceneColor, uv).rgb;
+    float brightness = max(max(sampleColor.r, sampleColor.g), sampleColor.b);
+    float threshold = clamp(settings.bloomThreshold, 0.0, 0.999);
+    float softRange = max((1.0 - threshold) * 0.5, 0.001);
+    return sampleColor * smoothstep(threshold, threshold + softRange, brightness);
+}
+
+vec3 SampleBloom(vec2 uv) {
+    vec2 texelSize = 1.0 / vec2(textureSize(sceneColor, 0));
+    float radius = clamp(settings.bloomRadius, 0.5, 32.0);
+
+    vec3 bloom = ExtractBloom(uv) * 0.16;
+    for (int i = 0; i < 8; i++) {
+        vec2 offset = BLOOM_DIRECTIONS[i] * texelSize * radius;
+        bloom += ExtractBloom(uv + offset) * 0.065;
+        bloom += ExtractBloom(uv + offset * 2.5) * 0.04;
+    }
+    return bloom;
 }
 
 void main() {
@@ -44,6 +75,10 @@ void main() {
     color.r = texture(sceneColor, inUV - aberrationOffset).r;
     color.g = texture(sceneColor, inUV).g;
     color.b = texture(sceneColor, inUV + aberrationOffset).b;
+
+    if (settings.bloomIntensity > 0.0001) {
+        color += SampleBloom(inUV) * settings.bloomIntensity;
+    }
 
     // smoothstep's result is undefined if edge0 >= edge1, reachable simply by dragging the
     // Inner/Outer Radius sliders past each other (or an out-of-order Lua assignment), so clamp

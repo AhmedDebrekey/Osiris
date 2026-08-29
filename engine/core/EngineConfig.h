@@ -12,7 +12,6 @@ struct WindowDesc {
     uint32_t width = 1280;
     uint32_t height = 720;
     bool vsync = false;
-    uint32_t maxFps = 120;
     bool fullscreen = false;
 };
 

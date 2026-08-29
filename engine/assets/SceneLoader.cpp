@@ -138,6 +138,13 @@ namespace Osiris {
                 light.castsShadow = j.value("castsShadow", light.castsShadow);
             }
 
+            if (entityJson.contains("emissive")) {
+                auto& j = entityJson["emissive"];
+                auto& emissive = entity.AddComponent<EmissiveComponent>();
+                emissive.color = ReadVec3(j, "color", emissive.color);
+                emissive.intensity = j.value("intensity", emissive.intensity);
+            }
+
             if (entityJson.contains("collider")) {
                 auto& j = entityJson["collider"];
                 auto& collider = entity.AddComponent<ColliderComponent>();
@@ -272,6 +279,14 @@ namespace Osiris {
                     {"range", light.range},
                     {"enabled", light.enabled},
                     {"castsShadow", light.castsShadow},
+                };
+            }
+
+            if (entity.HasComponent<EmissiveComponent>()) {
+                auto& emissive = entity.GetComponent<EmissiveComponent>();
+                entityJson["emissive"] = {
+                    {"color", WriteVec3(emissive.color)},
+                    {"intensity", emissive.intensity},
                 };
             }
 

@@ -286,6 +286,16 @@ namespace Osiris {
             entity.RemoveComponent<MaterialComponent>();
         }
 
+        if (DrawComponentSection<EmissiveComponent>(entity, "Emissive", [](EmissiveComponent& emissive) {
+            ImGui::ColorEdit3("Color", &emissive.color.x);
+            ImGui::DragFloat("Intensity", &emissive.intensity, 0.05f, 0.0f, 100.0f);
+            ImGui::TextDisabled(
+                "Adds self-lit color without creating a light. On a model root,\n"
+                "the setting is inherited by all mesh children and drives Bloom.");
+        })) {
+            entity.RemoveComponent<EmissiveComponent>();
+        }
+
         if (DrawComponentSection<ModelSourceComponent>(entity, "Model Source", [](ModelSourceComponent& source) {
             ImGui::Text("Path: %s", source.relativePath.c_str());
             ImGui::TextDisabled("Read-only — set once by Scene::SpawnModel. This is what\nlets Save Scene write a \"mesh\" path back out for this entity.");
@@ -449,6 +459,10 @@ namespace Osiris {
             if (!entity.HasComponent<SpotLightComponent>()) {
                 anyOffered = true;
                 if (ImGui::MenuItem("Spot Light")) entity.AddComponent<SpotLightComponent>();
+            }
+            if (!entity.HasComponent<EmissiveComponent>()) {
+                anyOffered = true;
+                if (ImGui::MenuItem("Emissive")) entity.AddComponent<EmissiveComponent>();
             }
             if (!entity.HasComponent<ColliderComponent>()) {
                 anyOffered = true;

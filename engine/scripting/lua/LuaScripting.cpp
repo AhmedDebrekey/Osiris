@@ -165,6 +165,10 @@ namespace Osiris {
         m_Lua.new_usertype<MaterialComponent>("Material",
             "material", &MaterialComponent::material);
 
+        m_Lua.new_usertype<EmissiveComponent>("Emissive",
+            "color",     &EmissiveComponent::color,
+            "intensity", &EmissiveComponent::intensity);
+
         m_Lua.new_usertype<BoxColliderDesc>("BoxColliderDesc",
             sol::constructors<BoxColliderDesc()>(),
             "halfExtents", &BoxColliderDesc::halfExtents);
@@ -256,6 +260,10 @@ namespace Osiris {
             "GetSpotLight", &Entity::GetComponent<SpotLightComponent>,
             "HasSpotLight", &Entity::HasComponent<SpotLightComponent>,
             "AddSpotLight", &Entity::AddComponent<SpotLightComponent>,
+
+            "GetEmissive", &Entity::GetComponent<EmissiveComponent>,
+            "HasEmissive", &Entity::HasComponent<EmissiveComponent>,
+            "AddEmissive", &Entity::AddComponent<EmissiveComponent>,
 
             "GetCollider", &Entity::GetComponent<ColliderComponent>,
             "HasCollider", &Entity::HasComponent<ColliderComponent>,
@@ -482,7 +490,10 @@ namespace Osiris {
             "vignetteInnerRadius", &PostProcessSettings::vignetteInnerRadius,
             "vignetteOuterRadius", &PostProcessSettings::vignetteOuterRadius,
             "chromaticAberrationIntensity", &PostProcessSettings::chromaticAberrationIntensity,
-            "filmGrainIntensity", &PostProcessSettings::filmGrainIntensity);
+            "filmGrainIntensity", &PostProcessSettings::filmGrainIntensity,
+            "bloomIntensity", &PostProcessSettings::bloomIntensity,
+            "bloomThreshold", &PostProcessSettings::bloomThreshold,
+            "bloomRadius", &PostProcessSettings::bloomRadius);
 
         // Frame-rate-independent "move current toward target by at most maxDelta," the building
         // block for fades/tweens (e.g. subtitle alpha) since ui.Text/Rect have no persistent

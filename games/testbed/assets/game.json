@@ -1,0 +1,8 @@
+{
+  "name": "Tank CTF",
+  "scene": "scenes/ctf.json",
+  "environment": "hdr/EveningRoad.hdr",
+  "autoPlay": false,
+  "maxFps": 120,
+  "showFps": true
+}

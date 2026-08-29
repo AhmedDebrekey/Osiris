@@ -3,6 +3,7 @@ local mouseSensitivity, moveSpeed = 0.15, 4.0
 
 function OnStart()
     character = self:GetCharacter()
+
 end
 
 function OnUpdate(dt)

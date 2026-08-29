@@ -15,8 +15,8 @@ namespace Osiris {
     class IScripting;
     class SceneInspectorPanel;
 
-    // The editor's File menu — "Save Scene As..."/"Load Scene..." popups over whatever .json
-    // files exist under assets/scenes/. Owns the Load sequence itself (Scene::Clear, then
+    // The editor's File menu: "Save Scene As..."/"Load Scene..." popups over whatever .json
+    // files exist under the active game's assets/scenes/. Owns the Load sequence itself (Scene::Clear, then
     // SceneLoader::Load, then the CreatePhysicsBodies/CreateCharacters/CreateAudioSources/
     // CreateScriptInstances pass every scene setup needs) so main.cpp doesn't have to.
     class SceneFileMenu {

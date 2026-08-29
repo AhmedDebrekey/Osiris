@@ -50,7 +50,7 @@ namespace Osiris {
     void SceneFileMenu::DrawSaveAsPopup(Scene& scene) {
         if (!ImGui::BeginPopup("Save Scene As")) return;
 
-        ImGui::TextUnformatted("Save to assets/scenes/");
+        ImGui::TextUnformatted("Save to the active game's assets/scenes/");
         ImGui::InputText("Name", m_SaveNameBuffer, sizeof(m_SaveNameBuffer));
         ImGui::TextDisabled(".json added automatically");
 
@@ -87,7 +87,7 @@ namespace Osiris {
         if (!ImGui::BeginPopup("Load Scene")) return;
 
         if (m_SceneList.empty()) {
-            ImGui::TextDisabled("No .json scenes found under assets/scenes/.");
+            ImGui::TextDisabled("No .json scenes found under the active game's assets/scenes/.");
         }
 
         for (const AssetEntry& sceneAsset : m_SceneList) {
@@ -117,7 +117,7 @@ namespace Osiris {
 
         ImGui::TextWrapped("Creates a portable Windows folder and ZIP containing the current scene, assets, executable, and runtime DLLs.");
         ImGui::InputText("Game name", m_ExportNameBuffer, sizeof(m_ExportNameBuffer));
-        ImGui::TextDisabled("Output: exports/<game name>/ and exports/<game name>-win64.zip");
+        ImGui::TextDisabled("Output: the active game's exports/ folder");
 
 #ifndef NDEBUG
         ImGui::Spacing();

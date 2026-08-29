@@ -80,6 +80,10 @@ if (MSVC)
     target_compile_options(OsirisEngine PRIVATE /bigobj)
 endif()
 
+target_compile_definitions(OsirisEngine PRIVATE
+        OSIRIS_ENGINE_ASSET_ROOT="${CMAKE_SOURCE_DIR}/assets"
+)
+
 target_link_libraries(OsirisEngine PUBLIC
     glm
     SDL2::SDL2

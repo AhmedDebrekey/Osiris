@@ -1,0 +1,83 @@
+{
+  "entities": [
+    {
+      "name": "AsphaltShowcase",
+      "mesh": "models/asphalt_preview/scene.gltf",
+      "transform": {
+        "position": [0.0, 0.0, 0.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "LeftCurb",
+      "box": {
+        "halfExtents": [0.25, 0.15, 5.0],
+        "texture": ""
+      },
+      "transform": {
+        "position": [-5.25, 0.15, 0.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "RightCurb",
+      "box": {
+        "halfExtents": [0.25, 0.15, 5.0],
+        "texture": ""
+      },
+      "transform": {
+        "position": [5.25, 0.15, 0.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "AsphaltKeyLight",
+      "spotLight": {
+        "castsShadow": true,
+        "color": [1.0, 0.82, 0.62],
+        "enabled": true,
+        "innerCone": 35.0,
+        "intensity": 32.0,
+        "outerCone": 55.0,
+        "range": 12.0
+      },
+      "transform": {
+        "position": [0.0, 5.0, 0.5],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "AsphaltRakingLight",
+      "spotLight": {
+        "castsShadow": false,
+        "color": [0.55, 0.72, 1.0],
+        "enabled": true,
+        "innerCone": 30.0,
+        "intensity": 22.0,
+        "outerCone": 55.0,
+        "range": 10.0
+      },
+      "transform": {
+        "position": [3.5, 3.0, -2.0],
+        "rotation": [0.0, 0.0, -50.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "PreviewCamera",
+      "camera": {
+        "eyeHeight": 1.5,
+        "isPrimary": true
+      },
+      "transform": {
+        "position": [0.0, 0.0, 4.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    }
+  ]
+}

@@ -278,7 +278,22 @@ namespace Osiris {
                 continue;
             }
             m_DrawCallCount++;
+
+            const EmissiveComponent* emissive = nullptr;
+            entt::entity current = entity;
+            while (current != entt::null && m_Registry.valid(current)) {
+                if (const auto* candidate = m_Registry.try_get<EmissiveComponent>(current)) {
+                    emissive = candidate;
+                    break;
+                }
+                const auto* parent = m_Registry.try_get<ParentComponent>(current);
+                current = parent ? parent->m_Parent : entt::null;
+            }
+
             rhi->SetModelMatrix(model);
+            rhi->SetEmissive(
+                emissive ? emissive->color : glm::vec3(1.0f),
+                emissive ? emissive->intensity : 0.0f);
             rhi->SetMeshData(mesh.mesh);
             rhi->BindMaterial(material.material);
             rhi->DrawIndexed(mesh.mesh.indexCount);

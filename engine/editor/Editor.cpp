@@ -221,6 +221,10 @@ namespace Osiris {
         ImGui::SliderFloat("Vignette Inner Radius", &postProcessSettings.vignetteInnerRadius, 0.0f, 1.0f);
         ImGui::SliderFloat("Vignette Outer Radius", &postProcessSettings.vignetteOuterRadius, 0.0f, 1.0f);
         ImGui::Separator();
+        ImGui::SliderFloat("Bloom Intensity", &postProcessSettings.bloomIntensity, 0.0f, 1.0f);
+        ImGui::SliderFloat("Bloom Threshold", &postProcessSettings.bloomThreshold, 0.0f, 1.0f);
+        ImGui::SliderFloat("Bloom Radius", &postProcessSettings.bloomRadius, 0.5f, 16.0f, "%.1f px");
+        ImGui::Separator();
         ImGui::SliderFloat("Chromatic Aberration", &postProcessSettings.chromaticAberrationIntensity, 0.0f, 1.0f);
         ImGui::SliderFloat("Film Grain", &postProcessSettings.filmGrainIntensity, 0.0f, 1.0f);
         ImGui::TextDisabled("Always applied in Play. In Edit mode, see Render Debugger's\nTexture Viewer, \"Post-Process Preview\".");

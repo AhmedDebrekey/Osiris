@@ -31,6 +31,14 @@ namespace Osiris {
         return ResolvePath(s_EngineAssetRoot, relativePath);
     }
 
+    std::string AssetManager::NormalizePathKey(const std::string& path) {
+        std::error_code error;
+        const std::filesystem::path absolutePath = std::filesystem::absolute(path, error);
+        return (error ? std::filesystem::path(path) : absolutePath)
+            .lexically_normal()
+            .generic_string();
+    }
+
     std::string AssetManager::GetRelativePath(const std::string& path) {
         namespace fs = std::filesystem;
 

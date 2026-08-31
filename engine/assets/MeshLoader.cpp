@@ -8,8 +8,10 @@
 #include "fastgltf/core.hpp"
 #include "fastgltf/types.hpp"
 #include "fastgltf/tools.hpp"
+#include "core/AssetManager.h"
 #include "core/Log.h"
 #include "fastgltf/glm_element_traits.hpp"
+#include <filesystem>
 #include <utility>
 #include <vector>
 #include <unordered_map>
@@ -19,6 +21,8 @@
 
 namespace Osiris {
     namespace {
+        std::unordered_map<IRHI*, std::unordered_map<std::string, std::vector<GltfNode>>> s_GltfModelCaches;
+
         // glTF node transforms are either a raw column-major matrix or separate T/R/S components.
         glm::mat4 GetNodeLocalMatrix(const fastgltf::Node& node) {
             if (const auto* mat = std::get_if<fastgltf::Node::TransformMatrix>(&node.transform)) {
@@ -61,6 +65,12 @@ namespace Osiris {
     }
 
     std::vector<GltfNode> MeshLoader::LoadFromGLTF(const std::string& path, IRHI* rhi) {
+    const std::string cacheKey = AssetManager::NormalizePathKey(path);
+    auto& modelCache = s_GltfModelCaches[rhi];
+    if (const auto cached = modelCache.find(cacheKey); cached != modelCache.end()) {
+        return cached->second;
+    }
+
     std::vector<GltfNode> result;
 
     fastgltf::Parser parser;
@@ -76,7 +86,10 @@ namespace Osiris {
         fastgltf::Options::LoadExternalBuffers);
 
     if (asset.error() != fastgltf::Error::None) {
-        OSIRIS_ERROR("Failed to parse glTF file: {}", path);
+        OSIRIS_ERROR("Failed to parse glTF file '{}': {} ({})",
+            path,
+            fastgltf::getErrorName(asset.error()),
+            fastgltf::getErrorMessage(asset.error()));
         return result;
     }
 
@@ -267,8 +280,15 @@ namespace Osiris {
     std::size_t primitiveCount = 0;
     for (const GltfNode& node : result) primitiveCount += node.primitives.size();
     OSIRIS_INFO("MeshLoader: loaded {} nodes and {} primitives from {}", result.size(), primitiveCount, path);
+    if (!result.empty()) {
+        modelCache.emplace(cacheKey, result);
+    }
     return result;
 }
+
+    void MeshLoader::ClearCache(IRHI* rhi) {
+        s_GltfModelCaches.erase(rhi);
+    }
 
     std::vector<GltfPrimitiveInstance> MeshLoader::FlattenPrimitives(const std::vector<GltfNode>& nodes) {
         std::vector<GltfPrimitiveInstance> result;

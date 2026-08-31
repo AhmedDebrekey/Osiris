@@ -1,6 +1,8 @@
 #include "SceneFileMenu.h"
 
+#include "assets/MeshLoader.h"
 #include "assets/SceneLoader.h"
+#include "assets/TextureLoader.h"
 #include "core/AssetManager.h"
 #include "editor/GameExporter.h"
 #include "editor/SceneInspectorPanel.h"
@@ -96,6 +98,12 @@ namespace Osiris {
                 scene.Clear(physics, audio, scripting);
                 sceneInspector.ClearSelection();
 
+                // Loading a scene is the natural point to drop stale mesh/texture cache entries:
+                // both loaders cache by path for the process's lifetime otherwise, so re-exporting
+                // an asset on disk and reloading the scene would keep silently returning the old
+                // GPU handle without this.
+                MeshLoader::ClearCache(rhi);
+                TextureLoader::ClearCache(rhi);
                 SceneLoader::Load(AssetManager::GetPath(sceneAsset.relativePath), scene, rhi, audio);
                 scene.CreatePhysicsBodies(physics);
                 scene.CreateCharacters(physics);

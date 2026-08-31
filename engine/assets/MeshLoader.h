@@ -27,6 +27,7 @@ namespace Osiris {
     class MeshLoader {
         public:
             static std::vector<GltfNode> LoadFromGLTF(const std::string& path, IRHI* rhi);
+            static void ClearCache(IRHI* rhi);
             static std::vector<GltfPrimitiveInstance> FlattenPrimitives(const std::vector<GltfNode>& nodes);
             static Mesh CreatePlane(float width, float height, IRHI* rhi);
             static Mesh CreateBox(const glm::vec3& halfExtents, IRHI* rhi);

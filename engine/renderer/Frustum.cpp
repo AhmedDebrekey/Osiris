@@ -5,6 +5,7 @@
 #include "Frustum.h"
 
 #include <algorithm>
+#include <array>
 #include <limits>
 
 namespace Osiris {
@@ -35,16 +36,7 @@ Frustum Frustum::FromViewProjection(const glm::mat4& vp) {
 
 bool Frustum::IsVisible(const AABB& bounds, const glm::mat4& model) const {
     // Transform AABB corners to world space and test against each plane
-    glm::vec3 corners[8] = {
-        glm::vec3(model * glm::vec4(bounds.min.x, bounds.min.y, bounds.min.z, 1.0f)),
-        glm::vec3(model * glm::vec4(bounds.max.x, bounds.min.y, bounds.min.z, 1.0f)),
-        glm::vec3(model * glm::vec4(bounds.min.x, bounds.max.y, bounds.min.z, 1.0f)),
-        glm::vec3(model * glm::vec4(bounds.max.x, bounds.max.y, bounds.min.z, 1.0f)),
-        glm::vec3(model * glm::vec4(bounds.min.x, bounds.min.y, bounds.max.z, 1.0f)),
-        glm::vec3(model * glm::vec4(bounds.max.x, bounds.min.y, bounds.max.z, 1.0f)),
-        glm::vec3(model * glm::vec4(bounds.min.x, bounds.max.y, bounds.max.z, 1.0f)),
-        glm::vec3(model * glm::vec4(bounds.max.x, bounds.max.y, bounds.max.z, 1.0f)),
-    };
+    const std::array<glm::vec3, 8> corners = bounds.GetWorldCorners(model);
 
     for (const auto& plane : planes) {
         bool allOutside = true;
@@ -61,12 +53,13 @@ bool Frustum::IsVisible(const AABB& bounds, const glm::mat4& model) const {
 }
 
 bool RayIntersectsAABB(const glm::vec3& rayOrigin, const glm::vec3& rayDir,
-    const AABB& bounds, const glm::mat4& model, float& outDistance) {
+    const AABB& bounds, const glm::mat4& model, float& outDistance,
+    bool useExitDistanceWhenInside) {
     const glm::mat4 invModel = glm::inverse(model);
     const glm::vec3 localOrigin = glm::vec3(invModel * glm::vec4(rayOrigin, 1.0f));
     const glm::vec3 localDir = glm::vec3(invModel * glm::vec4(rayDir, 0.0f));
 
-    float tMin = 0.0f;
+    float tMin = -std::numeric_limits<float>::max();
     float tMax = std::numeric_limits<float>::max();
 
     for (int axis = 0; axis < 3; axis++) {
@@ -85,7 +78,14 @@ bool RayIntersectsAABB(const glm::vec3& rayOrigin, const glm::vec3& rayDir,
         if (tMin > tMax) return false;
     }
 
-    outDistance = tMin;
+    if (tMax < 0.0f) return false; // box is entirely behind the ray origin
+
+    // tMin < 0 here means the unclamped near intersection is behind the origin, i.e. the ray
+    // origin is genuinely inside the box, not merely touching its surface (which gives tMin
+    // exactly 0 without ever going negative): that distinction is what tMin == 0.0f used to get
+    // wrong, reporting the exit distance for an ordinary surface hit too.
+    const bool startsInside = tMin < 0.0f;
+    outDistance = (useExitDistanceWhenInside && startsInside) ? tMax : glm::max(tMin, 0.0f);
     return true;
 }
 

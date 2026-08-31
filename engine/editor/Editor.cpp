@@ -10,15 +10,228 @@
 
 #include <imgui.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <array>
+#include <cmath>
 #include <limits>
 
 namespace Osiris {
+    namespace {
+        bool ProjectToViewport(const glm::vec3& worldPosition, const glm::mat4& viewProjection,
+                               const ImVec2& viewportMin, const ImVec2& viewportMax, ImVec2& screenPosition) {
+            const glm::vec4 clip = viewProjection * glm::vec4(worldPosition, 1.0f);
+            if (clip.w <= 0.0001f) return false;
+
+            const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+            screenPosition = {
+                viewportMin.x + (ndc.x * 0.5f + 0.5f) * (viewportMax.x - viewportMin.x),
+                viewportMin.y + (ndc.y * 0.5f + 0.5f) * (viewportMax.y - viewportMin.y),
+            };
+            return ndc.z >= 0.0f && ndc.z <= 1.0f;
+        }
+
+        float DistanceSquared(const ImVec2& a, const ImVec2& b) {
+            const float x = a.x - b.x;
+            const float y = a.y - b.y;
+            return x * x + y * y;
+        }
+    }
+
     void Editor::BeginFrame() {
         ImGuizmo::BeginFrame();
     }
 
+    bool Editor::DrawBoxColliderOverlay(Scene& scene, Entity entity, const glm::mat4& entityWorld,
+                                        const Camera& camera, IPhysics* physics,
+                                        const ImVec2& viewportMin, const ImVec2& viewportMax) {
+        auto& collider = entity.GetComponent<ColliderComponent>();
+        const glm::mat4 view = camera.GetViewMatrix();
+        const glm::mat4 viewProjection = camera.GetProjectionMatrix() * view;
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        const bool editing = m_SceneInspector.IsColliderEditing();
+        const ImU32 lineColor = editing
+            ? IM_COL32(255, 178, 54, 255)
+            : IM_COL32(255, 178, 54, 180);
+
+        // AABB::GetWorldCorners orders corners by min/max-per-axis bit (bit0=X, bit1=Y, bit2=Z),
+        // matching the edge-drawing XOR below (see AABB::GetWorldCorners in MeshType.h).
+        const AABB colliderBounds = { collider.center - collider.halfExtents,
+                                       collider.center + collider.halfExtents };
+        const std::array<glm::vec3, 8> worldCorners = colliderBounds.GetWorldCorners(entityWorld);
+        std::array<ImVec2, 8> screenCorners{};
+        std::array<bool, 8> cornerVisible{};
+        for (int i = 0; i < 8; i++) {
+            cornerVisible[i] = ProjectToViewport(
+                worldCorners[i], viewProjection, viewportMin, viewportMax, screenCorners[i]);
+        }
+
+        drawList->PushClipRect(viewportMin, viewportMax, true);
+        for (int i = 0; i < 8; i++) {
+            for (int axisBit : {1, 2, 4}) {
+                const int other = i ^ axisBit;
+                if (i < other && cornerVisible[i] && cornerVisible[other]) {
+                    drawList->AddLine(screenCorners[i], screenCorners[other], lineColor, 2.0f);
+                }
+            }
+        }
+
+        if (!editing) {
+            drawList->PopClipRect();
+            m_ColliderFaceDragEntity = entt::null;
+            m_ColliderFaceDragAxis = -1;
+            m_ColliderCenterWasUsing = false;
+            m_ColliderCenterChanged = false;
+            return false;
+        }
+
+        bool blocksViewportPicking = false;
+        glm::mat4 colliderCenterModel = entityWorld
+            * glm::translate(glm::mat4(1.0f), collider.center);
+        glm::mat4 gizmoProjection = camera.GetProjectionMatrix();
+        gizmoProjection[1][1] *= -1.0f;
+        if (ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(gizmoProjection),
+            ImGuizmo::TRANSLATE, ImGuizmo::LOCAL, glm::value_ptr(colliderCenterModel))) {
+            collider.center = glm::vec3(
+                glm::inverse(entityWorld) * glm::vec4(glm::vec3(colliderCenterModel[3]), 1.0f));
+            m_ColliderCenterChanged = true;
+            blocksViewportPicking = true;
+        }
+
+        const bool colliderCenterUsing = ImGuizmo::IsUsing();
+        if (m_ColliderCenterWasUsing && !colliderCenterUsing && m_ColliderCenterChanged) {
+            scene.RebuildPhysicsBody(entity, physics);
+            m_ColliderCenterChanged = false;
+        }
+        m_ColliderCenterWasUsing = colliderCenterUsing;
+        blocksViewportPicking |= colliderCenterUsing || ImGuizmo::IsOver();
+
+        int hoveredAxis = -1;
+        float hoveredSign = 1.0f;
+        float nearestHandleDistance = 64.0f;
+        ImVec2 hoveredHandlePosition{};
+        ImVec2 hoveredAxisDirection{};
+        float hoveredPixelsPerUnit = 0.0f;
+        const ImVec2 mousePosition = ImGui::GetMousePos();
+        const bool mouseInsideViewport = ImGui::IsMouseHoveringRect(viewportMin, viewportMax);
+
+        for (int axis = 0; axis < 3; axis++) {
+            glm::vec3 localAxis(0.0f);
+            localAxis[axis] = 1.0f;
+            for (float sign : {-1.0f, 1.0f}) {
+                const glm::vec3 localFace = collider.center
+                    + localAxis * (collider.halfExtents[axis] * sign);
+                const glm::vec3 worldFace = glm::vec3(entityWorld * glm::vec4(localFace, 1.0f));
+                const glm::vec3 worldAxisPoint = glm::vec3(
+                    entityWorld * glm::vec4(localFace + localAxis, 1.0f));
+                ImVec2 faceScreen{};
+                ImVec2 axisScreen{};
+                if (!ProjectToViewport(worldFace, viewProjection, viewportMin, viewportMax, faceScreen)
+                    || !ProjectToViewport(worldAxisPoint, viewProjection, viewportMin, viewportMax, axisScreen)) {
+                    continue;
+                }
+
+                const ImVec2 screenAxis = {axisScreen.x - faceScreen.x, axisScreen.y - faceScreen.y};
+                const float pixelsPerUnit = std::sqrt(
+                    screenAxis.x * screenAxis.x + screenAxis.y * screenAxis.y);
+                const float distance = DistanceSquared(mousePosition, faceScreen);
+                if (mouseInsideViewport && pixelsPerUnit > 1.0f && distance < nearestHandleDistance) {
+                    hoveredAxis = axis;
+                    hoveredSign = sign;
+                    nearestHandleDistance = distance;
+                    hoveredHandlePosition = faceScreen;
+                    hoveredAxisDirection = {
+                        screenAxis.x / pixelsPerUnit,
+                        screenAxis.y / pixelsPerUnit,
+                    };
+                    hoveredPixelsPerUnit = pixelsPerUnit;
+                }
+
+                drawList->AddCircleFilled(faceScreen, 5.0f,
+                    IM_COL32(255, 178, 54, 235), 12);
+                drawList->AddCircle(faceScreen, 7.0f, IM_COL32(30, 30, 30, 255), 12, 2.0f);
+            }
+        }
+
+        if (hoveredAxis >= 0 && m_ColliderFaceDragAxis < 0 && !ImGuizmo::IsOver()) {
+            drawList->AddCircle(hoveredHandlePosition, 10.0f,
+                IM_COL32(255, 235, 170, 255), 16, 2.0f);
+            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+            blocksViewportPicking = true;
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                m_ColliderFaceDragEntity = entity.GetHandle();
+                m_ColliderFaceDragAxis = hoveredAxis;
+                m_ColliderFaceDragSign = hoveredSign;
+                m_ColliderFaceDragMouseStart = mousePosition;
+                m_ColliderFaceDragAxisScreen = hoveredAxisDirection;
+                m_ColliderFaceDragPixelsPerUnit = hoveredPixelsPerUnit;
+                m_ColliderFaceDragStartCenter = collider.center;
+                m_ColliderFaceDragStartHalfExtents = collider.halfExtents;
+            }
+        }
+
+        if (m_ColliderFaceDragEntity == entity.GetHandle() && m_ColliderFaceDragAxis >= 0) {
+            blocksViewportPicking = true;
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                const ImVec2 mouseDelta = {
+                    mousePosition.x - m_ColliderFaceDragMouseStart.x,
+                    mousePosition.y - m_ColliderFaceDragMouseStart.y,
+                };
+                const float localMove =
+                    (mouseDelta.x * m_ColliderFaceDragAxisScreen.x
+                        + mouseDelta.y * m_ColliderFaceDragAxisScreen.y)
+                    / m_ColliderFaceDragPixelsPerUnit;
+                const int axis = m_ColliderFaceDragAxis;
+                const float requestedHalfExtent = m_ColliderFaceDragStartHalfExtents[axis]
+                    + m_ColliderFaceDragSign * localMove * 0.5f;
+                const float newHalfExtent = glm::max(requestedHalfExtent, 0.01f);
+                const float appliedFaceMove =
+                    (newHalfExtent - m_ColliderFaceDragStartHalfExtents[axis])
+                    * 2.0f / m_ColliderFaceDragSign;
+
+                collider.halfExtents = m_ColliderFaceDragStartHalfExtents;
+                collider.halfExtents[axis] = newHalfExtent;
+                collider.center = m_ColliderFaceDragStartCenter;
+                collider.center[axis] += appliedFaceMove * 0.5f;
+            } else {
+                scene.RebuildPhysicsBody(entity, physics);
+                m_ColliderFaceDragEntity = entt::null;
+                m_ColliderFaceDragAxis = -1;
+            }
+        }
+
+        drawList->PopClipRect();
+        return blocksViewportPicking;
+    }
+
     void Editor::Draw(Scene& scene, Camera& camera, Engine& engine, float deltaTime) {
+        const bool shortcutsAvailable = !ImGui::GetIO().WantTextInput
+            && !ImGui::IsAnyItemActive()
+            && !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup)
+            && !ImGuizmo::IsUsing()
+            && m_ColliderFaceDragAxis < 0;
+        if (shortcutsAvailable) {
+            if (ImGui::IsKeyPressed(ImGuiKey_T, false)) {
+                m_GizmoOperation = ImGuizmo::TRANSLATE;
+            } else if (ImGui::IsKeyPressed(ImGuiKey_R, false)) {
+                m_GizmoOperation = ImGuizmo::ROTATE;
+            } else if (ImGui::IsKeyPressed(ImGuiKey_G, false)) {
+                m_GizmoOperation = ImGuizmo::SCALE;
+            }
+
+            if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
+                const entt::entity selectedHandle = m_SceneInspector.GetSelectedEntity();
+                if (selectedHandle != entt::null) {
+                    Entity selectedEntity(selectedHandle, &scene);
+                    if (selectedEntity.IsValid()) {
+                        scene.DestroyEntity(selectedEntity, engine.GetPhysics(), engine.GetAudio(),
+                            engine.GetScripting());
+                    }
+                    m_SceneInspector.ClearSelection();
+                }
+            }
+        }
+
         if (ImGui::BeginMainMenuBar()) {
             m_SceneFileMenu.Draw(scene, engine.GetRHI(), engine.GetPhysics(), engine.GetAudio(),
                 engine.GetScripting(), m_SceneInspector, engine.GetMaxFps(), engine.IsFpsVisible());
@@ -27,15 +240,15 @@ namespace Osiris {
 
         ImGui::DockSpaceOverViewport();
         ImGui::Begin("Viewport");
-        if (ImGui::RadioButton("Translate", m_GizmoOperation == ImGuizmo::TRANSLATE)) {
+        if (ImGui::RadioButton("Translate (T)", m_GizmoOperation == ImGuizmo::TRANSLATE)) {
             m_GizmoOperation = ImGuizmo::TRANSLATE;
         }
         ImGui::SameLine();
-        if (ImGui::RadioButton("Rotate", m_GizmoOperation == ImGuizmo::ROTATE)) {
+        if (ImGui::RadioButton("Rotate (R)", m_GizmoOperation == ImGuizmo::ROTATE)) {
             m_GizmoOperation = ImGuizmo::ROTATE;
         }
         ImGui::SameLine();
-        if (ImGui::RadioButton("Scale", m_GizmoOperation == ImGuizmo::SCALE)) {
+        if (ImGui::RadioButton("Scale (G)", m_GizmoOperation == ImGuizmo::SCALE)) {
             m_GizmoOperation = ImGuizmo::SCALE;
         }
         const ImVec2 viewportSize = ImGui::GetContentRegionAvail();
@@ -51,17 +264,25 @@ namespace Osiris {
                 ImVec2(static_cast<float>(viewportWidth), static_cast<float>(viewportHeight)));
             const bool viewportItemHovered = ImGui::IsItemHovered();
             const bool viewportClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+            const bool viewportMiddleClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Middle);
             const ImVec2 viewportMin = ImGui::GetItemRectMin();
             const ImVec2 viewportMax = ImGui::GetItemRectMax();
             ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
             ImGuizmo::SetRect(viewportMin.x, viewportMin.y,
                 viewportMax.x - viewportMin.x, viewportMax.y - viewportMin.y);
+            if (viewportItemHovered && viewportMiddleClicked) {
+                m_SceneInspector.ClearSelection();
+            }
+            bool colliderOverlayBlocksPicking = false;
             const entt::entity selectedHandle = m_SceneInspector.GetSelectedEntity();
             if (selectedHandle != entt::null) {
                 Entity selectedEntity(selectedHandle, &scene);
-                if (selectedEntity.HasComponent<TransformComponent>()) {
+                const glm::mat4 selectedWorld = scene.GetWorldTransform(selectedEntity);
+                const bool colliderEditing = selectedEntity.HasComponent<ColliderComponent>()
+                    && m_SceneInspector.IsColliderEditing();
+                if (selectedEntity.HasComponent<TransformComponent>() && !colliderEditing) {
                     auto& transform = selectedEntity.GetComponent<TransformComponent>();
-                    glm::mat4 model = scene.GetWorldTransform(selectedEntity);
+                    glm::mat4 model = selectedWorld;
                     const glm::mat4 view = camera.GetViewMatrix();
                     glm::mat4 projection = camera.GetProjectionMatrix();
                     // ImGuizmo applies the screen-space Y flip itself.
@@ -79,12 +300,18 @@ namespace Osiris {
                         transform.SetFromMatrix(localModel);
                     }
                 }
+                if (selectedEntity.HasComponent<ColliderComponent>()) {
+                    colliderOverlayBlocksPicking = DrawBoxColliderOverlay(
+                        scene, selectedEntity, selectedWorld, camera, engine.GetPhysics(),
+                        viewportMin, viewportMax);
+                }
             }
 
             // Checked after Manipulate() (not before) so IsOver()/IsUsing() reflect this frame's
             // gizmo state, not the previous frame's: otherwise grabbing a handle would also fire
             // a pick underneath it on the same click.
-            if (viewportItemHovered && viewportClicked && !ImGuizmo::IsOver() && !ImGuizmo::IsUsing()) {
+            if (viewportItemHovered && viewportClicked && !colliderOverlayBlocksPicking
+                && !ImGuizmo::IsOver() && !ImGuizmo::IsUsing()) {
                 const ImVec2 mousePos = ImGui::GetMousePos();
                 const float viewportPixelWidth = viewportMax.x - viewportMin.x;
                 const float viewportPixelHeight = viewportMax.y - viewportMin.y;
@@ -111,7 +338,7 @@ namespace Osiris {
                     float distance = 0.0f;
                     const glm::mat4 model = scene.GetWorldTransform(candidate);
                     const AABB& bounds = candidate.GetComponent<MeshComponent>().mesh.bounds;
-                    if (RayIntersectsAABB(rayOrigin, rayDir, bounds, model, distance)
+                    if (RayIntersectsAABB(rayOrigin, rayDir, bounds, model, distance, true)
                         && distance < closestDistance) {
                         closestDistance = distance;
                         closestEntity = candidate.GetHandle();
@@ -133,11 +360,18 @@ namespace Osiris {
                 m_SceneInspector.SetSelectedEntity(closestEntity);
             }
 
-            m_AssetBrowser.DrawViewportDropTarget(scene, camera, engine.GetRHI());
+            Entity droppedEntity = m_AssetBrowser.DrawViewportDropTarget(
+                scene, camera, engine.GetRHI());
+            if (droppedEntity.IsValid()) {
+                m_SceneInspector.SetSelectedEntity(droppedEntity.GetHandle());
+            }
         }
         ImGui::End();
 
-        m_AssetBrowser.Draw(scene, camera, engine.GetRHI());
+        Entity spawnedEntity = m_AssetBrowser.Draw(scene, camera, engine.GetRHI());
+        if (spawnedEntity.IsValid()) {
+            m_SceneInspector.SetSelectedEntity(spawnedEntity.GetHandle());
+        }
 
         ImGui::Begin("Stats");
         ImGui::Text("FPS: %.1f", deltaTime > 0.0f ? 1.0f / deltaTime : 0.0f);

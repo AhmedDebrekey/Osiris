@@ -69,7 +69,7 @@ The first playable target ends after the opening apartment sequence and one dark
 
 | Status | Asset | Type | Suggested path | Source | Notes |
 |---|---|---|---|---|---|
-| ⬜ Not started | Apartment floor plan and scale reference | Reference | `references/apartment/` |  | Choose country, building age, and room dimensions first |
+| 🟡 In development | Apartment floor plan and scale reference | Reference | `references/apartment/opening_apartment_floor_plan.png` | Project | Dimensioned first-scene layout exists; country and building age still need choosing |
 | ⬜ Not started | Apartment shell | Static model | `models/apartment/apartment_shell.gltf` |  | Bedroom, living room, kitchen, bathroom, hall, entrance |
 | ⬜ Not started | Apartment collision layout | Scene content | `scenes/apartment.json` | Project | Box colliders authored in the scene |
 | ⬜ Not started | Front door | Static model | `models/apartment/front_door.gltf` |  | Separate pivot for scripted opening |
@@ -124,8 +124,8 @@ The first playable target ends after the opening apartment sequence and one dark
 |---|---|---|---|---|---|
 | ⬜ Not started | P1 | Route from apartment to work | `models/town/work_route.gltf` |  | Small controlled route, not an open world |
 | ⬜ Not started | P1 | Road, pavement, and curb kit | `models/town/streets/` |  | Modular pieces |
-| ⬜ Not started | P1 | Residential and shop facades | `models/town/buildings/` |  | Background shells can be low detail |
-| ⬜ Not started | P1 | Streetlights | `models/town/streetlights.gltf` |  | Important recurring visual and audio source |
+| 🟡 In development | P1 | Residential and shop facades | `models/modular_exterior_parts/` | Fab | Individual 2.2-meter modules assembled into a two-story facade in `scenes/assembled_exterior.json`; needs an in-engine scale/material test and source license record |
+| 🟡 In development | P1 | Streetlights | `models/street_lamp_01_2k.gltf/` |  | Two lamps and matching lights placed in `scenes/assembled_exterior.json`; needs an in-engine test and source/license record |
 | ⬜ Not started | P1 | Parked and moving car set | `models/vehicles/cars/` |  | Include the final-impact vehicle later |
 | ⬜ Not started | P1 | Road signs and markings | `models/town/signs/` |  | Match chosen location |
 | ⬜ Not started | P1 | Benches, bins, fences, and utility boxes | `models/town/street_props/` |  | Reusable dressing set |

@@ -82,17 +82,59 @@ namespace Osiris {
         std::unordered_map<BoxMeshKey, Mesh, BoxMeshKeyHash> boxMeshCache;
         std::unordered_map<std::string, MaterialHandle> boxMaterialCache;
 
-        for (auto& entityJson : json["entities"]) {
+        // Spawn every model first so lightweight model-child override entries can resolve their
+        // generated entities regardless of the order EnTT wrote them into the scene file. Kept by
+        // index rather than re-found by name below: entity names aren't guaranteed unique (two
+        // "mesh" entries can share a name, e.g. two placed copies of the same prop), and a
+        // name-based re-lookup would silently collapse both onto whichever entity matched first.
+        std::vector<Entity> spawnedRoots(json["entities"].size());
+        for (std::size_t i = 0; i < json["entities"].size(); i++) {
+            const auto& entityJson = json["entities"][i];
+            if (!entityJson.contains("mesh")) continue;
+
+            const std::string name = entityJson.value("name", std::string());
+            const std::string meshPath = entityJson.value("mesh", std::string());
+            spawnedRoots[i] = scene.SpawnModel(name, meshPath, rhi);
+        }
+
+        // modelChild overrides and the parent-restoration pass below still resolve by name (they
+        // target glTF-generated child nodes and later plain entities, neither of which has a
+        // stable index into spawnedRoots), so maintain one name->Entity map instead of having
+        // Scene::FindEntityByName rescan the whole registry for every lookup.
+        std::unordered_map<std::string, Entity> entitiesByName;
+        for (Entity candidate : scene.GetAllEntities()) {
+            if (candidate.HasComponent<TagComponent>()) {
+                entitiesByName[candidate.GetComponent<TagComponent>().name] = candidate;
+            }
+        }
+
+        for (std::size_t i = 0; i < json["entities"].size(); i++) {
+            auto& entityJson = json["entities"][i];
             std::string name = entityJson.value("name", std::string());
             const TransformComponent savedTransform = ReadTransform(entityJson);
 
             Entity entity;
-            const bool isModelEntry = entityJson.contains("mesh");
+            const bool isModelChildEntry = entityJson.contains("modelChild");
+            const bool isModelEntry = entityJson.contains("mesh") || isModelChildEntry;
             if (entityJson.contains("mesh")) {
-                std::string meshPath = entityJson["mesh"];
-                entity = scene.SpawnModel(name, meshPath, rhi);
+                entity = spawnedRoots[i];
+            } else if (isModelChildEntry) {
+                if (!entityJson["modelChild"].is_string()) {
+                    OSIRIS_WARN("Model child override '{}' has an invalid model source", name);
+                    continue;
+                }
+
+                const std::string modelSource = entityJson["modelChild"].get<std::string>();
+                const auto found = entitiesByName.find(name);
+                entity = found != entitiesByName.end() ? found->second : Entity{};
+                if (!entity.IsValid() || !entity.HasComponent<ModelSourceComponent>()
+                    || entity.GetComponent<ModelSourceComponent>().relativePath != modelSource) {
+                    OSIRIS_WARN("Failed to resolve model child override '{}' from '{}'", name, modelSource);
+                    continue;
+                }
             } else {
                 entity = scene.CreateEntity(name);
+                entitiesByName[name] = entity;
             }
 
             if (!entity.IsValid()) continue;
@@ -149,6 +191,7 @@ namespace Osiris {
                 auto& j = entityJson["collider"];
                 auto& collider = entity.AddComponent<ColliderComponent>();
                 collider.halfExtents = ReadVec3(j, "halfExtents", collider.halfExtents);
+                collider.center = ReadVec3(j, "center", collider.center);
             }
 
             if (entityJson.contains("rigidBody")) {
@@ -222,8 +265,10 @@ namespace Osiris {
 
             const std::string childName = entityJson.value("name", std::string());
             const std::string parentName = entityJson.value("parent", std::string());
-            Entity child = scene.FindEntityByName(childName);
-            Entity parent = scene.FindEntityByName(parentName);
+            const auto childIt = entitiesByName.find(childName);
+            const auto parentIt = entitiesByName.find(parentName);
+            Entity child = childIt != entitiesByName.end() ? childIt->second : Entity{};
+            Entity parent = parentIt != entitiesByName.end() ? parentIt->second : Entity{};
             if (!child.IsValid() || !parent.IsValid()) {
                 OSIRIS_WARN("Failed to restore parent '{}' for entity '{}'", parentName, childName);
                 continue;
@@ -256,9 +301,10 @@ namespace Osiris {
                 // entry and vanish on the next Load.
                 if (parent.IsValid() && parent.HasComponent<ModelSourceComponent>()
                     && parent.GetComponent<ModelSourceComponent>().relativePath == relativePath) {
-                    continue;
+                    entityJson["modelChild"] = relativePath;
+                } else {
+                    entityJson["mesh"] = relativePath;
                 }
-                entityJson["mesh"] = relativePath;
             } else if (entity.HasComponent<BoxSourceComponent>()) {
                 const auto& boxSource = entity.GetComponent<BoxSourceComponent>();
                 entityJson["box"] = {
@@ -291,7 +337,11 @@ namespace Osiris {
             }
 
             if (entity.HasComponent<ColliderComponent>()) {
-                entityJson["collider"] = { {"halfExtents", WriteVec3(entity.GetComponent<ColliderComponent>().halfExtents)} };
+                const auto& collider = entity.GetComponent<ColliderComponent>();
+                entityJson["collider"] = {
+                    {"halfExtents", WriteVec3(collider.halfExtents)},
+                    {"center", WriteVec3(collider.center)},
+                };
             }
 
             if (entity.HasComponent<RigidBodyComponent>()) {

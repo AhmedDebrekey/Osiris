@@ -23,6 +23,8 @@ namespace Osiris {
 
         void PollEvents();
 
+        void SetRelativeMouseMode(bool enabled);
+
         void Shutdown();
 
         bool ShouldClose() const {return m_ShouldClose;}

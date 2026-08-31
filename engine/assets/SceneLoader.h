@@ -22,9 +22,11 @@ namespace Osiris {
         static void Load(const std::string& path, Scene& scene, IRHI* rhi, IAudio* audio);
 
         // Writes scene back out to a JSON file matching Load's format. Entities with a
-        // ModelSourceComponent (i.e. spawned via Scene::SpawnModel) are grouped back into a
-        // single "mesh" entry per spawn call. BoxSourceComponent preserves procedural box inputs.
-        // A raw MeshComponent without either source component still has no recoverable provenance.
+        // ModelSourceComponent (i.e. spawned via Scene::SpawnModel) keep one "mesh" entry per
+        // spawn call plus lightweight child override entries, allowing components and transforms
+        // edited on generated glTF nodes to persist. BoxSourceComponent preserves procedural box
+        // inputs. A raw MeshComponent without either source component still has no recoverable
+        // provenance.
         static bool Save(const std::string& path, Scene& scene);
     };
 

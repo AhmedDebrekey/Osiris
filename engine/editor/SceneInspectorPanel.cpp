@@ -11,6 +11,7 @@
 
 #include <imgui.h>
 #include <cstring>
+#include <limits>
 #include <SDL2/SDL_keyboard.h>
 
 namespace Osiris {
@@ -20,6 +21,36 @@ namespace Osiris {
         // (asset rows) and target (entity rows here) live in different files with no shared header.
         constexpr const char* kScriptAssetPayload = "OSIRIS_SCRIPT_ASSET";
         constexpr const char* kAudioAssetPayload = "OSIRIS_AUDIO_ASSET";
+
+        bool FitColliderToMeshHierarchy(Entity entity, ColliderComponent& collider) {
+            Scene* scene = entity.GetScene();
+            const glm::mat4 toEntityLocal = glm::inverse(scene->GetWorldTransform(entity));
+            glm::vec3 boundsMin(std::numeric_limits<float>::max());
+            glm::vec3 boundsMax(-std::numeric_limits<float>::max());
+            bool foundMesh = false;
+
+            std::vector<Entity> pending = {entity};
+            for (std::size_t i = 0; i < pending.size(); i++) {
+                Entity candidate = pending[i];
+                if (candidate.HasComponent<MeshComponent>()) {
+                    const AABB& bounds = candidate.GetComponent<MeshComponent>().mesh.bounds;
+                    const glm::mat4 meshToEntity = toEntityLocal * scene->GetWorldTransform(candidate);
+                    for (const glm::vec3& localCorner : bounds.GetWorldCorners(meshToEntity)) {
+                        boundsMin = glm::min(boundsMin, localCorner);
+                        boundsMax = glm::max(boundsMax, localCorner);
+                    }
+                    foundMesh = true;
+                }
+
+                std::vector<Entity> children = scene->GetChildren(candidate);
+                pending.insert(pending.end(), children.begin(), children.end());
+            }
+
+            if (!foundMesh) return false;
+            collider.center = (boundsMin + boundsMax) * 0.5f;
+            collider.halfExtents = glm::max((boundsMax - boundsMin) * 0.5f, glm::vec3(0.01f));
+            return true;
+        }
 
         // Draws drawFn's fields plus a "Remove" button, only if the entity has component T.
         // Returns true the frame "Remove" is clicked — caller does the actual removal, since
@@ -57,7 +88,7 @@ namespace Osiris {
         std::vector<Entity> entities = scene.GetAllEntities();
         ImGui::Text("Entities: %d", static_cast<int>(entities.size()));
         if (ImGui::Button("+ New Entity", ImVec2(-1.0f, 0.0f))) {
-            m_SelectedEntity = scene.CreateEntity("New Entity").GetHandle();
+            SetSelectedEntity(scene.CreateEntity("New Entity").GetHandle());
         }
 
         ImGui::BeginChild("EntityList", ImVec2(0.0f, 0.0f), true);
@@ -88,7 +119,7 @@ namespace Osiris {
         if (ImGui::BeginPopupContextWindow("HierarchyEmptyContext",
             ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems)) {
             if (ImGui::MenuItem("Add Entity")) {
-                m_SelectedEntity = scene.CreateEntity("New Entity").GetHandle();
+                SetSelectedEntity(scene.CreateEntity("New Entity").GetHandle());
             }
             ImGui::EndPopup();
         }
@@ -114,7 +145,7 @@ namespace Osiris {
         ImGui::PushID(static_cast<int>(static_cast<uint32_t>(entity.GetHandle())));
         const bool open = ImGui::TreeNodeEx("##Entity", flags, "%s", name.c_str());
         if (ImGui::IsItemClicked()) {
-            m_SelectedEntity = entity.GetHandle();
+            SetSelectedEntity(entity.GetHandle());
         }
 
         if (ImGui::BeginPopupContextItem("EntityContextMenu")) {
@@ -208,19 +239,9 @@ namespace Osiris {
         if (m_SelectedEntity != entt::null) {
             Entity entity(m_SelectedEntity, &scene);
             if (entity.IsValid() && entity.HasComponent<TagComponent>()) {
-                // Guarded by IsAnyItemActive so Del deletes the entity, not a character out of
-                // whatever text field (e.g. the Tag Name box) happens to be focused.
-                const bool deletePressed = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
-                    && !ImGui::IsAnyItemActive()
-                    && ImGui::IsKeyPressed(ImGuiKey_Delete);
-                if (deletePressed) {
-                    scene.DestroyEntity(entity, physics, audio, scripting);
-                    m_SelectedEntity = entt::null;
-                } else {
-                    DrawComponents(entity, physics, audio, scripting);
-                }
+                DrawComponents(entity, physics, audio, scripting);
             } else {
-                m_SelectedEntity = entt::null; // entity no longer exists
+                ClearSelection(); // entity no longer exists
             }
         } else {
             ImGui::TextDisabled("Select an entity in the Scene Hierarchy to inspect it.");
@@ -347,15 +368,29 @@ namespace Osiris {
             entity.RemoveComponent<SpotLightComponent>();
         }
 
-        bool colliderChanged = false;
+        bool colliderEditFinished = false;
         if (DrawComponentSection<ColliderComponent>(entity, "Collider", [&](ColliderComponent& collider) {
-            if (ImGui::DragFloat3("Half Extents", &collider.halfExtents.x, 0.05f, 0.01f, 100.0f)) {
-                colliderChanged = true;
+            bool editInViewport = m_ColliderEditEntity == entity.GetHandle();
+            if (ImGui::Checkbox("Edit in Viewport", &editInViewport)) {
+                m_ColliderEditEntity = editInViewport ? entity.GetHandle() : entt::null;
             }
-            ImGui::TextDisabled("Box only. Editing this rebuilds the live Jolt body (destroy +\nrecreate) if a Rigid Body is also present.");
+            if (ImGui::Button("Fit to Mesh Bounds", ImVec2(-1.0f, 0.0f))) {
+                colliderEditFinished = FitColliderToMeshHierarchy(entity, collider);
+            }
+            ImGui::DragFloat3("Center", &collider.center.x, 0.05f);
+            if (ImGui::IsItemDeactivatedAfterEdit()) colliderEditFinished = true;
+            ImGui::DragFloat3("Half Extents", &collider.halfExtents.x, 0.05f, 0.01f, 100.0f);
+            if (ImGui::IsItemDeactivatedAfterEdit()) colliderEditFinished = true;
+            ImGui::TextDisabled("Box only. Changes rebuild the live Jolt body when editing finishes\nif a Rigid Body is also present.");
         })) {
+            m_ColliderEditEntity = entt::null;
+            if (entity.HasComponent<RigidBodyComponent>()) {
+                auto& rigidBody = entity.GetComponent<RigidBodyComponent>();
+                if (rigidBody.bodyHandle.IsValid()) physics->DestroyBody(rigidBody.bodyHandle);
+                rigidBody.bodyHandle = PhysicsBodyHandle{};
+            }
             entity.RemoveComponent<ColliderComponent>();
-        } else if (colliderChanged) {
+        } else if (colliderEditFinished) {
             entity.GetScene()->RebuildPhysicsBody(entity, physics);
         }
 
@@ -444,10 +479,10 @@ namespace Osiris {
         }
 
         ImGui::Separator();
-        DrawAddComponentButton(entity);
+        DrawAddComponentButton(entity, physics);
     }
 
-    void SceneInspectorPanel::DrawAddComponentButton(Entity entity) {
+    void SceneInspectorPanel::DrawAddComponentButton(Entity entity, IPhysics* physics) {
         if (ImGui::Button("+ Add Component", ImVec2(-1, 0))) {
             ImGui::OpenPopup("AddComponentPopup");
         }
@@ -466,11 +501,22 @@ namespace Osiris {
             }
             if (!entity.HasComponent<ColliderComponent>()) {
                 anyOffered = true;
-                if (ImGui::MenuItem("Collider")) entity.AddComponent<ColliderComponent>();
+                if (ImGui::MenuItem("Collider")) {
+                    auto& collider = entity.AddComponent<ColliderComponent>();
+                    FitColliderToMeshHierarchy(entity, collider);
+                    if (entity.HasComponent<RigidBodyComponent>()) {
+                        entity.GetScene()->RebuildPhysicsBody(entity, physics);
+                    }
+                }
             }
             if (!entity.HasComponent<RigidBodyComponent>()) {
                 anyOffered = true;
-                if (ImGui::MenuItem("Rigid Body")) entity.AddComponent<RigidBodyComponent>();
+                if (ImGui::MenuItem("Rigid Body")) {
+                    entity.AddComponent<RigidBodyComponent>();
+                    if (entity.HasComponent<ColliderComponent>()) {
+                        entity.GetScene()->RebuildPhysicsBody(entity, physics);
+                    }
+                }
             }
             if (!entity.HasComponent<CameraComponent>()) {
                 anyOffered = true;

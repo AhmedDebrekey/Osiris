@@ -206,7 +206,9 @@ namespace Osiris {
         }
     }
 
-    void AssetBrowserPanel::DrawContentGrid(const AssetTreeNode& folder, Scene& scene, const Camera& camera, IRHI* rhi) {
+    Entity AssetBrowserPanel::DrawContentGrid(const AssetTreeNode& folder, Scene& scene,
+                                               const Camera& camera, IRHI* rhi) {
+        Entity spawnedEntity;
         if (ImGui::BeginPopupContextWindow("ContentGridContext",
             ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems)) {
             if (ImGui::MenuItem("New Folder")) OpenCreatePopup(PendingCreate::Folder, folder.relativePath);
@@ -240,7 +242,7 @@ namespace Osiris {
                         m_SelectedFolder = child.relativePath;
                     } else if (icon == EditorIcon::GltfModel) {
                         const AssetEntry model{std::filesystem::path(child.name).stem().string(), child.relativePath};
-                        SpawnModel(model, scene, camera, rhi);
+                        spawnedEntity = SpawnModel(model, scene, camera, rhi);
                     }
                 }
             }
@@ -280,9 +282,11 @@ namespace Osiris {
         if (!anyShown) {
             ImGui::TextDisabled(folder.children.empty() ? "Empty folder." : "No matches.");
         }
+        return spawnedEntity;
     }
 
-    void AssetBrowserPanel::Draw(Scene& scene, const Camera& camera, IRHI* rhi) {
+    Entity AssetBrowserPanel::Draw(Scene& scene, const Camera& camera, IRHI* rhi) {
+        Entity spawnedEntity;
         ImGui::Begin("Asset Browser");
 
         if (ImGui::Button("Refresh")) Refresh();
@@ -315,7 +319,7 @@ namespace Osiris {
 
         ImGui::BeginChild("AssetContentPane", ImVec2(0.0f, 0.0f), true);
         if (const AssetTreeNode* current = FindNode(m_SelectedFolder)) {
-            DrawContentGrid(*current, scene, camera, rhi);
+            spawnedEntity = DrawContentGrid(*current, scene, camera, rhi);
         }
         ImGui::EndChild();
 
@@ -323,26 +327,31 @@ namespace Osiris {
         DrawDeleteConfirmPopup();
 
         ImGui::End();
+        return spawnedEntity;
     }
 
-    void AssetBrowserPanel::DrawViewportDropTarget(Scene& scene, const Camera& camera, IRHI* rhi) const {
-        if (!ImGui::BeginDragDropTarget()) return;
+    Entity AssetBrowserPanel::DrawViewportDropTarget(
+        Scene& scene, const Camera& camera, IRHI* rhi) const {
+        Entity spawnedEntity;
+        if (!ImGui::BeginDragDropTarget()) return spawnedEntity;
 
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(kAssetEntryPayload)) {
             const std::string relativePath = static_cast<const char*>(payload->Data);
             const AssetEntry model{std::filesystem::path(relativePath).stem().string(), relativePath};
-            SpawnModel(model, scene, camera, rhi);
+            spawnedEntity = SpawnModel(model, scene, camera, rhi);
         }
 
         ImGui::EndDragDropTarget();
+        return spawnedEntity;
     }
 
-    void AssetBrowserPanel::SpawnModel(
+    Entity AssetBrowserPanel::SpawnModel(
         const AssetEntry& model, Scene& scene, const Camera& camera, IRHI* rhi) {
         const glm::vec3 spawnPosition = camera.GetPosition() + camera.GetFront() * kSpawnDistance;
         Entity root = scene.SpawnModel(model.name, model.relativePath, rhi);
         if (root.IsValid()) {
             root.GetComponent<TransformComponent>().position = spawnPosition;
         }
+        return root;
     }
 }

@@ -1,6 +1,8 @@
 #include "Engine.h"
 
 #include "AssetManager.h"
+#include "assets/MeshLoader.h"
+#include "assets/TextureLoader.h"
 #include "rhi_vulkan/VulkanRHI.h"
 #include "physics/jolt/JoltPhysics.h"
 #include "audio/openal/OpenALAudio.h"
@@ -97,6 +99,8 @@ namespace Osiris {
         m_Audio->Shutdown();
         m_Physics->Shutdown();
         m_RHI->ShutdownImGui();
+        MeshLoader::ClearCache(m_RHI.get());
+        TextureLoader::ClearCache(m_RHI.get());
         m_RHI->Shutdown();
         m_Window.Shutdown();
 
@@ -224,6 +228,8 @@ namespace Osiris {
         scene.ResetScriptInstances(m_Scripting.get());
         scene.PlayAutoPlayAudioSources(m_Audio.get());
         m_PlayCamera.ClearShake();
+        m_Window.SetRelativeMouseMode(true);
+        m_Input.ClearMouseDelta();
         m_IsPlaying = true;
     }
 
@@ -231,6 +237,8 @@ namespace Osiris {
         scene.RestorePlaySnapshot(m_Physics.get());
         scene.StopAllAudioSources(m_Audio.get());
         m_PlayCamera.ClearShake();
+        m_Window.SetRelativeMouseMode(false);
+        m_Input.ClearMouseDelta();
         m_IsPlaying = false;
     }
 

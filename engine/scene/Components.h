@@ -98,6 +98,7 @@ namespace Osiris {
     // Box shape only for now. Half-extents match BoxColliderDesc's units (meters).
     struct ColliderComponent {
         glm::vec3 halfExtents = {0.5f, 0.5f, 0.5f};
+        glm::vec3 center      = {0.0f, 0.0f, 0.0f};
     };
 
     // Paired with ColliderComponent; Scene::CreatePhysicsBodies fills in bodyHandle.

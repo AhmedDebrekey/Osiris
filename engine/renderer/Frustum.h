@@ -18,9 +18,11 @@ namespace Osiris {
 
     // Slab test in the AABB's own local space (ray inverse-transformed by model), so rotation
     // doesn't need a separate OBB test. On a hit, outDistance is the ray-origin-relative distance
-    // to the nearest intersection (clamped to 0 if the origin starts inside the box).
+    // to the nearest intersection. Editor picking can request the exit distance when the origin
+    // starts inside a box, preventing a room-sized bound from always winning at distance zero.
     bool RayIntersectsAABB(const glm::vec3& rayOrigin, const glm::vec3& rayDir,
-        const AABB& bounds, const glm::mat4& model, float& outDistance);
+        const AABB& bounds, const glm::mat4& model, float& outDistance,
+        bool useExitDistanceWhenInside = false);
 
 } // Osiris
 

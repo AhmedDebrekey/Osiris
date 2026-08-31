@@ -8,11 +8,15 @@
 
 #include <imgui.h>
 #include "ImGuizmo.h"
+#include <glm/vec3.hpp>
+#include <glm/mat4x4.hpp>
 
 namespace Osiris {
     class Scene;
     class Camera;
     class Engine;
+    class Entity;
+    class IPhysics;
 
     // Owns every ImGui/gizmo/editor-tooling concern (docked viewport, transform gizmos, asset
     // browser, scene inspector, debug panels), so games/testbed/main.cpp stays a plain game
@@ -32,12 +36,25 @@ namespace Osiris {
         int GetDebugCascade() const { return m_DebugCascade; }
 
     private:
+        bool DrawBoxColliderOverlay(Scene& scene, Entity entity, const glm::mat4& entityWorld,
+            const Camera& camera, IPhysics* physics, const ImVec2& viewportMin, const ImVec2& viewportMax);
+
         SceneInspectorPanel m_SceneInspector;
         AssetBrowserPanel m_AssetBrowser;
         RenderDebugPanel m_RenderDebugPanel;
         SceneFileMenu m_SceneFileMenu;
 
         ImGuizmo::OPERATION m_GizmoOperation = ImGuizmo::TRANSLATE;
+        entt::entity m_ColliderFaceDragEntity = entt::null;
+        int m_ColliderFaceDragAxis = -1;
+        float m_ColliderFaceDragSign = 1.0f;
+        ImVec2 m_ColliderFaceDragMouseStart{};
+        ImVec2 m_ColliderFaceDragAxisScreen{};
+        float m_ColliderFaceDragPixelsPerUnit = 1.0f;
+        glm::vec3 m_ColliderFaceDragStartCenter{0.0f};
+        glm::vec3 m_ColliderFaceDragStartHalfExtents{0.5f};
+        bool m_ColliderCenterWasUsing = false;
+        bool m_ColliderCenterChanged = false;
         bool m_DebugLightView = false;
         int m_DebugCascade = 0;
     };

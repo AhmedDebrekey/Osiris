@@ -388,15 +388,23 @@ namespace Osiris {
             physics->DestroyBody(rigidBody.bodyHandle);
         }
 
+        const glm::mat4 worldTransform = GetWorldTransform(entity);
+        const glm::vec3 worldScale = {
+            glm::length(glm::vec3(worldTransform[0])),
+            glm::length(glm::vec3(worldTransform[1])),
+            glm::length(glm::vec3(worldTransform[2])),
+        };
+
         RigidBodyDesc desc{};
-        desc.collider.halfExtents = collider.halfExtents;
+        desc.collider.halfExtents = glm::max(
+            glm::abs(collider.halfExtents * worldScale), glm::vec3(0.01f));
+        desc.collider.center      = collider.center * worldScale;
         desc.motionType          = rigidBody.motionType;
         desc.lockRotationToYAxis = rigidBody.lockRotationToYAxis;
         desc.isSensor            = rigidBody.isSensor;
         desc.userData            = static_cast<uint64_t>(entity.GetHandle());
         Entity parent = GetParent(entity);
         if (parent.IsValid()) {
-            const glm::mat4 worldTransform = GetWorldTransform(entity);
             desc.position      = glm::vec3(worldTransform[3]);
             desc.rotationEuler = TransformComponent::ExtractRotation(worldTransform, transform.rotation);
         } else {
@@ -658,7 +666,10 @@ namespace Osiris {
             AABB meshBounds = view.get<MeshComponent>(entity).mesh.bounds;
             const glm::mat4 model = GetWorldTransform(Entity(entity, this));
             float hitDistance = 0.0f;
-            bool res = RayIntersectsAABB(rayOrigin, rayDirection, meshBounds, model, hitDistance);
+            // useExitDistanceWhenInside=true: the player standing inside a large mesh's bounds
+            // (a room, a doorway) shouldn't make it win over a genuinely nearer interactable, the
+            // same reasoning as Editor::Draw's viewport-picking call to this same function.
+            bool res = RayIntersectsAABB(rayOrigin, rayDirection, meshBounds, model, hitDistance, true);
             if (res && hitDistance < maxDistance) {
                 Entity candidate = Entity(entity, this);
                 while (candidate.IsValid()) {

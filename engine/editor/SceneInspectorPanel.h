@@ -21,22 +21,32 @@ namespace Osiris {
         void DrawProperties(Scene& scene, IPhysics* physics, IAudio* audio, IScripting* scripting);
 
         entt::entity GetSelectedEntity() const { return m_SelectedEntity; }
-        void SetSelectedEntity(entt::entity entity) { m_SelectedEntity = entity; }
+        void SetSelectedEntity(entt::entity entity) {
+            if (m_SelectedEntity != entity) m_ColliderEditEntity = entt::null;
+            m_SelectedEntity = entity;
+        }
+        bool IsColliderEditing() const {
+            return m_SelectedEntity != entt::null && m_ColliderEditEntity == m_SelectedEntity;
+        }
 
         // Call after Scene::Clear (or any other bulk teardown) — the previously-selected handle
         // may now be stale or, worse, silently point at an unrelated recycled entity.
-        void ClearSelection() { m_SelectedEntity = entt::null; }
+        void ClearSelection() {
+            m_SelectedEntity = entt::null;
+            m_ColliderEditEntity = entt::null;
+        }
 
     private:
         void DrawEntityNode(Scene& scene, Entity entity, entt::entity& pendingDelete, IAudio* audio, IScripting* scripting);
         void DrawComponents(Entity entity, IPhysics* physics, IAudio* audio, IScripting* scripting);
-        void DrawAddComponentButton(Entity entity);
+        void DrawAddComponentButton(Entity entity, IPhysics* physics);
 
         // Shared by DrawEntityNode's per-row drop target and DrawProperties' whole-panel one:
         // must be called from inside an already-open BeginDragDropTarget()/EndDragDropTarget() pair.
         static void HandleAssetDrop(Entity entity, IAudio* audio, IScripting* scripting);
 
         entt::entity m_SelectedEntity = entt::null;
+        entt::entity m_ColliderEditEntity = entt::null;
     };
 }
 

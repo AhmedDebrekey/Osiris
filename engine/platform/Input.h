@@ -18,6 +18,7 @@ namespace Osiris {
         glm::vec2 GetMousePosition() const;
 
         bool IsMouseButtonHeld(int button) const;
+        void ClearMouseDelta() { m_MouseDelta = {0.0f, 0.0f}; }
 
     private:
         uint8_t        m_CurrentKeys[SDL_NUM_SCANCODES]  = {};

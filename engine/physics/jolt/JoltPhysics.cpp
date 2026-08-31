@@ -252,15 +252,23 @@ namespace Osiris {
         }
 
         JPH::Vec3 halfExtents(desc.collider.halfExtents.x, desc.collider.halfExtents.y, desc.collider.halfExtents.z);
+        JPH::Vec3 colliderCenter(desc.collider.center.x, desc.collider.center.y, desc.collider.center.z);
         JPH::RVec3 position(desc.position.x, desc.position.y, desc.position.z);
         JPH::Quat rotation = ToJoltQuat(desc.rotationEuler);
 
         // Mass only matters for Dynamic bodies, but setting it unconditionally is harmless
         // (static/kinematic bodies never use mass) and keeps this branch-free.
-        JPH::BoxShape* boxShape = new JPH::BoxShape(halfExtents);
+        const float convexRadius = std::min(
+            JPH::cDefaultConvexRadius, halfExtents.ReduceMin() * 0.5f);
+        JPH::Ref<JPH::BoxShape> boxShape = new JPH::BoxShape(halfExtents, convexRadius);
         boxShape->SetDensity(kDynamicBodyDensity);
+        JPH::RefConst<JPH::Shape> bodyShape = boxShape.GetPtr();
+        if (!colliderCenter.IsNearZero()) {
+            bodyShape = new JPH::RotatedTranslatedShape(
+                colliderCenter, JPH::Quat::sIdentity(), boxShape.GetPtr());
+        }
 
-        JPH::BodyCreationSettings settings(boxShape, position, rotation, motionType, layer);
+        JPH::BodyCreationSettings settings(bodyShape, position, rotation, motionType, layer);
         settings.mIsSensor = desc.isSensor;
         if (desc.lockRotationToYAxis) {
             settings.mAllowedDOFs = JPH::EAllowedDOFs::TranslationX

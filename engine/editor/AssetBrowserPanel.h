@@ -9,6 +9,7 @@
 
 namespace Osiris {
     class Camera;
+    class Entity;
     class IRHI;
     class Scene;
 
@@ -19,13 +20,13 @@ namespace Osiris {
     class AssetBrowserPanel {
     public:
         AssetBrowserPanel();
-        void Draw(Scene& scene, const Camera& camera, IRHI* rhi);
-        void DrawViewportDropTarget(Scene& scene, const Camera& camera, IRHI* rhi) const;
+        Entity Draw(Scene& scene, const Camera& camera, IRHI* rhi);
+        Entity DrawViewportDropTarget(Scene& scene, const Camera& camera, IRHI* rhi) const;
 
     private:
         enum class PendingCreate { None, Folder, Script };
 
-        static void SpawnModel(const AssetEntry& model, Scene& scene, const Camera& camera, IRHI* rhi);
+        static Entity SpawnModel(const AssetEntry& model, Scene& scene, const Camera& camera, IRHI* rhi);
         static EditorIcon IconForFile(const std::string& fileName);
         static const char* PayloadForFile(const std::string& fileName);
 
@@ -33,7 +34,7 @@ namespace Osiris {
         const AssetTreeNode* FindNode(const std::string& relativePath) const;
 
         void DrawFolderTree(const AssetTreeNode& node);
-        void DrawContentGrid(const AssetTreeNode& folder, Scene& scene, const Camera& camera, IRHI* rhi);
+        Entity DrawContentGrid(const AssetTreeNode& folder, Scene& scene, const Camera& camera, IRHI* rhi);
         void DrawCreatePopup();
         void DrawDeleteConfirmPopup();
         void OpenCreatePopup(PendingCreate kind, const std::string& parentFolder);

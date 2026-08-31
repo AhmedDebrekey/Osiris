@@ -25,6 +25,7 @@ namespace Osiris {
     // use case (sphere/capsule props) actually needs them.
     struct BoxColliderDesc {
         glm::vec3 halfExtents = {0.5f, 0.5f, 0.5f};
+        glm::vec3 center      = {0.0f, 0.0f, 0.0f};
     };
 
     struct RigidBodyDesc {

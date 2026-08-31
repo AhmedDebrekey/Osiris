@@ -1,6 +1,6 @@
 {
   "name": "Osiris Horror",
-  "scene": "scenes/horror.json",
+  "scene": "scenes/apartment.json",
   "environment": "hdr/EveningRoad.hdr",
   "autoPlay": false,
   "maxFps": 120,

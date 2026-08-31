@@ -70,6 +70,13 @@ namespace Osiris {
         }
     }
 
+    void Window::SetRelativeMouseMode(bool enabled) {
+        if (SDL_SetRelativeMouseMode(enabled ? SDL_TRUE : SDL_FALSE) != 0) {
+            OSIRIS_ERROR("Failed to {} relative mouse mode: {}",
+                enabled ? "enable" : "disable", SDL_GetError());
+        }
+    }
+
     void Window::Shutdown() {
         if (m_Window) {
             SDL_DestroyWindow(m_Window);

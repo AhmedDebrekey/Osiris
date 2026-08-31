@@ -140,9 +140,10 @@ namespace Osiris {
             "enabled",     &SpotLightComponent::enabled,
             "castsShadow", &SpotLightComponent::castsShadow);
 
-        // Editing halfExtents alone doesn't resize the live Jolt body — use entity:SetColliderHalfExtents.
+        // Editing these fields alone doesn't rebuild the live Jolt body. Use the Entity setters.
         m_Lua.new_usertype<ColliderComponent>("Collider",
-            "halfExtents", &ColliderComponent::halfExtents);
+            "halfExtents", &ColliderComponent::halfExtents,
+            "center",      &ColliderComponent::center);
 
         m_Lua.new_usertype<InteractableComponent>("Interactable",
             "prompt",      &InteractableComponent::prompt,
@@ -171,7 +172,8 @@ namespace Osiris {
 
         m_Lua.new_usertype<BoxColliderDesc>("BoxColliderDesc",
             sol::constructors<BoxColliderDesc()>(),
-            "halfExtents", &BoxColliderDesc::halfExtents);
+            "halfExtents", &BoxColliderDesc::halfExtents,
+            "center",      &BoxColliderDesc::center);
 
         m_Lua.new_usertype<RigidBodyDesc>("RigidBodyDesc",
             sol::constructors<RigidBodyDesc()>(),
@@ -287,6 +289,11 @@ namespace Osiris {
             "SetColliderHalfExtents", [this](Entity& entity, glm::vec3 halfExtents) {
                 if (!entity.HasComponent<ColliderComponent>()) return;
                 entity.GetComponent<ColliderComponent>().halfExtents = halfExtents;
+                entity.GetScene()->RebuildPhysicsBody(entity, m_Physics);
+            },
+            "SetColliderCenter", [this](Entity& entity, glm::vec3 center) {
+                if (!entity.HasComponent<ColliderComponent>()) return;
+                entity.GetComponent<ColliderComponent>().center = center;
                 entity.GetScene()->RebuildPhysicsBody(entity, m_Physics);
             },
             "SetRigidBodyMotionType", [this](Entity& entity, BodyMotionType motionType) {

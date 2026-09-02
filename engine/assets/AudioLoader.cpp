@@ -1,5 +1,6 @@
 #include "AudioLoader.h"
 
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 
@@ -35,9 +36,13 @@ namespace Osiris {
             return {};
         }
 
+        file.seekg(0, std::ios::end);
+        const std::streamoff fileSize = file.tellg();
+        file.seekg(0, std::ios::beg);
+
         char riffId[4], waveId[4];
         ReadFourCC(file, riffId);
-        ReadU32LE(file); // RIFF chunk size — unused, we trust individual chunk sizes instead
+        ReadU32LE(file); // RIFF chunk size is unused, individual chunk sizes drive parsing.
         ReadFourCC(file, waveId);
         if (!file.good() || std::memcmp(riffId, "RIFF", 4) != 0 || std::memcmp(waveId, "WAVE", 4) != 0) {
             OSIRIS_ERROR("AudioLoader: not a RIFF/WAVE file: {}", path);
@@ -65,13 +70,27 @@ namespace Osiris {
                 }
                 haveFmt = true;
 
-                // The fmt chunk can carry extra bytes past the 16 we just read (WAVE_FORMAT_EXTENSIBLE) — skip them.
+                // The fmt chunk can carry extra bytes past the 16 we just read.
                 if (chunkSize > 16) file.seekg(chunkSize - 16, std::ios::cur);
             } else if (std::memcmp(chunkId, "data", 4) == 0) {
-                result.pcmData.resize(chunkSize);
-                file.read(reinterpret_cast<char*>(result.pcmData.data()), chunkSize);
+                const std::streamoff dataStart = file.tellg();
+                if (dataStart < 0 || dataStart > fileSize) {
+                    OSIRIS_ERROR("AudioLoader: invalid WAV data offset: {}", path);
+                    return {};
+                }
+
+                const uint64_t availableBytes = static_cast<uint64_t>(fileSize - dataStart);
+                const uint64_t dataBytes = std::min<uint64_t>(chunkSize, availableBytes);
+                if (dataBytes != chunkSize) {
+                    OSIRIS_WARN("AudioLoader: WAV data size {} exceeds the {} bytes available, clamping: {}",
+                        chunkSize, availableBytes, path);
+                }
+
+                result.pcmData.resize(static_cast<size_t>(dataBytes));
+                file.read(reinterpret_cast<char*>(result.pcmData.data()),
+                    static_cast<std::streamsize>(dataBytes));
             } else {
-                file.seekg(chunkSize, std::ios::cur); // unknown chunk (LIST, fact, ...) — skip
+                file.seekg(chunkSize, std::ios::cur); // Skip unknown chunks such as LIST or fact.
             }
 
             if (chunkSize % 2 != 0) file.seekg(1, std::ios::cur); // chunks are word-aligned

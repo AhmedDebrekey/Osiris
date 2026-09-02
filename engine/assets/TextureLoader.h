@@ -21,7 +21,8 @@ namespace Osiris {
 
     class TextureLoader {
     public:
-        static TextureHandle LoadFromFile(const std::string& path, IRHI* rhi);
+        static TextureHandle LoadFromFile(const std::string& path, IRHI* rhi,
+            TextureFormat format = TextureFormat::RGBA8_SRGB);
         static void ClearCache(IRHI* rhi);
         static HDRImageData LoadHDR(const std::string& path);
     };

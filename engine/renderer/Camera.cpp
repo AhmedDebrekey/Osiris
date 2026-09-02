@@ -146,14 +146,19 @@ namespace Osiris
 
         m_Front = glm::normalize(front);
         m_WorldUp = glm::normalize(up);
-        // Avoid the near-parallel cross product that would make glm::lookAt produce NaN.
-        if (glm::abs(glm::dot(m_Front, m_WorldUp)) > 0.9f) {
-            m_WorldUp = glm::abs(m_Front.y) < 0.9f
-                ? glm::vec3(0.0f, 1.0f, 0.0f)
-                : glm::vec3(0.0f, 0.0f, 1.0f);
+
+        glm::vec3 right = glm::cross(m_Front, m_WorldUp);
+        // The FPS controller clamps pitch to 89 degrees, where this cross product is still
+        // stable. Switching reference axes earlier rolls the view while the player looks up or
+        // down, so use a fallback only when the requested basis is effectively degenerate.
+        if (glm::dot(right, right) <= 0.000001f) {
+            const glm::vec3 fallbackUp = glm::abs(m_Front.z) < 0.9f
+                ? glm::vec3(0.0f, 0.0f, 1.0f)
+                : glm::vec3(1.0f, 0.0f, 0.0f);
+            right = glm::cross(m_Front, fallbackUp);
         }
 
-        const glm::vec3 right = glm::normalize(glm::cross(m_Front, m_WorldUp));
+        right = glm::normalize(right);
         m_Up = glm::normalize(glm::cross(right, m_Front));
         m_Yaw = glm::degrees(std::atan2(m_Front.z, m_Front.x));
         m_Pitch = glm::degrees(std::asin(glm::clamp(m_Front.y, -1.0f, 1.0f)));

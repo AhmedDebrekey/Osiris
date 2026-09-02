@@ -47,11 +47,14 @@ void main() {
     vec4 worldPos = push.model * vec4(inPosition, 1.0);
     gl_Position   = camera.projection * camera.view * worldPos;
 
-    mat3 normalMatrix = mat3(push.model);
+    mat3 modelMatrix  = mat3(push.model);
+    mat3 normalMatrix = transpose(inverse(modelMatrix));
 
     vec3 N = normalize(normalMatrix * inNormal);
-    vec3 T = normalize(normalMatrix * inTangent.xyz);
-    vec3 B = cross(N, T) * inTangent.w;
+    vec3 T = modelMatrix * inTangent.xyz;
+    T = normalize(T - N * dot(N, T));
+    float handedness = inTangent.w * sign(determinant(modelMatrix));
+    vec3 B = normalize(cross(N, T)) * handedness;
 
     outNormal       = N;
     outTangent      = T;

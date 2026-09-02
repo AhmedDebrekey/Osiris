@@ -186,13 +186,16 @@ namespace Osiris {
 
         void UpdateCascades(const glm::mat4& view, const glm::mat4& projection);
 
-        TextureHandle CreateSolidColorTexture(uint32_t r, uint32_t g, uint32_t b, uint32_t a);
+        TextureHandle CreateSolidColorTexture(uint32_t r, uint32_t g, uint32_t b, uint32_t a,
+                                              TextureFormat format);
 
         void WriteToDescriptorSet(TextureHandle textureHandle, uint32_t dstBinding, VkDescriptorSet &descriptorSet);
 
         VkShaderModule LoadShader(const std::string& shaderPath);
 
         void TransitionImageLayout(VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout);
+        static void GenerateMipmaps(VkCommandBuffer cmd, VkImage image,
+                                    uint32_t width, uint32_t height, uint32_t mipLevels);
         VkCommandBuffer BeginOneTimeCommands();
         void EndOneTimeCommands(VkCommandBuffer cmd);
 
@@ -222,6 +225,8 @@ namespace Osiris {
         std::vector<VkSemaphore> m_RenderFinishedSemaphores;
 
         VulkanDevice       m_Device;
+        bool               m_SamplerAnisotropyEnabled = false;
+        float              m_MaxSamplerAnisotropy = 1.0f;
         VulkanSwapChain    m_SwapChain;
         VulkanImage        m_DepthImage;
         VulkanImage        m_ViewportColorImage;
@@ -291,7 +296,7 @@ namespace Osiris {
 
         std::array<uint64_t, static_cast<size_t>(EditorIcon::Count)> m_EditorIconTextureIDs = {};
 
-        static constexpr uint32_t SPOT_SHADOW_MAP_SIZE = 1024;
+        static constexpr uint32_t SPOT_SHADOW_MAP_SIZE = 2048;
         VulkanImage m_SpotShadowMaps[MAX_SPOT_SHADOW_CASTERS];
         std::array<uint64_t, MAX_SPOT_SHADOW_CASTERS> m_SpotShadowTextureIDs = {};
         glm::mat4   m_SpotShadowMatrices[MAX_SPOT_SHADOW_CASTERS];

@@ -70,6 +70,17 @@ namespace Osiris {
         return static_cast<uint32_t>(slots.size() - 1);
     }
 
+    VkFormat GetVulkanTextureFormat(TextureFormat format) {
+        switch (format) {
+        case TextureFormat::RGBA8_UNORM:
+            return VK_FORMAT_R8G8B8A8_UNORM;
+        case TextureFormat::RGBA8_SRGB:
+            return VK_FORMAT_R8G8B8A8_SRGB;
+        default:
+            return VK_FORMAT_UNDEFINED;
+        }
+    }
+
     void VulkanRHI::Configure(const VulkanContextDesc &desc) {
         m_Desc = desc;
     }
@@ -197,10 +208,7 @@ namespace Osiris {
             .depthTest          = true,
             .depthWrite         = true,
             .depthBias          = true,
-            .depthBiasConstant = 1.0f,
-            .depthBiasClamp    = 0.0f,
-            .depthBiasSlope    = 1.5f,
-            .cullMode           = VK_CULL_MODE_FRONT_BIT,
+            .cullMode           = VK_CULL_MODE_NONE,
             .frontFace          = VK_FRONT_FACE_CLOCKWISE,
             .setLayoutCount     = 1,
             .pSetLayouts        = shadowLayouts,
@@ -361,11 +369,11 @@ namespace Osiris {
 
         m_ColorBufferRG = RGTexture{0};
         m_DepthBufferRG = RGTexture{1};
-        m_DefaultAlbedo     = CreateSolidColorTexture(255, 255, 255, 255);
-        m_DefaultNormal     = CreateSolidColorTexture(128, 128, 255, 255);
-        m_DefaultMetallic   = CreateSolidColorTexture(000, 000, 000, 255);
-        m_DefaultRoughness  = CreateSolidColorTexture(128, 128, 128, 255);
-        m_DefaultAO         = CreateSolidColorTexture(255, 255, 255, 255);
+        m_DefaultAlbedo     = CreateSolidColorTexture(255, 255, 255, 255, TextureFormat::RGBA8_SRGB);
+        m_DefaultNormal     = CreateSolidColorTexture(128, 128, 255, 255, TextureFormat::RGBA8_UNORM);
+        m_DefaultMetallic   = CreateSolidColorTexture(000, 000, 000, 255, TextureFormat::RGBA8_UNORM);
+        m_DefaultRoughness  = CreateSolidColorTexture(128, 128, 128, 255, TextureFormat::RGBA8_UNORM);
+        m_DefaultAO         = CreateSolidColorTexture(255, 255, 255, 255, TextureFormat::RGBA8_UNORM);
 
         return true;
     }
@@ -788,18 +796,123 @@ namespace Osiris {
         EndOneTimeCommands(cmd);
     }
 
-    TextureHandle VulkanRHI::CreateTexture(const TextureDesc &desc) {
-        // Create image
-        VkImageCreateInfo imageCreateInfo = {
+    void VulkanRHI::GenerateMipmaps(VkCommandBuffer cmd, VkImage image,
+                                    uint32_t width, uint32_t height, uint32_t mipLevels) {
+        VkImageMemoryBarrier barrier = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = image,
+            .subresourceRange = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+        };
+
+        int32_t mipWidth = static_cast<int32_t>(width);
+        int32_t mipHeight = static_cast<int32_t>(height);
+        for (uint32_t mip = 1; mip < mipLevels; ++mip) {
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            barrier.subresourceRange.baseMipLevel = mip - 1;
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+            const int32_t nextWidth = std::max(mipWidth / 2, 1);
+            const int32_t nextHeight = std::max(mipHeight / 2, 1);
+            const VkImageBlit blit = {
+                .srcSubresource = {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .mipLevel = mip - 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+                },
+                .srcOffsets = {{0, 0, 0}, {mipWidth, mipHeight, 1}},
+                .dstSubresource = {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .mipLevel = mip,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+                },
+                .dstOffsets = {{0, 0, 0}, {nextWidth, nextHeight, 1}},
+            };
+            vkCmdBlitImage(cmd,
+                image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                1, &blit, VK_FILTER_LINEAR);
+
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+            mipWidth = nextWidth;
+            mipHeight = nextHeight;
+        }
+
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+        barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        barrier.subresourceRange.baseMipLevel = mipLevels - 1;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &barrier);
+    }
+
+    TextureHandle VulkanRHI::CreateTexture(const TextureDesc& desc) {
+        if (!desc.pixels || desc.width == 0 || desc.height == 0 || desc.dataSize == 0) {
+            OSIRIS_ERROR("CreateTexture received invalid pixel data or dimensions");
+            return {};
+        }
+
+        const VkFormat format = GetVulkanTextureFormat(desc.format);
+        if (format == VK_FORMAT_UNDEFINED) {
+            OSIRIS_ERROR("CreateTexture does not support texture format {}",
+                static_cast<uint32_t>(desc.format));
+            return {};
+        }
+
+        uint32_t maxMipLevels = 1;
+        for (uint32_t dimension = std::max(desc.width, desc.height); dimension > 1; dimension /= 2) {
+            ++maxMipLevels;
+        }
+        uint32_t mipLevels = std::clamp(desc.mipLevels, 1u, maxMipLevels);
+
+        if (mipLevels > 1) {
+            VkFormatProperties formatProperties;
+            vkGetPhysicalDeviceFormatProperties(m_Device.physicalDevice, format, &formatProperties);
+            constexpr VkFormatFeatureFlags requiredFeatures =
+                VK_FORMAT_FEATURE_BLIT_SRC_BIT |
+                VK_FORMAT_FEATURE_BLIT_DST_BIT |
+                VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+            if ((formatProperties.optimalTilingFeatures & requiredFeatures) != requiredFeatures) {
+                OSIRIS_WARN("Texture format {} cannot generate filtered mipmaps on this GPU",
+                    static_cast<uint32_t>(desc.format));
+                mipLevels = 1;
+            }
+        }
+
+        const VkImageCreateInfo imageCreateInfo = {
             .sType       = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
             .imageType   = VK_IMAGE_TYPE_2D,
-            .format      = VK_FORMAT_R8G8B8A8_UNORM,
+            .format      = format,
             .extent      = {desc.width, desc.height, 1},
-            .mipLevels   = 1,
+            .mipLevels   = mipLevels,
             .arrayLayers = 1,
             .samples     = VK_SAMPLE_COUNT_1_BIT,
             .tiling      = VK_IMAGE_TILING_OPTIMAL,
-            .usage       = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            .usage       = VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                           VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                           VK_IMAGE_USAGE_SAMPLED_BIT,
         };
 
         const VmaAllocationCreateInfo allocationCreateInfo = {
@@ -807,27 +920,40 @@ namespace Osiris {
         };
 
         VulkanImage textureImage;
-        textureImage.format = VK_FORMAT_R8G8B8A8_UNORM;
+        textureImage.format = format;
         VK_CHECK(vmaCreateImage(m_Allocator, &imageCreateInfo, &allocationCreateInfo,
             &textureImage.image, &textureImage.allocation, nullptr));
 
-        // Transition to transfer destination
-        TransitionImageLayout(textureImage.image,
-            VK_IMAGE_LAYOUT_UNDEFINED,
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-
-        // Upload via staging buffer
-        BufferDesc stagingDesc = {
+        const BufferDesc stagingDesc = {
             .size       = desc.dataSize,
             .usage      = BufferUsage::Transfer,
             .cpuVisible = true,
         };
-        BufferHandle stagingHandle = CreateBuffer(stagingDesc);
+        const BufferHandle stagingHandle = CreateBuffer(stagingDesc);
         memcpy(m_Buffers[stagingHandle.id].allocationInfo.pMappedData, desc.pixels, desc.dataSize);
 
         VkCommandBuffer cmd = BeginOneTimeCommands();
+        const VkImageMemoryBarrier toTransferDestination = {
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_NONE,
+            .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = textureImage.image,
+            .subresourceRange = {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = mipLevels,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+        };
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            0, 0, nullptr, 0, nullptr, 1, &toTransferDestination);
 
-        VkBufferImageCopy copyRegion = {
+        const VkBufferImageCopy copyRegion = {
             .bufferOffset      = 0,
             .bufferRowLength   = 0,
             .bufferImageHeight = 0,
@@ -840,40 +966,33 @@ namespace Osiris {
             .imageOffset = {0, 0, 0},
             .imageExtent = {desc.width, desc.height, 1},
         };
-
         vkCmdCopyBufferToImage(cmd,
             m_Buffers[stagingHandle.id].buffer,
             textureImage.image,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             1, &copyRegion);
 
+        GenerateMipmaps(cmd, textureImage.image, desc.width, desc.height, mipLevels);
         EndOneTimeCommands(cmd);
-
         DestroyBuffer(stagingHandle);
 
-        // Transition to shader readable
-        TransitionImageLayout(textureImage.image,
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-        // Create image view
-        VkImageViewCreateInfo viewCreateInfo = {
+        const VkImageViewCreateInfo viewCreateInfo = {
             .sType    = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image    = textureImage.image,
             .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format   = VK_FORMAT_R8G8B8A8_UNORM,
+            .format   = format,
             .subresourceRange = {
                 .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
                 .baseMipLevel   = 0,
-                .levelCount     = 1,
+                .levelCount     = mipLevels,
                 .baseArrayLayer = 0,
                 .layerCount     = 1,
             },
         };
-        VK_CHECK(vkCreateImageView(m_Device.logicalDevice, &viewCreateInfo, nullptr, &textureImage.imageView));
+        VK_CHECK(vkCreateImageView(m_Device.logicalDevice, &viewCreateInfo, nullptr,
+            &textureImage.imageView));
 
-        // Create sampler
-        VkSamplerCreateInfo samplerInfo = {
+        const VkSamplerCreateInfo samplerInfo = {
             .sType        = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
             .magFilter    = VK_FILTER_LINEAR,
             .minFilter    = VK_FILTER_LINEAR,
@@ -881,18 +1000,20 @@ namespace Osiris {
             .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
             .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
             .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
-            .anisotropyEnable = VK_FALSE,
-            .maxAnisotropy    = 1.0f,
+            .anisotropyEnable = m_SamplerAnisotropyEnabled ? VK_TRUE : VK_FALSE,
+            .maxAnisotropy    = m_MaxSamplerAnisotropy,
             .compareEnable    = VK_FALSE,
+            .minLod           = 0.0f,
+            .maxLod           = static_cast<float>(mipLevels - 1),
             .borderColor      = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
             .unnormalizedCoordinates = VK_FALSE,
         };
-        VK_CHECK(vkCreateSampler(m_Device.logicalDevice, &samplerInfo, nullptr, &textureImage.sampler));
+        VK_CHECK(vkCreateSampler(m_Device.logicalDevice, &samplerInfo, nullptr,
+            &textureImage.sampler));
 
-        // Store in slot map
-        uint32_t index = AllocateSlot(m_Textures, textureImage,
-            [](const VulkanImage& t) { return t.image == VK_NULL_HANDLE; });
-        return TextureHandle{ index };
+        const uint32_t index = AllocateSlot(m_Textures, textureImage,
+            [](const VulkanImage& texture) { return texture.image == VK_NULL_HANDLE; });
+        return TextureHandle{index};
     }
 
     ShaderHandle VulkanRHI::CreateShader(const ShaderDesc& desc) {
@@ -1792,6 +1913,8 @@ namespace Osiris {
 
     vkCmdBeginRendering(cmd, &renderingInfo);
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_ShadowPipeline);
+    vkCmdSetDepthBias(cmd, m_ShadowSettings.depthBiasConstant, 0.0f,
+        m_ShadowSettings.depthBiasSlope);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
         m_ShadowPipelineLayout, 0, 1, &m_DescriptorSet, 0, nullptr);
 
@@ -1909,6 +2032,8 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
 
         vkCmdBeginRendering(cmd, &renderingInfo);
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_ShadowPipeline);
+        vkCmdSetDepthBias(cmd, m_ShadowSettings.spotDepthBiasConstant, 0.0f,
+            m_ShadowSettings.spotDepthBiasSlope);
 
         VkViewport viewport = {
             .x = 0, .y = 0,
@@ -2035,7 +2160,22 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
             .pQueuePriorities = &queuePriority,
         };
 
+        VkPhysicalDeviceFeatures availablePhysicalDeviceFeatures = {};
+        vkGetPhysicalDeviceFeatures(m_Device.physicalDevice, &availablePhysicalDeviceFeatures);
+
+        VkPhysicalDeviceProperties physicalDeviceProperties;
+        vkGetPhysicalDeviceProperties(m_Device.physicalDevice, &physicalDeviceProperties);
+
+        m_SamplerAnisotropyEnabled = availablePhysicalDeviceFeatures.samplerAnisotropy == VK_TRUE;
+        m_MaxSamplerAnisotropy = m_SamplerAnisotropyEnabled
+                               ? std::min(8.0f, physicalDeviceProperties.limits.maxSamplerAnisotropy)
+                               : 1.0f;
+        if (!m_SamplerAnisotropyEnabled) {
+            OSIRIS_WARN("Sampler anisotropy is unavailable on the selected GPU");
+        }
+
         VkPhysicalDeviceFeatures physicalDeviceFeatures = {};
+        physicalDeviceFeatures.samplerAnisotropy = m_SamplerAnisotropyEnabled ? VK_TRUE : VK_FALSE;
         const char* deviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
         VkPhysicalDeviceVulkan13Features features13 = {
             .sType          = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
@@ -4071,7 +4211,8 @@ void VulkanRHI::UpdateCascades(const glm::mat4& view, const glm::mat4& projectio
         UploadDynamicBuffer(m_SpotLightUniformBuffer, &buffer, sizeof(SpotLightBufferFull));
     }
 
-TextureHandle VulkanRHI::CreateSolidColorTexture(uint32_t r, uint32_t g, uint32_t b, uint32_t a) {
+TextureHandle VulkanRHI::CreateSolidColorTexture(uint32_t r, uint32_t g, uint32_t b, uint32_t a,
+                                                  TextureFormat format) {
         uint8_t pixels[4] = {
             static_cast<uint8_t>(r),
             static_cast<uint8_t>(g),
@@ -4084,7 +4225,7 @@ TextureHandle VulkanRHI::CreateSolidColorTexture(uint32_t r, uint32_t g, uint32_
             .dataSize = 4,
             .width = 1,
             .height = 1,
-            .format = TextureFormat::RGBA8_UNORM,
+            .format = format,
         };
 
         return CreateTexture(desc);

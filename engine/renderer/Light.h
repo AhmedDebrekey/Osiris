@@ -20,8 +20,10 @@ namespace Osiris {
         float nearClip           = 5.0f;
         float farClip            = 80.0f;
         float cascadeSplitLambda = 0.95f;
-        float depthBiasConstant  = 1.25f;
-        float depthBiasSlope     = 1.75f;
+        float depthBiasConstant     = 0.0f;
+        float depthBiasSlope        = 1.75f;
+        float spotDepthBiasConstant = 0.0f;
+        float spotDepthBiasSlope    = 1.75f;
     };
 
     // Mirrored by hand in postprocess.frag's PostProcessUBO: plain floats only, so C++ and

@@ -68,12 +68,8 @@ layout(push_constant) uniform PushConstants {
 layout(location = 0) out vec4 outColor;
 
 // ── Shadow PCF ──────────────────────────────────────────────
-// NdotL biases the comparison: surfaces the light grazes at a steep angle
-// need much more depth bias to avoid self-shadowing acne than surfaces the
-// light hits head-on. A single flat bias can't satisfy both at once — too
-// small and grazing surfaces (e.g. walls under a near-overhead light) acne,
-// too large and head-on surfaces (e.g. a floor under the same light) show
-// visible peter-panning.
+// Use the geometric normal for the receiver bias. Normal-map detail must not
+// alter shadow depth or it can turn texture detail into visible shadow bands.
 float SampleShadowPCF(sampler2DShadow shadowMap, vec4 shadowCoord, float NdotL) {
     vec3 proj = shadowCoord.xyz / shadowCoord.w;
     proj.xy   = proj.xy * 0.5 + 0.5;
@@ -83,13 +79,11 @@ float SampleShadowPCF(sampler2DShadow shadowMap, vec4 shadowCoord, float NdotL) 
         return 1.0;
     }
 
-    // NDC-space bias, independent of the depth format's precision curve.
-    // VK_FORMAT_D32_SFLOAT makes the rasterizer's hardware depth bias (see the
-    // shadow pipeline's depthBiasConstant/Slope) resolve to a near-zero offset
-    // near 0.0, so it isn't enough on its own to prevent self-shadowing acne.
+    // Apply a small bias directly to the receiver comparison depth. This avoids
+    // the per-triangle offsets produced by negative raster slope bias.
     float slopeScale = clamp(1.0 - NdotL, 0.0, 1.0);
-    float bias       = mix(0.0008, 0.03, slopeScale);
-    float biasedZ    = proj.z;
+    float bias       = mix(0.00001, 0.0001, slopeScale);
+    float biasedZ    = proj.z - bias;
 
     float shadow   = 0.0;
     vec2 texelSize = 1.0 / vec2(textureSize(shadowMap, 0));
@@ -135,15 +129,20 @@ vec3 F_SchlickRoughness(float cosTheta, vec3 F0, float roughness) {
 void main() {
     // ── Sample textures ──────────────────────────────────────
     vec4 albedoSample   = texture(albedoMap,    inTexCoord);
-    vec3 albedo         = pow(albedoSample.rgb, vec3(2.2)); // sRGB to linear
+    vec3 albedo         = albedoSample.rgb;
     float metallic  = texture(metallicMap,  inTexCoord).b;
     float roughness = texture(roughnessMap, inTexCoord).g;
     float ao            = texture(aoMap,        inTexCoord).r;
 
     // ── Normal mapping ────────────────────────────────────────
     vec3 normalSample = texture(normalMap, inTexCoord).rgb * 2.0 - 1.0;
-    mat3 TBN = mat3(normalize(inTangent), normalize(inBitangent), normalize(inNormal));
-    vec3 N   = normalize(TBN * normalSample); //TODO: use the TBN not inNormal normalize(TBN * normalSample)
+    vec3 geometricNormal = normalize(inNormal);
+    vec3 tangent = inTangent - geometricNormal * dot(geometricNormal, inTangent);
+    tangent = normalize(tangent);
+    float handedness = dot(cross(geometricNormal, tangent), inBitangent) < 0.0 ? -1.0 : 1.0;
+    vec3 bitangent = normalize(cross(geometricNormal, tangent)) * handedness;
+    mat3 TBN = mat3(tangent, bitangent, geometricNormal);
+    vec3 N = normalize(TBN * normalSample);
 
 
     // ── Vectors ───────────────────────────────────────────────
@@ -152,6 +151,7 @@ void main() {
     vec3 H        = normalize(V + L);
 
     float NdotL   = max(dot(N, L), 0.0);
+    float shadowNdotL = max(dot(geometricNormal, L), 0.0);
     float NdotV   = max(dot(N, V), 0.0001);
     float NdotH   = max(dot(N, H), 0.0);
     float HdotV   = max(dot(H, V), 0.0);
@@ -178,11 +178,11 @@ void main() {
 
     float shadow;
     if (depth < abs(camera.cascadeSplits.x)) {
-        shadow = SampleShadowPCF(shadowMap0, inShadowCoord0, NdotL);
+        shadow = SampleShadowPCF(shadowMap0, inShadowCoord0, shadowNdotL);
     } else if (depth < abs(camera.cascadeSplits.y)) {
-        shadow = SampleShadowPCF(shadowMap1, inShadowCoord1, NdotL);
+        shadow = SampleShadowPCF(shadowMap1, inShadowCoord1, shadowNdotL);
     } else {
-        shadow = SampleShadowPCF(shadowMap2, inShadowCoord2, NdotL);
+        shadow = SampleShadowPCF(shadowMap2, inShadowCoord2, shadowNdotL);
     }
 
     Lo *= shadow;
@@ -214,6 +214,7 @@ void main() {
 
         vec3 Hspot      = normalize(V + Lspot);
         float NdotLspot = max(dot(N, Lspot), 0.0);
+        float shadowNdotLspot = max(dot(geometricNormal, Lspot), 0.0);
         float NdotHspot = max(dot(N, Hspot), 0.0);
         float HdotVspot = max(dot(Hspot, V), 0.0);
 
@@ -228,11 +229,11 @@ void main() {
         // Constant-indexed to avoid dynamic sampler array indexing.
         float spotShadow = 1.0;
         if (shadowIndex == 0) {
-            spotShadow = SampleShadowPCF(shadowMapSpot[0], inShadowCoordSpot[0], NdotLspot);
+            spotShadow = SampleShadowPCF(shadowMapSpot[0], inShadowCoordSpot[0], shadowNdotLspot);
         } else if (shadowIndex == 1) {
-            spotShadow = SampleShadowPCF(shadowMapSpot[1], inShadowCoordSpot[1], NdotLspot);
+            spotShadow = SampleShadowPCF(shadowMapSpot[1], inShadowCoordSpot[1], shadowNdotLspot);
         } else if (shadowIndex == 2) {
-            spotShadow = SampleShadowPCF(shadowMapSpot[2], inShadowCoordSpot[2], NdotLspot);
+            spotShadow = SampleShadowPCF(shadowMapSpot[2], inShadowCoordSpot[2], shadowNdotLspot);
         }
 
         vec3 spotLightColor = sl.color.rgb * spotIntensity;

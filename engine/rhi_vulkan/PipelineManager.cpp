@@ -850,7 +850,7 @@ namespace Osiris
                     .primitiveRestartEnable = VK_FALSE
                 };
 
-            // Viewport and scissor values are supplied dynamically.
+            // Viewport, scissor, and shadow depth bias values are supplied dynamically.
             const VkPipelineViewportStateCreateInfo viewportState{
                 .sType =
                     VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
@@ -958,10 +958,11 @@ namespace Osiris
                     }
                 };
 
-            constexpr std::array<VkDynamicState, 2>
+            constexpr std::array<VkDynamicState, 3>
                 dynamicStates{
                     VK_DYNAMIC_STATE_VIEWPORT,
-                    VK_DYNAMIC_STATE_SCISSOR
+                    VK_DYNAMIC_STATE_SCISSOR,
+                    VK_DYNAMIC_STATE_DEPTH_BIAS
                 };
 
             const VkPipelineDynamicStateCreateInfo

@@ -3,7 +3,10 @@ local mouseSensitivity, moveSpeed = 0.15, 4.0
 
 function OnStart()
     character = self:GetCharacter()
-
+    local transform = self:GetTransform()
+    yaw = transform.rotation.y
+    pitch = math.max(-89.0, math.min(89.0, transform.rotation.x))
+    transform.rotation = vec3.new(pitch, yaw, 0.0)
 end
 
 function OnUpdate(dt)

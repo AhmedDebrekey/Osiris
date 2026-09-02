@@ -429,6 +429,9 @@ namespace Osiris {
         ImGui::SliderFloat("Shadow Near", &shadowSettings.nearClip, 0.01f, 5.0f);
         ImGui::SliderFloat("Shadow Far", &shadowSettings.farClip, 5.0f, 50.0f);
         ImGui::SliderFloat("Cascade Lambda", &shadowSettings.cascadeSplitLambda, 0.0f, 1.0f);
+        ImGui::TextDisabled("Negative raster bias can cause curved-surface shadow acne.");
+        ImGui::SliderFloat("Directional Slope Bias", &shadowSettings.depthBiasSlope, -4.0f, 4.0f);
+        ImGui::SliderFloat("Spot Slope Bias", &shadowSettings.spotDepthBiasSlope, -2.0f, 2.0f);
         ImGui::Separator();
 
         ImGui::Checkbox("Debug: Light View", &m_DebugLightView);

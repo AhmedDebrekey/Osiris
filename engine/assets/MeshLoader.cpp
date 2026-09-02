@@ -11,6 +11,7 @@
 #include "core/AssetManager.h"
 #include "core/Log.h"
 #include "fastgltf/glm_element_traits.hpp"
+#include <cmath>
 #include <filesystem>
 #include <utility>
 #include <vector>
@@ -93,11 +94,15 @@ namespace Osiris {
         return result;
     }
 
-    // Texture cache — avoid loading the same texture twice
-    std::unordered_map<size_t, TextureHandle> textureCache;
+    // An image referenced as both color and material data needs a separate Vulkan view because
+    // sRGB decoding is part of the image format.
+    std::unordered_map<size_t, TextureHandle> colorTextureCache;
+    std::unordered_map<size_t, TextureHandle> dataTextureCache;
 
     // Helper to load a texture by image index
-    auto loadTexture = [&](size_t imageIndex) -> TextureHandle {
+    auto loadTexture = [&](size_t imageIndex, TextureFormat format) -> TextureHandle {
+        auto& textureCache = format == TextureFormat::RGBA8_SRGB
+                           ? colorTextureCache : dataTextureCache;
         auto it = textureCache.find(imageIndex);
         if (it != textureCache.end()) return it->second;
 
@@ -111,7 +116,7 @@ namespace Osiris {
             return TextureHandle{};
         }
 
-        TextureHandle handle = TextureLoader::LoadFromFile(texturePath, rhi);
+        TextureHandle handle = TextureLoader::LoadFromFile(texturePath, rhi, format);
         textureCache[imageIndex] = handle;
         return handle;
     };
@@ -237,13 +242,13 @@ namespace Osiris {
                 // Albedo
                 if (mat.pbrData.baseColorTexture.has_value()) {
                     size_t texIndex = mat.pbrData.baseColorTexture->textureIndex;
-                    matDesc.albedo = loadTexture(getImageIndex(texIndex));
+                    matDesc.albedo = loadTexture(getImageIndex(texIndex), TextureFormat::RGBA8_SRGB);
                 }
 
                 // Metallic + Roughness (combined texture)
                 if (mat.pbrData.metallicRoughnessTexture.has_value()) {
                     size_t texIndex = mat.pbrData.metallicRoughnessTexture->textureIndex;
-                    TextureHandle handle = loadTexture(getImageIndex(texIndex));
+                    TextureHandle handle = loadTexture(getImageIndex(texIndex), TextureFormat::RGBA8_UNORM);
                     matDesc.metallic  = handle;
                     matDesc.roughness = handle;
                 }
@@ -251,13 +256,13 @@ namespace Osiris {
                 // Normal
                 if (mat.normalTexture.has_value()) {
                     size_t texIndex = mat.normalTexture->textureIndex;
-                    matDesc.normal = loadTexture(getImageIndex(texIndex));
+                    matDesc.normal = loadTexture(getImageIndex(texIndex), TextureFormat::RGBA8_UNORM);
                 }
 
                 // AO
                 if (mat.occlusionTexture.has_value()) {
                     size_t texIndex = mat.occlusionTexture->textureIndex;
-                    matDesc.ao = loadTexture(getImageIndex(texIndex));
+                    matDesc.ao = loadTexture(getImageIndex(texIndex), TextureFormat::RGBA8_UNORM);
                 }
             }
 
@@ -464,23 +469,36 @@ void MeshLoader::GenerateTangents(std::vector<Vertex>& vertices, const std::vect
             f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y),
             f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z),
         };
+        glm::vec3 bitangent = {
+            f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x),
+            f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y),
+            f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge2.z),
+        };
 
         tangents[i0] += tangent;
         tangents[i1] += tangent;
         tangents[i2] += tangent;
+        bitangents[i0] += bitangent;
+        bitangents[i1] += bitangent;
+        bitangents[i2] += bitangent;
     }
 
     // Orthogonalize and set handedness
     for (size_t i = 0; i < vertices.size(); i++) {
         glm::vec3 N = glm::normalize(vertices[i].Normal);
-        glm::vec3 T = glm::normalize(tangents[i]);
+        glm::vec3 T = tangents[i] - glm::dot(tangents[i], N) * N;
+        if (glm::dot(T, T) < 1e-12f) {
+            const glm::vec3 reference = std::abs(N.z) < 0.999f
+                ? glm::vec3(0.0f, 0.0f, 1.0f)
+                : glm::vec3(0.0f, 1.0f, 0.0f);
+            T = glm::cross(reference, N);
+        }
+        T = glm::normalize(T);
 
-        // Gram-Schmidt orthogonalize
-        T = glm::normalize(T - glm::dot(T, N) * N);
-
-        // Compute bitangent and determine handedness
-        glm::vec3 B       = glm::cross(N, T);
-        float handedness  = (glm::dot(B, glm::normalize(bitangents[i])) < 0.0f) ? -1.0f : 1.0f;
+        const glm::vec3 B = glm::cross(N, T);
+        const float handedness = glm::dot(bitangents[i], bitangents[i]) >= 1e-12f &&
+                                 glm::dot(B, bitangents[i]) < 0.0f
+                               ? -1.0f : 1.0f;
 
         vertices[i].Tangent = glm::vec4(T, handedness);
     }

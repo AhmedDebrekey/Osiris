@@ -32,6 +32,7 @@ using MaterialHandle = Handle<MaterialTag>;
 
 enum class TextureFormat {
     RGBA8_UNORM,
+    RGBA8_SRGB,
     RGBA16_FLOAT,
     D32_FLOAT,
     BC7_UNORM,

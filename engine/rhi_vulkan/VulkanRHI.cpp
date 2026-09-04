@@ -56,6 +56,8 @@ namespace Osiris {
     struct ForwardPushConstants {
         glm::mat4 model;
         glm::vec4 emissive; // rgb = color, w = intensity
+        glm::vec4 baseColorFactor;
+        glm::vec4 materialParams; // x = alpha cutoff, y = alpha mode, z = double-sided
     };
 
     template<typename T>
@@ -176,23 +178,32 @@ namespace Osiris {
 
         VkDescriptorSetLayout forwardLayouts[] = { m_FrameDescriptorLayout, m_MaterialDescriptorLayout };
 
-        m_ForwardPipeline = m_PipelineManager->GetOrCreate({
-            .vertexShader     = AssetManager::GetEnginePath("shaders/triangle.vert.spv"),
-            .fragmentShader   = AssetManager::GetEnginePath("shaders/triangle.frag.spv"),
-            .colorAttachment  = true,
-            .colorFormat      = m_SwapChain.swapChainImageFormat,
-            .depthAttachment  = true,
-            .depthFormat      = VK_FORMAT_D32_SFLOAT,
-            .depthTest        = true,
-            .depthWrite       = true,
-            .depthBias        = false,
-            .cullMode         = VK_CULL_MODE_BACK_BIT,
-            .frontFace        = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-            .setLayoutCount   = 2,
-            .pSetLayouts      = forwardLayouts,
-            .pushConstantSize = sizeof(ForwardPushConstants),
-            .pushConstantStages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-        });
+        const auto createForwardPipeline = [&](bool alphaBlend, bool doubleSided) {
+            return m_PipelineManager->GetOrCreate({
+                .vertexShader     = AssetManager::GetEnginePath("shaders/triangle.vert.spv"),
+                .fragmentShader   = AssetManager::GetEnginePath("shaders/triangle.frag.spv"),
+                .colorAttachment  = true,
+                .colorFormat      = m_SwapChain.swapChainImageFormat,
+                .depthAttachment  = true,
+                .depthFormat      = VK_FORMAT_D32_SFLOAT,
+                .depthTest        = true,
+                .depthWrite       = !alphaBlend,
+                .alphaBlend       = alphaBlend,
+                .cullMode         = doubleSided
+                                  ? static_cast<VkCullModeFlags>(VK_CULL_MODE_NONE)
+                                  : static_cast<VkCullModeFlags>(VK_CULL_MODE_BACK_BIT),
+                .frontFace        = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+                .setLayoutCount   = 2,
+                .pSetLayouts      = forwardLayouts,
+                .pushConstantSize = sizeof(ForwardPushConstants),
+                .pushConstantStages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+            });
+        };
+
+        m_ForwardPipeline = createForwardPipeline(false, false);
+        m_ForwardDoubleSidedPipeline = createForwardPipeline(false, true);
+        m_TransparentPipeline = createForwardPipeline(true, false);
+        m_TransparentDoubleSidedPipeline = createForwardPipeline(true, true);
 
         m_ForwardPipelineLayout = m_PipelineManager->GetLayout(m_ForwardPipeline);
 
@@ -1092,11 +1103,20 @@ namespace Osiris {
         WriteToDescriptorSet(ao, 4, materialSet);
 
         // 3. Store and return handle
-        VulkanMaterial material;
-        material.descriptorSet = materialSet;
+        VulkanMaterial material = {
+            .descriptorSet = materialSet,
+            .description = desc,
+        };
         uint32_t index = AllocateSlot(m_Materials, material,
         [](const VulkanMaterial& m) { return m.descriptorSet == VK_NULL_HANDLE; });
         return MaterialHandle { index } ;
+    }
+
+    MaterialAlphaMode VulkanRHI::GetMaterialAlphaMode(MaterialHandle handle) const {
+        if (!handle.IsValid() || handle.id >= m_Materials.size()) {
+            return MaterialAlphaMode::Opaque;
+        }
+        return m_Materials[handle.id].description.alphaMode;
     }
 
     void VulkanRHI::DestroyBuffer(BufferHandle handle) {
@@ -1124,13 +1144,37 @@ namespace Osiris {
     }
 
     void VulkanRHI::BindMaterial(MaterialHandle handle) {
-        if (!handle.IsValid()) return;
-        VkDescriptorSet materialSet = m_Materials[handle.id].descriptorSet;
+        if (!handle.IsValid() || handle.id >= m_Materials.size()) return;
+
+        const VulkanMaterial& material = m_Materials[handle.id];
+        const bool transparent = material.description.alphaMode == MaterialAlphaMode::Blend;
+        VkPipeline pipeline;
+        if (transparent) {
+            pipeline = material.description.doubleSided
+                     ? m_TransparentDoubleSidedPipeline
+                     : m_TransparentPipeline;
+        } else {
+            pipeline = material.description.doubleSided
+                     ? m_ForwardDoubleSidedPipeline
+                     : m_ForwardPipeline;
+        }
+
+        VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
+        if (pipeline != m_BoundForwardPipeline) {
+            m_BoundForwardPipeline = pipeline;
+            m_BoundForwardPipelineLayout = m_PipelineManager->GetLayout(pipeline);
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                m_BoundForwardPipelineLayout, 0, 1, &m_DescriptorSet, 0, nullptr);
+        }
+
+        m_BoundMaterialDescription = material.description;
+        const VkDescriptorSet materialSet = material.descriptorSet;
         vkCmdBindDescriptorSets(
-            m_Frames[m_CurrentFrame].commandBuffer,
+            cmd,
             VK_PIPELINE_BIND_POINT_GRAPHICS,
-            m_ForwardPipelineLayout,
-            1,        // ← set index 1 (material set)
+            m_BoundForwardPipelineLayout,
+            1,
             1,
             &materialSet,
             0, nullptr
@@ -1149,8 +1193,18 @@ namespace Osiris {
         const ForwardPushConstants push = {
             .model = m_ModelMatrix,
             .emissive = glm::vec4(m_EmissiveColor, m_EmissiveIntensity),
+            .baseColorFactor = glm::vec4(
+                m_BoundMaterialDescription.baseColorFactor[0],
+                m_BoundMaterialDescription.baseColorFactor[1],
+                m_BoundMaterialDescription.baseColorFactor[2],
+                m_BoundMaterialDescription.baseColorFactor[3]),
+            .materialParams = glm::vec4(
+                m_BoundMaterialDescription.alphaCutoff,
+                static_cast<float>(m_BoundMaterialDescription.alphaMode),
+                m_BoundMaterialDescription.doubleSided ? 1.0f : 0.0f,
+                0.0f),
         };
-        vkCmdPushConstants(cmd, m_ForwardPipelineLayout,
+        vkCmdPushConstants(cmd, m_BoundForwardPipelineLayout,
             VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
             0, sizeof(ForwardPushConstants), &push);
 
@@ -1864,6 +1918,9 @@ namespace Osiris {
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_ForwardPipeline);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
             m_ForwardPipelineLayout, 0, 1, &m_DescriptorSet, 0, nullptr);
+        m_BoundForwardPipeline = m_ForwardPipeline;
+        m_BoundForwardPipelineLayout = m_ForwardPipelineLayout;
+        m_BoundMaterialDescription = {};
     }
 
     void VulkanRHI::BeginShadowPass(uint32_t cascadeIndex) {

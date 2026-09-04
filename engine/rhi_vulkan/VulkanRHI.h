@@ -59,6 +59,7 @@ namespace Osiris {
         ShaderHandle CreateShader(const ShaderDesc &) override;
 
         MaterialHandle CreateMaterial(const MaterialDesc &) override;
+        MaterialAlphaMode GetMaterialAlphaMode(MaterialHandle handle) const override;
 
         void DestroyBuffer(BufferHandle) override;
 
@@ -214,6 +215,11 @@ namespace Osiris {
         std::unique_ptr<PipelineManager> m_PipelineManager;
         VkPipeline          m_ForwardPipeline       = VK_NULL_HANDLE;
         VkPipelineLayout    m_ForwardPipelineLayout = VK_NULL_HANDLE;
+        VkPipeline          m_ForwardDoubleSidedPipeline = VK_NULL_HANDLE;
+        VkPipeline          m_TransparentPipeline = VK_NULL_HANDLE;
+        VkPipeline          m_TransparentDoubleSidedPipeline = VK_NULL_HANDLE;
+        VkPipeline          m_BoundForwardPipeline = VK_NULL_HANDLE;
+        VkPipelineLayout    m_BoundForwardPipelineLayout = VK_NULL_HANDLE;
         VkPipeline          m_ShadowPipeline        = VK_NULL_HANDLE;
         VkPipelineLayout    m_ShadowPipelineLayout  = VK_NULL_HANDLE;
         VkPipeline          m_SkyboxPipeline        = VK_NULL_HANDLE;
@@ -288,6 +294,7 @@ namespace Osiris {
         glm::mat4 m_ModelMatrix = glm::mat4(1.0f);
         glm::vec3 m_EmissiveColor = glm::vec3(1.0f);
         float m_EmissiveIntensity = 0.0f;
+        MaterialDesc m_BoundMaterialDescription;
 
         static constexpr uint32_t SHADOW_CASCADE_COUNT = 3;
         static constexpr uint32_t SHADOW_MAP_SIZE      = 2048;

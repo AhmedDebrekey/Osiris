@@ -43,6 +43,8 @@ namespace Osiris
         float depthBiasClamp = 0.0f;
         float depthBiasSlope = 0.0f;
 
+        bool alphaBlend = false;
+
         // Rasterization state.
         VkCullModeFlags cullMode = VK_CULL_MODE_BACK_BIT;
         VkFrontFace frontFace = VK_FRONT_FACE_CLOCKWISE;
@@ -159,6 +161,8 @@ namespace Osiris
             float depthBiasConstant = 0.0f;
             float depthBiasClamp = 0.0f;
             float depthBiasSlope = 0.0f;
+
+            bool alphaBlend = false;
 
             VkCullModeFlags cullMode = VK_CULL_MODE_BACK_BIT;
             VkFrontFace frontFace = VK_FRONT_FACE_CLOCKWISE;

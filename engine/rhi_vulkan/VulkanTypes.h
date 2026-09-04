@@ -10,6 +10,8 @@
 #include <vector>
 #include <vk_mem_alloc.h>
 
+#include "rhi/RHITypes.h"
+
 struct VulkanDevice {
     VkPhysicalDevice    physicalDevice  = VK_NULL_HANDLE;
     VkDevice            logicalDevice   = VK_NULL_HANDLE;
@@ -52,6 +54,7 @@ struct VulkanImage {
 
 struct VulkanMaterial {
     VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+    MaterialDesc description;
 };
 
 // A cube-compatible image with two views into the same memory: a 2D_ARRAY

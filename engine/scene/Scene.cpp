@@ -260,24 +260,26 @@ namespace Osiris {
     }
 
     void Scene::Render(IRHI* rhi, const Camera& camera) {
+        struct TransparentDraw {
+            entt::entity entity;
+            glm::mat4 model;
+            float viewDepth;
+        };
+
+        const glm::mat4 viewMatrix = camera.GetViewMatrix();
         const Frustum frustum = Frustum::FromViewProjection(
-            camera.GetProjectionMatrix() * camera.GetViewMatrix()
+            camera.GetProjectionMatrix() * viewMatrix
         );
 
         m_DrawCallCount = 0;
         m_CulledCount = 0;
 
         const auto view = m_Registry.view<TransformComponent, MeshComponent, MaterialComponent>();
-        for (auto entity : view) {
-            auto& mesh      = view.get<MeshComponent>(entity);
-            auto& material  = view.get<MaterialComponent>(entity);
+        std::vector<TransparentDraw> transparentDraws;
 
-            const glm::mat4 model = GetWorldTransform(Entity(entity, this));
-            if (!frustum.IsVisible(mesh.mesh.bounds, model)) {
-                m_CulledCount++;
-                continue;
-            }
-            m_DrawCallCount++;
+        const auto drawEntity = [&](entt::entity entity, const glm::mat4& model) {
+            auto& mesh = view.get<MeshComponent>(entity);
+            auto& material = view.get<MaterialComponent>(entity);
 
             const EmissiveComponent* emissive = nullptr;
             entt::entity current = entity;
@@ -297,14 +299,47 @@ namespace Osiris {
             rhi->SetMeshData(mesh.mesh);
             rhi->BindMaterial(material.material);
             rhi->DrawIndexed(mesh.mesh.indexCount);
+        };
+
+        for (auto entity : view) {
+            auto& mesh      = view.get<MeshComponent>(entity);
+            auto& material  = view.get<MaterialComponent>(entity);
+
+            const glm::mat4 model = GetWorldTransform(Entity(entity, this));
+            if (!frustum.IsVisible(mesh.mesh.bounds, model)) {
+                m_CulledCount++;
+                continue;
+            }
+            m_DrawCallCount++;
+
+            if (rhi->GetMaterialAlphaMode(material.material) == MaterialAlphaMode::Blend) {
+                const glm::vec3 localCenter = (mesh.mesh.bounds.min + mesh.mesh.bounds.max) * 0.5f;
+                const glm::vec3 worldCenter = glm::vec3(model * glm::vec4(localCenter, 1.0f));
+                const float viewDepth = -(viewMatrix * glm::vec4(worldCenter, 1.0f)).z;
+                transparentDraws.push_back({entity, model, viewDepth});
+            } else {
+                drawEntity(entity, model);
+            }
+        }
+
+        std::sort(transparentDraws.begin(), transparentDraws.end(),
+            [](const TransparentDraw& left, const TransparentDraw& right) {
+                return left.viewDepth > right.viewDepth;
+            });
+        for (const TransparentDraw& draw : transparentDraws) {
+            drawEntity(draw.entity, draw.model);
         }
         //OSIRIS_INFO("Draw calls: {} Culled: {}", drawCalls, culled);
     }
 
     void Scene::RenderShadows(IRHI* rhi) {
-        auto view = m_Registry.view<TransformComponent, MeshComponent>();
+        auto view = m_Registry.view<TransformComponent, MeshComponent, MaterialComponent>();
         for (auto entity : view) {
             auto& mesh      = view.get<MeshComponent>(entity);
+            auto& material  = view.get<MaterialComponent>(entity);
+            if (rhi->GetMaterialAlphaMode(material.material) == MaterialAlphaMode::Blend) {
+                continue;
+            }
 
             rhi->SetModelMatrix(GetWorldTransform(Entity(entity, this)));
             rhi->SetMeshData(mesh.mesh);

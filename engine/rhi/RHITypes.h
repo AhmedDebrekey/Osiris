@@ -4,6 +4,7 @@
 
 #ifndef OSIRIS_RHITYPES_H
 #define OSIRIS_RHITYPES_H
+#include <array>
 #include <cstdint>
 
 
@@ -36,6 +37,12 @@ enum class TextureFormat {
     RGBA16_FLOAT,
     D32_FLOAT,
     BC7_UNORM,
+};
+
+enum class MaterialAlphaMode : uint8_t {
+    Opaque,
+    Mask,
+    Blend,
 };
 
 enum class BufferUsage {
@@ -84,6 +91,10 @@ struct MaterialDesc {
     TextureHandle metallic;
     TextureHandle roughness;
     TextureHandle ao;
+    std::array<float, 4> baseColorFactor = {1.0f, 1.0f, 1.0f, 1.0f};
+    MaterialAlphaMode alphaMode = MaterialAlphaMode::Opaque;
+    float alphaCutoff = 0.5f;
+    bool doubleSided = false;
 };
 
 

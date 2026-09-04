@@ -63,6 +63,8 @@ layout(set = 1, binding = 4) uniform sampler2D aoMap;
 layout(push_constant) uniform PushConstants {
     mat4 model;
     vec4 emissive;
+    vec4 baseColorFactor;
+    vec4 materialParams; // x = alpha cutoff, y = alpha mode, z = double-sided
 } push;
 
 layout(location = 0) out vec4 outColor;
@@ -128,7 +130,11 @@ vec3 F_SchlickRoughness(float cosTheta, vec3 F0, float roughness) {
 
 void main() {
     // ── Sample textures ──────────────────────────────────────
-    vec4 albedoSample   = texture(albedoMap,    inTexCoord);
+    vec4 albedoSample   = texture(albedoMap, inTexCoord) * push.baseColorFactor;
+    float alphaMode     = push.materialParams.y;
+    if (alphaMode > 0.5 && alphaMode < 1.5 && albedoSample.a < push.materialParams.x) {
+        discard;
+    }
     vec3 albedo         = albedoSample.rgb;
     float metallic  = texture(metallicMap,  inTexCoord).b;
     float roughness = texture(roughnessMap, inTexCoord).g;
@@ -143,6 +149,10 @@ void main() {
     vec3 bitangent = normalize(cross(geometricNormal, tangent)) * handedness;
     mat3 TBN = mat3(tangent, bitangent, geometricNormal);
     vec3 N = normalize(TBN * normalSample);
+    if (push.materialParams.z > 0.5 && !gl_FrontFacing) {
+        geometricNormal = -geometricNormal;
+        N = -N;
+    }
 
 
     // ── Vectors ───────────────────────────────────────────────
@@ -272,5 +282,6 @@ void main() {
     // No manual gamma correction here: the swapchain is VK_FORMAT_B8G8R8A8_SRGB,
     // so the hardware already linear->sRGB encodes this on write. Gamma-correcting
     // here too would double-encode (crushes everything toward white).
-    outColor = vec4(color, albedoSample.a);
+    float outputAlpha = alphaMode > 1.5 ? clamp(albedoSample.a, 0.0, 1.0) : 1.0;
+    outColor = vec4(color, outputAlpha);
 }

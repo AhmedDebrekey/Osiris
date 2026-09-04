@@ -156,6 +156,7 @@ namespace Osiris
                depthBiasConstant == rhs.depthBiasConstant &&
                depthBiasClamp == rhs.depthBiasClamp &&
                depthBiasSlope == rhs.depthBiasSlope &&
+               alphaBlend == rhs.alphaBlend &&
                cullMode == rhs.cullMode &&
                frontFace == rhs.frontFace &&
                polygonMode == rhs.polygonMode &&
@@ -189,6 +190,7 @@ namespace Osiris
         HashFloat(seed, desc.depthBiasConstant);
         HashFloat(seed, desc.depthBiasClamp);
         HashFloat(seed, desc.depthBiasSlope);
+        HashCombine(seed, desc.alphaBlend);
 
         HashCombine(seed, desc.cullMode);
         HashCombine(seed, static_cast<int32_t>(desc.frontFace));
@@ -502,6 +504,7 @@ namespace Osiris
         HashFloat(seed, key.depthBiasConstant);
         HashFloat(seed, key.depthBiasClamp);
         HashFloat(seed, key.depthBiasSlope);
+        HashCombine(seed, key.alphaBlend);
 
         HashCombine(seed, key.cullMode);
         HashCombine(seed, static_cast<int32_t>(key.frontFace));
@@ -549,6 +552,7 @@ namespace Osiris
         key.depthBiasConstant = desc.depthBiasConstant;
         key.depthBiasClamp = desc.depthBiasClamp;
         key.depthBiasSlope = desc.depthBiasSlope;
+        key.alphaBlend = desc.alphaBlend;
 
         key.cullMode = desc.cullMode;
         key.frontFace = desc.frontFace;
@@ -918,16 +922,22 @@ namespace Osiris
 
             const VkPipelineColorBlendAttachmentState
                 colorBlendAttachment{
-                    .blendEnable = VK_FALSE,
+                    .blendEnable = key.alphaBlend ? VK_TRUE : VK_FALSE,
                     .srcColorBlendFactor =
-                        VK_BLEND_FACTOR_ONE,
+                        key.alphaBlend
+                            ? VK_BLEND_FACTOR_SRC_ALPHA
+                            : VK_BLEND_FACTOR_ONE,
                     .dstColorBlendFactor =
-                        VK_BLEND_FACTOR_ZERO,
+                        key.alphaBlend
+                            ? VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA
+                            : VK_BLEND_FACTOR_ZERO,
                     .colorBlendOp = VK_BLEND_OP_ADD,
                     .srcAlphaBlendFactor =
                         VK_BLEND_FACTOR_ONE,
                     .dstAlphaBlendFactor =
-                        VK_BLEND_FACTOR_ZERO,
+                        key.alphaBlend
+                            ? VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA
+                            : VK_BLEND_FACTOR_ZERO,
                     .alphaBlendOp = VK_BLEND_OP_ADD,
                     .colorWriteMask =
                         VK_COLOR_COMPONENT_R_BIT |

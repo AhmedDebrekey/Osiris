@@ -239,6 +239,24 @@ namespace Osiris {
             if (primitive.materialIndex.has_value()) {
                 auto& mat = asset->materials[primitive.materialIndex.value()];
 
+                for (size_t channel = 0; channel < mat.pbrData.baseColorFactor.size(); channel++) {
+                    matDesc.baseColorFactor[channel] = static_cast<float>(
+                        mat.pbrData.baseColorFactor[channel]);
+                }
+                switch (mat.alphaMode) {
+                case fastgltf::AlphaMode::Mask:
+                    matDesc.alphaMode = MaterialAlphaMode::Mask;
+                    break;
+                case fastgltf::AlphaMode::Blend:
+                    matDesc.alphaMode = MaterialAlphaMode::Blend;
+                    break;
+                default:
+                    matDesc.alphaMode = MaterialAlphaMode::Opaque;
+                    break;
+                }
+                matDesc.alphaCutoff = static_cast<float>(mat.alphaCutoff);
+                matDesc.doubleSided = mat.doubleSided;
+
                 // Albedo
                 if (mat.pbrData.baseColorTexture.has_value()) {
                     size_t texIndex = mat.pbrData.baseColorTexture->textureIndex;

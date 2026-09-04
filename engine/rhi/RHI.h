@@ -42,6 +42,7 @@ namespace Osiris {
         virtual TextureHandle   CreateTexture(const TextureDesc&)        = 0;
         virtual ShaderHandle    CreateShader(const ShaderDesc&)          = 0;
         virtual MaterialHandle  CreateMaterial(const MaterialDesc& desc) = 0;
+        virtual MaterialAlphaMode GetMaterialAlphaMode(MaterialHandle handle) const = 0;
 
         virtual void DestroyBuffer (BufferHandle)  = 0;
         virtual void DestroyTexture(TextureHandle) = 0;

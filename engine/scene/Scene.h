@@ -56,6 +56,10 @@ namespace Osiris {
         std::vector<Entity> GetChildren(Entity entity);
         glm::mat4 GetWorldTransform(Entity entity) const;
 
+        // Moves the bottom of an entity's mesh hierarchy onto the nearest mesh below it.
+        // Uses render bounds, so neither the moved entity nor the surface needs physics components.
+        bool GroundEntity(Entity entity);
+
         void Update(float deltaTime);
         void Render(IRHI* rhi, const Camera& camera);
         void RenderShadows(IRHI* rhi);

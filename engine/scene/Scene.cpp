@@ -259,6 +259,75 @@ namespace Osiris {
         return worldTransform;
     }
 
+    bool Scene::GroundEntity(Entity entity) {
+        if (entity.GetScene() != this || !m_Registry.valid(entity.GetHandle())
+            || !entity.HasComponent<TransformComponent>()) {
+            return false;
+        }
+
+        std::vector<entt::entity> subtree = {entity.GetHandle()};
+        for (std::size_t i = 0; i < subtree.size(); i++) {
+            if (const auto* children = m_Registry.try_get<ChildrenComponent>(subtree[i])) {
+                subtree.insert(subtree.end(), children->m_Children.begin(), children->m_Children.end());
+            }
+        }
+
+        glm::vec3 boundsMin(std::numeric_limits<float>::max());
+        glm::vec3 boundsMax(-std::numeric_limits<float>::max());
+        bool foundMesh = false;
+        for (entt::entity handle : subtree) {
+            if (!m_Registry.valid(handle)) continue;
+            const auto* mesh = m_Registry.try_get<MeshComponent>(handle);
+            if (!mesh) continue;
+
+            const glm::mat4 model = GetWorldTransform(Entity(handle, this));
+            for (const glm::vec3& corner : mesh->mesh.bounds.GetWorldCorners(model)) {
+                boundsMin = glm::min(boundsMin, corner);
+                boundsMax = glm::max(boundsMax, corner);
+            }
+            foundMesh = true;
+        }
+
+        constexpr float groundingOffset = 0.001f;
+        const glm::vec3 entityWorldPosition = glm::vec3(GetWorldTransform(entity)[3]);
+        const glm::vec3 rayOrigin = foundMesh
+            ? glm::vec3((boundsMin.x + boundsMax.x) * 0.5f,
+                        boundsMin.y + groundingOffset,
+                        (boundsMin.z + boundsMax.z) * 0.5f)
+            : entityWorldPosition + glm::vec3(0.0f, groundingOffset, 0.0f);
+        const glm::vec3 rayDirection(0.0f, -1.0f, 0.0f);
+
+        float closestDistance = std::numeric_limits<float>::max();
+        const auto meshView = m_Registry.view<MeshComponent>();
+        for (entt::entity candidate : meshView) {
+            if (std::find(subtree.begin(), subtree.end(), candidate) != subtree.end()) continue;
+
+            const auto& mesh = meshView.get<MeshComponent>(candidate).mesh;
+            const glm::mat4 model = GetWorldTransform(Entity(candidate, this));
+            float hitDistance = 0.0f;
+            // Ignore bounds containing the ray origin. A room-sized shell must not win at
+            // distance zero over its separate floor mesh or pull the entity to its underside.
+            if (RayIntersectsAABB(rayOrigin, rayDirection, mesh.bounds, model, hitDistance)
+                && hitDistance > 0.00001f && hitDistance < closestDistance) {
+                closestDistance = hitDistance;
+            }
+        }
+
+        if (closestDistance == std::numeric_limits<float>::max()) return false;
+
+        const float verticalOffset = groundingOffset - closestDistance;
+        auto& transform = entity.GetComponent<TransformComponent>();
+        const Entity parent = GetParent(entity);
+        if (parent.IsValid()) {
+            const glm::vec3 localOffset = glm::vec3(
+                glm::inverse(GetWorldTransform(parent)) * glm::vec4(0.0f, verticalOffset, 0.0f, 0.0f));
+            transform.position += localOffset;
+        } else {
+            transform.position.y += verticalOffset;
+        }
+        return true;
+    }
+
     void Scene::Render(IRHI* rhi, const Camera& camera) {
         struct TransparentDraw {
             entt::entity entity;

@@ -22,7 +22,10 @@ namespace Osiris {
 
         entt::entity GetSelectedEntity() const { return m_SelectedEntity; }
         void SetSelectedEntity(entt::entity entity) {
-            if (m_SelectedEntity != entity) m_ColliderEditEntity = entt::null;
+            if (m_SelectedEntity != entity) {
+                m_ColliderEditEntity = entt::null;
+                m_GroundFailed = false;
+            }
             m_SelectedEntity = entity;
         }
         bool IsColliderEditing() const {
@@ -34,6 +37,7 @@ namespace Osiris {
         void ClearSelection() {
             m_SelectedEntity = entt::null;
             m_ColliderEditEntity = entt::null;
+            m_GroundFailed = false;
         }
 
     private:
@@ -47,6 +51,7 @@ namespace Osiris {
 
         entt::entity m_SelectedEntity = entt::null;
         entt::entity m_ColliderEditEntity = entt::null;
+        bool m_GroundFailed = false;
     };
 }
 

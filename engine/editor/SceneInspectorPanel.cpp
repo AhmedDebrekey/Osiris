@@ -264,6 +264,15 @@ namespace Osiris {
             ImGui::DragFloat3("Position", &transform.position.x, 0.05f);
             ImGui::DragFloat3("Rotation", &transform.rotation.x, 0.5f);
             ImGui::DragFloat3("Scale", &transform.scale.x, 0.05f, 0.001f, 1000.0f);
+            if (ImGui::Button("Ground to Nearest Surface", ImVec2(-1.0f, 0.0f))) {
+                m_GroundFailed = !entity.GetScene()->GroundEntity(entity);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Moves the bottom of this entity's mesh hierarchy onto the nearest mesh below it.\nNo collider or rigid body is required.");
+            }
+            if (m_GroundFailed) {
+                ImGui::TextDisabled("No mesh surface was found below this entity.");
+            }
             if (entity.HasComponent<ParentComponent>()) {
                 ImGui::TextDisabled("Local to parent.");
             }

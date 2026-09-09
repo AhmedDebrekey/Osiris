@@ -12,6 +12,7 @@
 #include <imgui.h>
 #include <cstring>
 #include <limits>
+#include <string_view>
 #include <SDL2/SDL_keyboard.h>
 
 namespace Osiris {
@@ -21,6 +22,50 @@ namespace Osiris {
         // (asset rows) and target (entity rows here) live in different files with no shared header.
         constexpr const char* kScriptAssetPayload = "OSIRIS_SCRIPT_ASSET";
         constexpr const char* kAudioAssetPayload = "OSIRIS_AUDIO_ASSET";
+
+        ImVec4 ComponentAccent(std::string_view label) {
+            if (label == "Tag")          return {0.36f, 0.57f, 0.82f, 1.0f};
+            if (label == "Transform")    return {0.91f, 0.52f, 0.24f, 1.0f};
+            if (label == "Parent" || label == "Children")
+                                              return {0.48f, 0.57f, 0.66f, 1.0f};
+            if (label == "Mesh")         return {0.20f, 0.67f, 0.78f, 1.0f};
+            if (label == "Material")     return {0.63f, 0.45f, 0.85f, 1.0f};
+            if (label == "Emissive")     return {0.96f, 0.71f, 0.23f, 1.0f};
+            if (label == "Model Source" || label == "Box Source")
+                                              return {0.31f, 0.64f, 0.72f, 1.0f};
+            if (label == "Interactable") return {0.32f, 0.74f, 0.45f, 1.0f};
+            if (label == "Spot Light")   return {0.98f, 0.77f, 0.28f, 1.0f};
+            if (label == "Collider")     return {0.25f, 0.72f, 0.64f, 1.0f};
+            if (label == "Rigid Body")   return {0.84f, 0.36f, 0.30f, 1.0f};
+            if (label == "Camera")       return {0.31f, 0.61f, 0.93f, 1.0f};
+            if (label == "Character")    return {0.45f, 0.76f, 0.34f, 1.0f};
+            if (label == "Audio Source") return {0.85f, 0.40f, 0.70f, 1.0f};
+            if (label == "Script")       return {0.58f, 0.47f, 0.90f, 1.0f};
+            return {0.45f, 0.52f, 0.60f, 1.0f};
+        }
+
+        void PushComponentHeaderColors(const ImVec4& accent) {
+            ImGui::PushStyleColor(ImGuiCol_Header,
+                ImVec4(accent.x * 0.48f, accent.y * 0.48f, accent.z * 0.48f, 0.72f));
+            ImGui::PushStyleColor(ImGuiCol_HeaderHovered,
+                ImVec4(accent.x * 0.62f, accent.y * 0.62f, accent.z * 0.62f, 0.82f));
+            ImGui::PushStyleColor(ImGuiCol_HeaderActive,
+                ImVec4(accent.x * 0.72f, accent.y * 0.72f, accent.z * 0.72f, 0.90f));
+        }
+
+        template<typename DrawFn>
+        void DrawComponentBody(const ImVec4& accent, DrawFn&& drawFn) {
+            const ImVec2 bodyStart = ImGui::GetCursorScreenPos();
+            ImGui::Indent(9.0f);
+            drawFn();
+            ImGui::Unindent(9.0f);
+            const ImVec2 bodyEnd = ImGui::GetCursorScreenPos();
+            ImGui::GetWindowDrawList()->AddRectFilled(
+                ImVec2(bodyStart.x + 2.0f, bodyStart.y),
+                ImVec2(bodyStart.x + 5.0f, bodyEnd.y - 2.0f),
+                ImGui::ColorConvertFloat4ToU32(ImVec4(accent.x, accent.y, accent.z, 0.75f)),
+                2.0f);
+        }
 
         bool FitColliderToMeshHierarchy(Entity entity, ColliderComponent& collider) {
             Scene* scene = entity.GetScene();
@@ -59,14 +104,17 @@ namespace Osiris {
         bool DrawComponentSection(Entity entity, const char* label, DrawFn&& drawFn) {
             if (!entity.HasComponent<T>()) return false;
             ImGui::PushID(label);
+            const ImVec4 accent = ComponentAccent(label);
 
             // AllowOverlap: without it CollapsingHeader's hit-rect eats the Remove button's click.
+            PushComponentHeaderColors(accent);
             bool open = ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_AllowOverlap);
+            ImGui::PopStyleColor(3);
             ImGui::SameLine();
             bool remove = ImGui::SmallButton("Remove");
 
             if (open) {
-                drawFn(entity.GetComponent<T>());
+                DrawComponentBody(accent, [&] { drawFn(entity.GetComponent<T>()); });
             }
             ImGui::PopID();
             return remove;
@@ -75,8 +123,12 @@ namespace Osiris {
         template<typename DrawFn>
         void DrawReadOnlyComponentSection(const char* label, DrawFn&& drawFn) {
             ImGui::PushID(label);
-            if (ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen)) {
-                drawFn();
+            const ImVec4 accent = ComponentAccent(label);
+            PushComponentHeaderColors(accent);
+            const bool open = ImGui::CollapsingHeader(label, ImGuiTreeNodeFlags_DefaultOpen);
+            ImGui::PopStyleColor(3);
+            if (open) {
+                DrawComponentBody(accent, drawFn);
             }
             ImGui::PopID();
         }

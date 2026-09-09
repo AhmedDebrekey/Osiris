@@ -4,8 +4,6 @@
 
 #include "RenderGraph.h"
 
-#include <queue>
-
 #include "core/Log.h"
 
 namespace Osiris {
@@ -92,47 +90,49 @@ namespace Osiris {
     }
 
     void RenderGraph::Compile() {
-        std::unordered_map<uint32_t, int> producer;
-        std::vector<int> inDegree(m_Passes.size(), 0);
-        std::vector<std::vector<int>> adjacency(m_Passes.size());
+        const int passCount = static_cast<int>(m_Passes.size());
+
+        m_CompileProducer.clear();
+        m_CompileInDegree.assign(passCount, 0);
+        m_CompileAdjacency.clear();
+        m_CompileAdjacency.resize(passCount);
 
         // Loop 1 — build producer map from ALL writes first
-        for (int i = 0; i < static_cast<int>(m_Passes.size()); i++) {
+        for (int i = 0; i < passCount; i++) {
             for (auto& write : m_Passes[i].writes) {
-                producer[write.texture.id] = i;
+                m_CompileProducer[write.texture.id] = i;
             }
         }
 
         // Loop 2 — build dependency edges from ALL reads
-        for (int i = 0; i < static_cast<int>(m_Passes.size()); i++) {
+        for (int i = 0; i < passCount; i++) {
             for (auto& read : m_Passes[i].reads) {
-                auto it = producer.find(read.texture.id);
-                if (it != producer.end()) {
+                auto it = m_CompileProducer.find(read.texture.id);
+                if (it != m_CompileProducer.end()) {
                     int producerIndex = it->second;
-                    adjacency[producerIndex].push_back(i);
-                    inDegree[i]++;
+                    m_CompileAdjacency[producerIndex].push_back(i);
+                    m_CompileInDegree[i]++;
                 }
             }
         }
 
-        std::queue<int> zeroInDegree;
-        for (int i = 0; i < static_cast<int>(m_Passes.size()); i++) {
-            if (inDegree[i] == 0) {
-                zeroInDegree.push(i);
+        m_CompileQueue.clear();
+        for (int i = 0; i < passCount; i++) {
+            if (m_CompileInDegree[i] == 0) {
+                m_CompileQueue.push_back(i);
             }
         }
 
         m_SortedPasses.clear();
 
-        while(!zeroInDegree.empty()) {
-            int current = zeroInDegree.front();
-            zeroInDegree.pop();
+        for (std::size_t head = 0; head < m_CompileQueue.size(); head++) {
+            int current = m_CompileQueue[head];
             m_SortedPasses.push_back(current);
 
-            for (int dependent : adjacency[current]) {
-                inDegree[dependent]--;
-                if (inDegree[dependent] == 0) {
-                    zeroInDegree.push(dependent);
+            for (int dependent : m_CompileAdjacency[current]) {
+                m_CompileInDegree[dependent]--;
+                if (m_CompileInDegree[dependent] == 0) {
+                    m_CompileQueue.push_back(dependent);
                 }
             }
         }
@@ -151,7 +151,8 @@ namespace Osiris {
         for (int passIndex : m_SortedPasses) {
             RenderPass& pass = m_Passes[passIndex];
 
-            std::vector<VkImageMemoryBarrier> barriers;
+            std::vector<VkImageMemoryBarrier>& barriers = m_ExecuteBarriers;
+            barriers.clear();
             VkPipelineStageFlags srcStage = 0;
             VkPipelineStageFlags dstStage = 0;
 

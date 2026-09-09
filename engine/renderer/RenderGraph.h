@@ -6,6 +6,7 @@
 #define OSIRIS_RENDERGRAPH_H
 #include <cstdint>
 #include <functional>
+#include <unordered_map>
 #include <vector>
 #include <string>
 
@@ -72,6 +73,17 @@ namespace Osiris {
 
         std::unordered_map<uint32_t, ResourceState> m_ResourceStates;   // resourceId → current state
         std::unordered_map<uint32_t, VkImage>       m_Images;           // resourceId → VkImage
+
+        // Compile()/Execute() scratch buffers, kept as members and .clear()'d (not freshly
+        // constructed) each call: this graph is Reset()+rebuilt from scratch for almost every
+        // individual pass (see VulkanRHI's bloom/forward/post-process call sites), often 20+
+        // times a frame for a graph of just one node, so a fresh heap allocation per container
+        // per call adds up fast, especially under a debug allocator/checked-iterator STL.
+        std::unordered_map<uint32_t, int> m_CompileProducer;
+        std::vector<int>                  m_CompileInDegree;
+        std::vector<std::vector<int>>     m_CompileAdjacency;
+        std::vector<int>                  m_CompileQueue;
+        std::vector<VkImageMemoryBarrier> m_ExecuteBarriers;
     };
 } // Osiris
 

@@ -289,6 +289,11 @@ namespace Osiris {
         Entity spawnedEntity;
         ImGui::Begin("Asset Browser");
 
+        const bool canGoBack = !m_SelectedFolder.empty();
+        if (!canGoBack) ImGui::BeginDisabled();
+        if (ImGui::Button("< Back")) m_SelectedFolder = ParentOf(m_SelectedFolder);
+        if (!canGoBack) ImGui::EndDisabled();
+        ImGui::SameLine();
         if (ImGui::Button("Refresh")) Refresh();
         ImGui::SameLine();
         ImGui::SetNextItemWidth(-1.0f);

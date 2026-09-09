@@ -263,6 +263,13 @@ namespace Osiris {
     }
 
     void Engine::RenderFrame(Scene& scene, Camera& camera, bool debugLightView, int debugCascade) {
+        // Every Transform write for this frame (scripts, physics sync, editor gizmo edits) has
+        // already happened by this point in Engine::RunFrame, so GetWorldTransform's result for
+        // any entity is stable for the rest of the frame: fresh here, then reused for the rest of
+        // RenderFrame's GetWorldTransform calls (spot lights, 3 cascades, up to 3 spot casters,
+        // the forward pass) instead of re-walking the same parent chain up to 8x per entity.
+        scene.ClearWorldTransformCache();
+
         if (m_IsPlaying) {
             SyncPlayCamera(scene);
             m_PlayCamera.UpdateShake(m_DeltaTime);

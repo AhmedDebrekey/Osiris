@@ -100,6 +100,12 @@ namespace Osiris {
         // TEMP
         virtual glm::mat4 GetLightSpaceMatrix(uint32_t cascadeIndex) const = 0;
 
+        // The combined view-projection matrix for whichever shadow pass (a cascade or a spot
+        // slot) is currently active, i.e. the one BeginShadowPass/BeginSpotShadowPass just set up.
+        // Lets a caller between Begin*ShadowPass and End*ShadowPass cull against that light's own
+        // frustum without needing to know which kind of pass it is.
+        virtual glm::mat4 GetActiveLightSpaceMatrix() const = 0;
+
     };
 }
 #endif //OSIRIS_RHI_H

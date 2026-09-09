@@ -57,6 +57,13 @@ namespace Osiris {
         std::vector<Entity> GetChildren(Entity entity);
         glm::mat4 GetWorldTransform(Entity entity) const;
 
+        // GetWorldTransform's result for a given entity doesn't change between the writes that
+        // happen earlier in a frame (physics sync, scripts, gizmo edits) and the many reads that
+        // happen later (shadow cascades, spot casters, the forward pass, interaction raycasts) —
+        // call once per frame, after this frame's last Transform write and before the first read,
+        // so those reads share one computed matrix instead of re-walking the parent chain each time.
+        void ClearWorldTransformCache();
+
         // Moves the bottom of an entity's mesh hierarchy onto the nearest mesh below it.
         // Uses render bounds, so neither the moved entity nor the surface needs physics components.
         bool GroundEntity(Entity entity);
@@ -145,6 +152,11 @@ namespace Osiris {
         std::unordered_map<entt::entity, TransformComponent> m_PlaySnapshot;
         std::unordered_set<entt::entity> m_PlayEntities;
         std::vector<entt::entity> m_DestroyQueue;
+
+        // Per-frame memo for GetWorldTransform, see ClearWorldTransformCache. mutable since
+        // GetWorldTransform is logically const (it doesn't change scene data) but still populates
+        // this cache as a memoization side effect.
+        mutable std::unordered_map<entt::entity, glm::mat4> m_WorldTransformCache;
     };
     template<typename T, typename... Args>
     T& Entity::AddComponent(Args&&... args) {

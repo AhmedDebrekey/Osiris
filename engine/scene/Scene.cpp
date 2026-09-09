@@ -242,8 +242,13 @@ namespace Osiris {
     glm::mat4 Scene::GetWorldTransform(Entity entity) const {
         if (entity.GetScene() != this || !m_Registry.valid(entity.GetHandle())) return glm::mat4(1.0f);
 
+        const entt::entity handle = entity.GetHandle();
+        if (const auto cached = m_WorldTransformCache.find(handle); cached != m_WorldTransformCache.end()) {
+            return cached->second;
+        }
+
         std::vector<entt::entity> chain;
-        for (entt::entity current = entity.GetHandle(); current != entt::null;) {
+        for (entt::entity current = handle; current != entt::null;) {
             if (!m_Registry.valid(current)) break;
             chain.push_back(current);
 
@@ -257,7 +262,12 @@ namespace Osiris {
                 worldTransform *= transform->GetModelMatrix();
             }
         }
+        m_WorldTransformCache[handle] = worldTransform;
         return worldTransform;
+    }
+
+    void Scene::ClearWorldTransformCache() {
+        m_WorldTransformCache.clear();
     }
 
     bool Scene::GroundEntity(Entity entity) {
@@ -403,6 +413,13 @@ namespace Osiris {
     }
 
     void Scene::RenderShadows(IRHI* rhi) {
+        // BeginShadowPass/BeginSpotShadowPass (the caller, always immediately before this) set
+        // this to the combined view-projection matrix for whichever cascade or spot slot is
+        // currently active, so this culls against that light's own frustum, not the main camera's
+        // — an entity outside a given light's frustum cannot cast a shadow that light contributes,
+        // regardless of whether the camera can see it.
+        const Frustum frustum = Frustum::FromViewProjection(rhi->GetActiveLightSpaceMatrix());
+
         auto view = m_Registry.view<TransformComponent, MeshComponent, MaterialComponent>();
         for (auto entity : view) {
             auto& mesh      = view.get<MeshComponent>(entity);
@@ -411,7 +428,10 @@ namespace Osiris {
                 continue;
             }
 
-            rhi->SetModelMatrix(GetWorldTransform(Entity(entity, this)));
+            const glm::mat4 model = GetWorldTransform(Entity(entity, this));
+            if (!frustum.IsVisible(mesh.mesh.bounds, model)) continue;
+
+            rhi->SetModelMatrix(model);
             rhi->SetMeshData(mesh.mesh);
             rhi->DrawShadowIndexed(mesh.mesh.indexCount);
         }

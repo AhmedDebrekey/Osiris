@@ -1,0 +1,130 @@
+{
+  "entities": [
+    {
+      "name": "ModularExteriorTemplate",
+      "mesh": "models/modular_set_template_gltf/scene.gltf",
+      "transform": {
+        "position": [0.0, 0.0, -6.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "StreetLampLeft",
+      "mesh": "models/street_lamp_01_2k.gltf/street_lamp_01_2k.gltf",
+      "transform": {
+        "position": [-4.5, 0.0, 3.0],
+        "rotation": [0.0, 180.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "StreetLampLeftLight",
+      "parent": "StreetLampLeft",
+      "spotLight": {
+        "castsShadow": true,
+        "color": [1.0, 0.72, 0.46],
+        "enabled": true,
+        "innerCone": 38.0,
+        "intensity": 42.0,
+        "outerCone": 62.0,
+        "range": 10.0
+      },
+      "transform": {
+        "position": [0.0, 3.45, 0.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "StreetLampRight",
+      "mesh": "models/street_lamp_01_2k.gltf/street_lamp_01_2k.gltf",
+      "transform": {
+        "position": [4.5, 0.0, 3.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "StreetLampRightLight",
+      "parent": "StreetLampRight",
+      "spotLight": {
+        "castsShadow": true,
+        "color": [1.0, 0.72, 0.46],
+        "enabled": true,
+        "innerCone": 38.0,
+        "intensity": 42.0,
+        "outerCone": 62.0,
+        "range": 10.0
+      },
+      "transform": {
+        "position": [0.0, 3.45, 0.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "FacadeKeyLight",
+      "spotLight": {
+        "castsShadow": true,
+        "color": [0.62, 0.72, 1.0],
+        "enabled": true,
+        "innerCone": 32.0,
+        "intensity": 34.0,
+        "outerCone": 56.0,
+        "range": 20.0
+      },
+      "transform": {
+        "position": [0.0, 6.0, 1.0],
+        "rotation": [60.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "LeftRakingFill",
+      "spotLight": {
+        "castsShadow": false,
+        "color": [0.34, 0.48, 1.0],
+        "enabled": true,
+        "innerCone": 40.0,
+        "intensity": 20.0,
+        "outerCone": 66.0,
+        "range": 17.0
+      },
+      "transform": {
+        "position": [-7.0, 4.0, -1.0],
+        "rotation": [45.0, 0.0, 45.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "RightRakingFill",
+      "spotLight": {
+        "castsShadow": false,
+        "color": [0.95, 0.35, 0.18],
+        "enabled": true,
+        "innerCone": 34.0,
+        "intensity": 13.0,
+        "outerCone": 58.0,
+        "range": 15.0
+      },
+      "transform": {
+        "position": [7.0, 3.0, -4.0],
+        "rotation": [70.0, 0.0, -70.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "ExteriorPreviewCamera",
+      "camera": {
+        "eyeHeight": 1.7,
+        "isPrimary": true
+      },
+      "transform": {
+        "position": [0.0, 0.0, 14.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    }
+  ]
+}

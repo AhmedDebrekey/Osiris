@@ -1,0 +1,336 @@
+{
+  "entities": [
+    {
+      "name": "BuildingFoundation",
+      "box": {
+        "halfExtents": [5.5, 0.1, 3.3],
+        "texture": "models/modular_exterior_parts/textures/Concrete_baseColor.jpg"
+      },
+      "transform": {
+        "position": [0.0, -0.1, -9.3],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "BuildingBackWall",
+      "box": {
+        "halfExtents": [5.5, 2.2, 0.1],
+        "texture": "models/modular_exterior_parts/textures/Bricks_baseColor.jpg"
+      },
+      "transform": {
+        "position": [0.0, 2.2, -12.6],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "BuildingLeftWall",
+      "box": {
+        "halfExtents": [0.1, 2.2, 3.3],
+        "texture": "models/modular_exterior_parts/textures/Bricks_baseColor.jpg"
+      },
+      "transform": {
+        "position": [-5.4, 2.2, -9.3],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "BuildingRightWall",
+      "box": {
+        "halfExtents": [0.1, 2.2, 3.3],
+        "texture": "models/modular_exterior_parts/textures/Bricks_baseColor.jpg"
+      },
+      "transform": {
+        "position": [5.4, 2.2, -9.3],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "BuildingRoof",
+      "box": {
+        "halfExtents": [5.7, 0.15, 3.5],
+        "texture": "models/modular_exterior_parts/textures/Concrete_baseColor.jpg"
+      },
+      "transform": {
+        "position": [0.0, 4.55, -9.3],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "FacadeGroundLeftOuter",
+      "mesh": "models/modular_exterior_parts/window_002_0.gltf",
+      "transform": {
+        "position": [-5.5, 0.0, -5.95],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "FacadeGroundLeftInner",
+      "mesh": "models/modular_exterior_parts/window_001_1.gltf",
+      "transform": {
+        "position": [-3.3, 0.0, -5.95],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "FacadeEntrance",
+      "mesh": "models/modular_exterior_parts/door_001_005_20.gltf",
+      "transform": {
+        "position": [-1.1, 0.0, -5.95],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "FacadeGroundRightInner",
+      "mesh": "models/modular_exterior_parts/window_001_1.gltf",
+      "transform": {
+        "position": [1.1, 0.0, -5.95],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "FacadeGroundRightOuter",
+      "mesh": "models/modular_exterior_parts/window_002_0.gltf",
+      "transform": {
+        "position": [3.3, 0.0, -5.95],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "FacadeUpperLeftOuter",
+      "mesh": "models/modular_exterior_parts/window_002_002_19.gltf",
+      "transform": {
+        "position": [-5.5, 2.2, -5.95],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "FacadeUpperLeftInner",
+      "mesh": "models/modular_exterior_parts/window_002_015_14.gltf",
+      "transform": {
+        "position": [-3.3, 2.2, -5.95],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "FacadeUpperCenter",
+      "mesh": "models/modular_exterior_parts/window_001_1.gltf",
+      "transform": {
+        "position": [-1.1, 2.2, -5.95],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "FacadeUpperRightInner",
+      "mesh": "models/modular_exterior_parts/window_002_015_14.gltf",
+      "transform": {
+        "position": [1.1, 2.2, -5.95],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "FacadeUpperRightOuter",
+      "mesh": "models/modular_exterior_parts/window_002_002_19.gltf",
+      "transform": {
+        "position": [3.3, 2.2, -5.95],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "EntranceStepUpper",
+      "box": {
+        "halfExtents": [1.1, 0.12, 0.45],
+        "texture": "models/modular_exterior_parts/textures/Concrete_baseColor.jpg"
+      },
+      "transform": {
+        "position": [0.0, 0.12, -5.5],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "EntranceStepLower",
+      "box": {
+        "halfExtents": [1.35, 0.08, 0.35],
+        "texture": "models/modular_exterior_parts/textures/Concrete_baseColor.jpg"
+      },
+      "transform": {
+        "position": [0.0, 0.08, -4.75],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "FrontWalkway",
+      "box": {
+        "halfExtents": [6.0, 0.08, 2.0],
+        "texture": "models/modular_exterior_parts/textures/Concrete_baseColor.jpg"
+      },
+      "transform": {
+        "position": [0.0, -0.08, -3.95],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "AsphaltRoad",
+      "box": {
+        "halfExtents": [7.0, 0.08, 8.0],
+        "texture": "textures/asphalt/asphalt_04_diff_2k.jpg"
+      },
+      "transform": {
+        "position": [0.0, -0.08, 6.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "StreetLampLeft",
+      "mesh": "models/street_lamp_01_2k.gltf/street_lamp_01_2k.gltf",
+      "transform": {
+        "position": [-4.6, 0.0, 1.5],
+        "rotation": [0.0, 180.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "StreetLampLeftLight",
+      "parent": "StreetLampLeft",
+      "spotLight": {
+        "castsShadow": true,
+        "color": [1.0, 0.7, 0.42],
+        "enabled": true,
+        "innerCone": 38.0,
+        "intensity": 38.0,
+        "outerCone": 62.0,
+        "range": 10.0
+      },
+      "transform": {
+        "position": [0.0, 3.45, 0.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "StreetLampRight",
+      "mesh": "models/street_lamp_01_2k.gltf/street_lamp_01_2k.gltf",
+      "transform": {
+        "position": [4.6, 0.0, 5.5],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "StreetLampRightLight",
+      "parent": "StreetLampRight",
+      "spotLight": {
+        "castsShadow": true,
+        "color": [1.0, 0.7, 0.42],
+        "enabled": true,
+        "innerCone": 38.0,
+        "intensity": 38.0,
+        "outerCone": 62.0,
+        "range": 10.0
+      },
+      "transform": {
+        "position": [0.0, 3.45, 0.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "EntranceLight",
+      "spotLight": {
+        "castsShadow": true,
+        "color": [1.0, 0.42, 0.18],
+        "enabled": true,
+        "innerCone": 28.0,
+        "intensity": 24.0,
+        "outerCone": 48.0,
+        "range": 8.0
+      },
+      "transform": {
+        "position": [0.0, 3.0, -4.5],
+        "rotation": [40.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "MoonFacadeFill",
+      "spotLight": {
+        "castsShadow": false,
+        "color": [0.42, 0.56, 1.0],
+        "enabled": true,
+        "innerCone": 38.0,
+        "intensity": 20.0,
+        "outerCone": 66.0,
+        "range": 22.0
+      },
+      "transform": {
+        "position": [0.0, 7.0, 2.0],
+        "rotation": [50.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "LeftRakingFill",
+      "spotLight": {
+        "castsShadow": false,
+        "color": [0.24, 0.38, 0.95],
+        "enabled": true,
+        "innerCone": 38.0,
+        "intensity": 13.0,
+        "outerCone": 62.0,
+        "range": 17.0
+      },
+      "transform": {
+        "position": [-7.0, 4.0, -1.0],
+        "rotation": [45.0, 0.0, 45.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "RightRakingFill",
+      "spotLight": {
+        "castsShadow": false,
+        "color": [0.9, 0.24, 0.12],
+        "enabled": true,
+        "innerCone": 34.0,
+        "intensity": 8.0,
+        "outerCone": 58.0,
+        "range": 15.0
+      },
+      "transform": {
+        "position": [7.0, 3.5, -2.0],
+        "rotation": [60.0, 0.0, -55.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    },
+    {
+      "name": "ExteriorPreviewCamera",
+      "camera": {
+        "eyeHeight": 1.7,
+        "isPrimary": true
+      },
+      "transform": {
+        "position": [0.0, 0.0, 12.0],
+        "rotation": [0.0, 0.0, 0.0],
+        "scale": [1.0, 1.0, 1.0]
+      }
+    }
+  ]
+}

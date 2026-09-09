@@ -275,13 +275,9 @@ void main() {
     color += max(push.emissive.rgb, vec3(0.0)) * max(push.emissive.a, 0.0);
 
 
-    // Tone mapping (ACES filmic approximation)
-    color = (color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14);
-    color = clamp(color, 0.0, 1.0);
-
-    // No manual gamma correction here: the swapchain is VK_FORMAT_B8G8R8A8_SRGB,
-    // so the hardware already linear->sRGB encodes this on write. Gamma-correcting
-    // here too would double-encode (crushes everything toward white).
+    // Keep HDR highlights for bloom and transparent blending. Tone mapping happens once in
+    // postprocess.frag. The bound scene target is RGBA16F, so prevent finite-range overflow.
+    color = clamp(color, vec3(0.0), vec3(64000.0));
     float outputAlpha = alphaMode > 1.5 ? clamp(albedoSample.a, 0.0, 1.0) : 1.0;
     outColor = vec4(color, outputAlpha);
 }

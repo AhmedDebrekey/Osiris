@@ -233,7 +233,7 @@ add_subdirectory(games/horror)
 # ============================================================
 find_program(GLSLC glslc HINTS "C:/VulkanSDK/1.4.350.0/Bin")
 
-file(GLOB_RECURSE GLSL_SOURCE_FILES
+file(GLOB_RECURSE GLSL_SOURCE_FILES CONFIGURE_DEPENDS
         "${CMAKE_SOURCE_DIR}/assets/shaders/*.vert"
         "${CMAKE_SOURCE_DIR}/assets/shaders/*.frag"
         "${CMAKE_SOURCE_DIR}/assets/shaders/*.comp"

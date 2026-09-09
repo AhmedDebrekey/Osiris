@@ -499,7 +499,6 @@ namespace Osiris {
             "chromaticAberrationIntensity", &PostProcessSettings::chromaticAberrationIntensity,
             "filmGrainIntensity", &PostProcessSettings::filmGrainIntensity,
             "bloomIntensity", &PostProcessSettings::bloomIntensity,
-            "bloomThreshold", &PostProcessSettings::bloomThreshold,
             "bloomRadius", &PostProcessSettings::bloomRadius);
 
         // Frame-rate-independent "move current toward target by at most maxDelta," the building

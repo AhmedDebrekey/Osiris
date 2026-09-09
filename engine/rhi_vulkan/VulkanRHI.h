@@ -135,6 +135,16 @@ namespace Osiris {
         }
 
     private:
+        static constexpr uint32_t MAX_BLOOM_MIPS = 6;
+        static constexpr VkFormat SCENE_COLOR_FORMAT = VK_FORMAT_R16G16B16A16_SFLOAT;
+        struct BloomMip {
+            VulkanImage downsample;
+            VulkanImage upsample;
+            VkExtent2D extent = {};
+            bool downsampleInitialized = false;
+            bool upsampleInitialized = false;
+        };
+
         struct GPUTimestampScope {
             std::string name;
             uint32_t startQuery = 0;
@@ -168,7 +178,13 @@ namespace Osiris {
         void DestroyViewportResources();
         bool CreateSceneColorImage();
         void DestroySceneColorImage();
-        void DrawPostProcessFullscreen(VkCommandBuffer cmd, VkImageView srcView, VkExtent2D extent);
+        void DrawPostProcessFullscreen(VkCommandBuffer cmd, VkImageView srcView, VkImageView bloomView,
+                                       VkExtent2D extent, uint32_t resolveIndex, bool effectsEnabled);
+        bool CreateBloomResources(VkExtent2D extent);
+        void DestroyBloomResources();
+        VkImageView RenderBloom(VkCommandBuffer cmd, VkImageView sourceView, VkExtent2D extent);
+        void DrawBloomPass(VkCommandBuffer cmd, uint32_t mipIndex, bool downsample,
+                           VkImageView sourceView, VkImageView detailView);
         void BeginScenePass(VulkanImage& colorImage, VulkanImage& depthImage, VkExtent2D extent,
                             ResourceState colorInitialState);
         bool CreatePipeline();
@@ -226,6 +242,9 @@ namespace Osiris {
         VkPipelineLayout    m_SkyboxPipelineLayout  = VK_NULL_HANDLE;
         VkPipeline          m_PostProcessPipeline       = VK_NULL_HANDLE;
         VkPipelineLayout    m_PostProcessPipelineLayout = VK_NULL_HANDLE;
+        VkPipeline          m_BloomDownsamplePipeline = VK_NULL_HANDLE;
+        VkPipeline          m_BloomUpsamplePipeline = VK_NULL_HANDLE;
+        VkPipelineLayout    m_BloomPipelineLayout = VK_NULL_HANDLE;
 
         std::array<VkSemaphore, MAX_FRAMES_IN_FLIGHT> m_ImageAvailableSemaphores;
         std::vector<VkSemaphore> m_RenderFinishedSemaphores;
@@ -236,6 +255,8 @@ namespace Osiris {
         VulkanSwapChain    m_SwapChain;
         VulkanImage        m_DepthImage;
         VulkanImage        m_ViewportColorImage;
+        VulkanImage        m_ViewportDisplayImage;
+        bool               m_ViewportDisplayInitialized = false;
         VulkanImage        m_ViewportDepthImage;
         VkExtent2D         m_ViewportExtent = {};
         VkExtent2D         m_PendingViewportExtent = {};
@@ -250,21 +271,23 @@ namespace Osiris {
         VulkanImage        m_SceneColorImage;
         bool               m_SceneColorImageInitialized = false;
 
-        // Edit-mode-only debug preview: never touches the normal viewport image, this is a
-        // separate texture the post-process pass renders into on demand, sized to the viewport
-        // and recreated alongside it. GetPostProcessPreviewEnabled() gates whether it's generated.
+        // The normal viewport resolves HDR into m_ViewportDisplayImage without effects.
+        // This separate LDR target includes the optional Edit-mode post-process preview.
         VulkanImage        m_PostProcessPreviewImage;
         uint64_t           m_PostProcessPreviewTextureID = 0;
         bool               m_PostProcessPreviewEnabled = false;
+        bool               m_PostProcessPreviewInitialized = false;
 
         VkSampler             m_PostProcessSampler         = VK_NULL_HANDLE;
         VkDescriptorSetLayout m_PostProcessDescriptorLayout = VK_NULL_HANDLE;
-        // One set per frame-in-flight slot, not a single shared set: DrawPostProcessFullscreen
-        // calls vkUpdateDescriptorSets every frame, and Vulkan forbids updating a set that a
-        // still-pending command buffer (from the other frame in flight) might be reading from.
-        std::array<VkDescriptorSet, MAX_FRAMES_IN_FLIGHT> m_PostProcessDescriptorSets = {};
+        // Edit mode can resolve both plain and preview images in one frame. Neither resolve
+        // may rewrite descriptors referenced by the other or by a pending frame.
+        std::array<std::array<VkDescriptorSet, 2>, MAX_FRAMES_IN_FLIGHT> m_PostProcessDescriptorSets = {};
         PostProcessSettings m_PostProcessSettings;
-        BufferHandle        m_PostProcessSettingsBuffer;
+        std::array<std::array<std::array<VkDescriptorSet, 2>, MAX_BLOOM_MIPS>, MAX_FRAMES_IN_FLIGHT> m_BloomDescriptorSets = {};
+        std::vector<BloomMip> m_BloomMips;
+        VkExtent2D m_BloomSourceExtent = {};
+        VkFormat m_BloomFormat = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
 
         VulkanContextDesc m_Desc;
 

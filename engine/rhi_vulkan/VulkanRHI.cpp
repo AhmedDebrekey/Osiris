@@ -7,6 +7,8 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <cmath>
+#include <cstddef>
 #include <fstream>
 #include <SDL.h>
 #include <SDL_vulkan.h>
@@ -59,6 +61,30 @@ namespace Osiris {
         glm::vec4 baseColorFactor;
         glm::vec4 materialParams; // x = alpha cutoff, y = alpha mode, z = double-sided
     };
+
+    // Keep field order and offsets in sync with postprocess.frag.
+    struct PostProcessPushConstants {
+        PostProcessSettings settings;
+        float time;
+        uint32_t effectsEnabled;
+        uint32_t bloomAvailable;
+    };
+    static_assert(sizeof(PostProcessSettings) == 28);
+    static_assert(offsetof(PostProcessSettings, bloomIntensity) == 20);
+    static_assert(offsetof(PostProcessSettings, bloomRadius) == 24);
+    static_assert(offsetof(PostProcessPushConstants, time) == 28);
+    static_assert(offsetof(PostProcessPushConstants, effectsEnabled) == 32);
+    static_assert(sizeof(PostProcessPushConstants) == 40);
+
+    // Mirrors bloom_downsample.frag and bloom_upsample.frag.
+    struct BloomPushConstants {
+        float radius;
+        uint32_t firstDownsample;
+        float detailWeight;
+    };
+    static_assert(sizeof(BloomPushConstants) == 12);
+    static_assert(offsetof(BloomPushConstants, firstDownsample) == 4);
+    static_assert(offsetof(BloomPushConstants, detailWeight) == 8);
 
     template<typename T>
     uint32_t AllocateSlot(std::vector<T>& slots, const T& item, auto isNull) {
@@ -176,6 +202,23 @@ namespace Osiris {
 
         m_PipelineManager = std::make_unique<PipelineManager>(m_Device.logicalDevice);
 
+        const auto supportsColorFormat = [&](VkFormat format, bool blending) {
+            VkFormatProperties properties;
+            vkGetPhysicalDeviceFormatProperties(m_Device.physicalDevice, format, &properties);
+            VkFormatFeatureFlags required = VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
+                | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+            if (blending) required |= VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT;
+            return (properties.optimalTilingFeatures & required) == required;
+        };
+        if (!supportsColorFormat(SCENE_COLOR_FORMAT, true)) {
+            OSIRIS_ERROR("RGBA16F scene rendering requires color attachment blending and linear sampling");
+            return false;
+        }
+        if (!supportsColorFormat(m_BloomFormat, false)) {
+            m_BloomFormat = SCENE_COLOR_FORMAT;
+            OSIRIS_WARN("R11G11B10 bloom unsupported, using RGBA16F bloom targets");
+        }
+
         VkDescriptorSetLayout forwardLayouts[] = { m_FrameDescriptorLayout, m_MaterialDescriptorLayout };
 
         const auto createForwardPipeline = [&](bool alphaBlend, bool doubleSided) {
@@ -183,7 +226,7 @@ namespace Osiris {
                 .vertexShader     = AssetManager::GetEnginePath("shaders/triangle.vert.spv"),
                 .fragmentShader   = AssetManager::GetEnginePath("shaders/triangle.frag.spv"),
                 .colorAttachment  = true,
-                .colorFormat      = m_SwapChain.swapChainImageFormat,
+                .colorFormat      = SCENE_COLOR_FORMAT,
                 .depthAttachment  = true,
                 .depthFormat      = VK_FORMAT_D32_SFLOAT,
                 .depthTest        = true,
@@ -235,7 +278,7 @@ namespace Osiris {
             .vertexShader     = AssetManager::GetEnginePath("shaders/skybox.vert.spv"),
             .fragmentShader   = AssetManager::GetEnginePath("shaders/skybox.frag.spv"),
             .colorAttachment  = true,
-            .colorFormat      = m_SwapChain.swapChainImageFormat,
+            .colorFormat      = SCENE_COLOR_FORMAT,
             .depthAttachment  = true,
             .depthFormat      = VK_FORMAT_D32_SFLOAT,
             .depthTest        = true,
@@ -268,11 +311,33 @@ namespace Osiris {
             .vertexInput      = false, // fullscreen triangle in postprocess.vert, no vertex buffer
             .setLayoutCount   = 1,
             .pSetLayouts      = postProcessLayouts,
-            .pushConstantSize = sizeof(float), // wall-clock seconds, for animated film grain
+            .pushConstantSize = sizeof(PostProcessPushConstants),
             .pushConstantStages = VK_SHADER_STAGE_FRAGMENT_BIT,
         });
 
         m_PostProcessPipelineLayout = m_PipelineManager->GetLayout(m_PostProcessPipeline);
+
+        const auto createBloomPipeline = [&](const char* shader) {
+            return m_PipelineManager->GetOrCreate({
+                .vertexShader = AssetManager::GetEnginePath("shaders/postprocess.vert.spv"),
+                .fragmentShader = AssetManager::GetEnginePath(shader),
+                .colorAttachment = true,
+                .colorFormat = m_BloomFormat,
+                .depthAttachment = false,
+                .depthFormat = VK_FORMAT_UNDEFINED,
+                .depthTest = false,
+                .depthWrite = false,
+                .cullMode = VK_CULL_MODE_NONE,
+                .vertexInput = false,
+                .setLayoutCount = 1,
+                .pSetLayouts = postProcessLayouts,
+                .pushConstantSize = sizeof(BloomPushConstants),
+                .pushConstantStages = VK_SHADER_STAGE_FRAGMENT_BIT,
+            });
+        };
+        m_BloomDownsamplePipeline = createBloomPipeline("shaders/bloom_downsample.frag.spv");
+        m_BloomUpsamplePipeline = createBloomPipeline("shaders/bloom_upsample.frag.spv");
+        m_BloomPipelineLayout = m_PipelineManager->GetLayout(m_BloomDownsamplePipeline);
 
         if (!CreateDescriptorPool()) {
             OSIRIS_ERROR("Failed to create descriptor pool!");
@@ -300,42 +365,29 @@ namespace Osiris {
         };
         VK_CHECK(vkCreateSampler(m_Device.logicalDevice, &postProcessSamplerInfo, nullptr, &m_PostProcessSampler));
 
-        std::array<VkDescriptorSetLayout, MAX_FRAMES_IN_FLIGHT> postProcessSetLayouts;
-        postProcessSetLayouts.fill(m_PostProcessDescriptorLayout);
-        const VkDescriptorSetAllocateInfo postProcessSetAllocInfo = {
-            .sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            .descriptorPool     = m_DescriptorPool,
-            .descriptorSetCount = MAX_FRAMES_IN_FLIGHT,
-            .pSetLayouts        = postProcessSetLayouts.data(),
-        };
-        VK_CHECK(vkAllocateDescriptorSets(m_Device.logicalDevice, &postProcessSetAllocInfo, m_PostProcessDescriptorSets.data()));
-
-        const BufferDesc postProcessSettingsBufferDesc = {
-            .size       = sizeof(PostProcessSettings),
-            .usage      = BufferUsage::Uniform,
-            .cpuVisible = true,
-        };
-        m_PostProcessSettingsBuffer = CreateBuffer(postProcessSettingsBufferDesc);
-
-        // Binding 1 points at the same shared settings buffer every frame, its contents change
-        // via UploadDynamicBuffer (a host-visible memory write, not a validated "in use" Vulkan
-        // call) rather than the buffer identity ever changing, so unlike binding 0's sampler
-        // (rewritten every DrawPostProcessFullscreen call) this only needs writing once per slot.
-        const VkDescriptorBufferInfo postProcessSettingsBufferInfo = {
-            .buffer = m_Buffers.at(m_PostProcessSettingsBuffer.id).buffer,
-            .offset = 0,
-            .range  = sizeof(PostProcessSettings),
+        // Allocate every descriptor set once. Source bindings are rewritten only after the
+        // corresponding frame fence, with a distinct set for each pass recorded in that frame.
+        const auto allocatePostProcessSets = [&](VkDescriptorSet* sets, uint32_t count) {
+            std::vector<VkDescriptorSetLayout> layouts(count, m_PostProcessDescriptorLayout);
+            const VkDescriptorSetAllocateInfo info = {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                .descriptorPool = m_DescriptorPool,
+                .descriptorSetCount = count,
+                .pSetLayouts = layouts.data(),
+            };
+            return vkAllocateDescriptorSets(m_Device.logicalDevice, &info, sets) == VK_SUCCESS;
         };
         for (uint32_t frame = 0; frame < MAX_FRAMES_IN_FLIGHT; frame++) {
-            const VkWriteDescriptorSet settingsWrite = {
-                .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet          = m_PostProcessDescriptorSets[frame],
-                .dstBinding      = 1,
-                .descriptorCount = 1,
-                .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                .pBufferInfo     = &postProcessSettingsBufferInfo,
-            };
-            vkUpdateDescriptorSets(m_Device.logicalDevice, 1, &settingsWrite, 0, nullptr);
+            if (!allocatePostProcessSets(m_PostProcessDescriptorSets[frame].data(), 2)) {
+                OSIRIS_ERROR("Failed to allocate HDR resolve descriptor sets");
+                return false;
+            }
+            for (auto& mipSets : m_BloomDescriptorSets[frame]) {
+                if (!allocatePostProcessSets(mipSets.data(), 2)) {
+                    OSIRIS_ERROR("Failed to allocate bloom descriptor sets");
+                    return false;
+                }
+            }
         }
 
         if (!CreateSceneColorImage()) {
@@ -469,6 +521,7 @@ namespace Osiris {
 
         DestroyViewportResources();
         DestroySceneColorImage();
+        DestroyBloomResources();
         vkDestroySampler(m_Device.logicalDevice, m_PostProcessSampler, nullptr);
 
         vkDestroyCommandPool(m_Device.logicalDevice, m_CommandPool, nullptr);
@@ -1462,44 +1515,50 @@ namespace Osiris {
             m_RenderGraph.Execute(cmd);
             m_ViewportImageInitialized = true;
 
-            // Edit-mode debug preview: never touches m_ViewportColorImage or what the normal
-            // viewport shows, this renders the post-processed result into a separate image that
-            // Editor.cpp only displays when GetPostProcessPreviewEnabled() is on. m_ViewportColorImage
-            // is already ShaderRead from the pass above, exactly what this needs to sample it.
-            if (m_PostProcessPreviewEnabled) {
+            const VkImageView bloomView = m_PostProcessPreviewEnabled
+                ? RenderBloom(cmd, m_ViewportColorImage.imageView, m_ViewportExtent) : VK_NULL_HANDLE;
+            const auto resolveViewport = [&](VulkanImage& destination, bool& initialized,
+                                             uint32_t resolveIndex, bool effectsEnabled) {
                 m_RenderGraph.Reset();
-                m_RenderGraph.ImportTexture(m_ColorBufferRG, m_PostProcessPreviewImage.image, ResourceState::Undefined);
-                m_RenderGraph.AddPass("PostProcessPreviewPass", PassType::Graphics)
+                m_RenderGraph.ImportTexture(m_ColorBufferRG, destination.image,
+                    initialized ? ResourceState::ShaderRead : ResourceState::Undefined);
+                m_RenderGraph.AddPass("ViewportResolvePass", PassType::Graphics)
                     .Write({m_ColorBufferRG, ResourceState::ColorWrite})
                     .SetExecute(nullptr);
                 m_RenderGraph.Compile();
                 m_RenderGraph.Execute(cmd);
 
-                const VkRenderingAttachmentInfo previewAttachment = {
+                const VkRenderingAttachmentInfo attachment = {
                     .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-                    .imageView = m_PostProcessPreviewImage.imageView,
+                    .imageView = destination.imageView,
                     .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                     .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
                     .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
                 };
-                const VkRenderingInfo previewRenderingInfo = {
+                const VkRenderingInfo renderingInfo = {
                     .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
                     .renderArea = {.offset = {0, 0}, .extent = m_ViewportExtent},
                     .layerCount = 1,
                     .colorAttachmentCount = 1,
-                    .pColorAttachments = &previewAttachment,
+                    .pColorAttachments = &attachment,
                 };
-                vkCmdBeginRendering(cmd, &previewRenderingInfo);
-                DrawPostProcessFullscreen(cmd, m_ViewportColorImage.imageView, m_ViewportExtent);
+                vkCmdBeginRendering(cmd, &renderingInfo);
+                DrawPostProcessFullscreen(cmd, m_ViewportColorImage.imageView, bloomView,
+                    m_ViewportExtent, resolveIndex, effectsEnabled);
                 vkCmdEndRendering(cmd);
 
                 m_RenderGraph.Reset();
-                m_RenderGraph.ImportTexture(m_ColorBufferRG, m_PostProcessPreviewImage.image, ResourceState::ColorWrite);
-                m_RenderGraph.AddPass("PostProcessPreviewSamplePass", PassType::Graphics)
+                m_RenderGraph.ImportTexture(m_ColorBufferRG, destination.image, ResourceState::ColorWrite);
+                m_RenderGraph.AddPass("ViewportResolveSamplePass", PassType::Graphics)
                     .Read({m_ColorBufferRG, ResourceState::ShaderRead})
                     .SetExecute(nullptr);
                 m_RenderGraph.Compile();
                 m_RenderGraph.Execute(cmd);
+                initialized = true;
+            };
+            resolveViewport(m_ViewportDisplayImage, m_ViewportDisplayInitialized, 0, false);
+            if (m_PostProcessPreviewEnabled) {
+                resolveViewport(m_PostProcessPreviewImage, m_PostProcessPreviewInitialized, 1, true);
             }
 
             m_RenderGraph.Reset();
@@ -1552,6 +1611,8 @@ namespace Osiris {
             m_RenderGraph.Compile();
             m_RenderGraph.Execute(cmd);
 
+            const VkImageView bloomView = RenderBloom(cmd, m_SceneColorImage.imageView, m_SwapChain.swapChainExtent);
+
             m_RenderGraph.Reset();
             m_RenderGraph.ImportTexture(m_ColorBufferRG,
                 m_SwapChain.swapChainImages[m_ImageIndex], ResourceState::Undefined);
@@ -1579,7 +1640,7 @@ namespace Osiris {
             // into this same instance right after, same as it always drew into the forward
             // pass's own rendering before this pass existed.
             vkCmdBeginRendering(cmd, &postProcessRenderingInfo);
-            DrawPostProcessFullscreen(cmd, m_SceneColorImage.imageView, m_SwapChain.swapChainExtent);
+            DrawPostProcessFullscreen(cmd, m_SceneColorImage.imageView, bloomView, m_SwapChain.swapChainExtent, 0, true);
         }
 
         ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
@@ -1672,94 +1733,66 @@ namespace Osiris {
 
     bool VulkanRHI::CreateViewportResources(uint32_t width, uint32_t height) {
         m_ViewportExtent = {width, height};
-
-        VkImageCreateInfo colorInfo = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-            .imageType = VK_IMAGE_TYPE_2D,
-            .format = m_SwapChain.swapChainImageFormat,
-            .extent = {width, height, 1},
-            .mipLevels = 1,
-            .arrayLayers = 1,
-            .samples = VK_SAMPLE_COUNT_1_BIT,
-            .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        const auto createImage = [&](VulkanImage& target, VkFormat format, bool depth) {
+            const VkImageCreateInfo imageInfo = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                .imageType = VK_IMAGE_TYPE_2D,
+                .format = format,
+                .extent = {width, height, 1},
+                .mipLevels = 1,
+                .arrayLayers = 1,
+                .samples = VK_SAMPLE_COUNT_1_BIT,
+                .usage = depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+                    : static_cast<VkImageUsageFlags>(VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT),
+            };
+            const VmaAllocationCreateInfo allocationInfo = {.usage = VMA_MEMORY_USAGE_GPU_ONLY};
+            if (vmaCreateImage(m_Allocator, &imageInfo, &allocationInfo,
+                &target.image, &target.allocation, nullptr) != VK_SUCCESS) return false;
+            target.format = format;
+            const VkImageViewCreateInfo viewInfo = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                .image = target.image,
+                .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                .format = format,
+                .subresourceRange = {
+                    .aspectMask = static_cast<VkImageAspectFlags>(depth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT),
+                    .levelCount = 1,
+                    .layerCount = 1,
+                },
+            };
+            return vkCreateImageView(m_Device.logicalDevice, &viewInfo, nullptr, &target.imageView) == VK_SUCCESS;
         };
-        VmaAllocationCreateInfo allocationInfo = {.usage = VMA_MEMORY_USAGE_GPU_ONLY};
-        VK_CHECK(vmaCreateImage(m_Allocator, &colorInfo, &allocationInfo,
-            &m_ViewportColorImage.image, &m_ViewportColorImage.allocation, nullptr));
-        m_ViewportColorImage.format = m_SwapChain.swapChainImageFormat;
-
-        VkImageViewCreateInfo colorViewInfo = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .image = m_ViewportColorImage.image,
-            .viewType = VK_IMAGE_VIEW_TYPE_2D,
-            .format = m_ViewportColorImage.format,
-            .subresourceRange = {
-                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel = 0,
-                .levelCount = 1,
-                .baseArrayLayer = 0,
-                .layerCount = 1,
-            },
-        };
-        VK_CHECK(vkCreateImageView(m_Device.logicalDevice, &colorViewInfo, nullptr,
-            &m_ViewportColorImage.imageView));
-
-        VkImageCreateInfo depthInfo = colorInfo;
-        depthInfo.format = VK_FORMAT_D32_SFLOAT;
-        depthInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-        VK_CHECK(vmaCreateImage(m_Allocator, &depthInfo, &allocationInfo,
-            &m_ViewportDepthImage.image, &m_ViewportDepthImage.allocation, nullptr));
-        m_ViewportDepthImage.format = VK_FORMAT_D32_SFLOAT;
-
-        VkImageViewCreateInfo depthViewInfo = colorViewInfo;
-        depthViewInfo.image = m_ViewportDepthImage.image;
-        depthViewInfo.format = m_ViewportDepthImage.format;
-        depthViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-        VK_CHECK(vkCreateImageView(m_Device.logicalDevice, &depthViewInfo, nullptr,
-            &m_ViewportDepthImage.imageView));
-
-        const VkDescriptorSet descriptorSet = ImGui_ImplVulkan_AddTexture(
-            m_ViewportColorImage.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        m_ViewportTextureID = reinterpret_cast<uint64_t>(descriptorSet);
+        if (!createImage(m_ViewportColorImage, SCENE_COLOR_FORMAT, false)
+            || !createImage(m_ViewportDepthImage, VK_FORMAT_D32_SFLOAT, true)
+            || !createImage(m_ViewportDisplayImage, m_SwapChain.swapChainImageFormat, false)
+            || !createImage(m_PostProcessPreviewImage, m_SwapChain.swapChainImageFormat, false)) {
+            DestroyViewportResources();
+            return false;
+        }
+        m_ViewportTextureID = reinterpret_cast<uint64_t>(ImGui_ImplVulkan_AddTexture(
+            m_ViewportDisplayImage.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
+        m_PostProcessPreviewTextureID = reinterpret_cast<uint64_t>(ImGui_ImplVulkan_AddTexture(
+            m_PostProcessPreviewImage.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
         m_ViewportImageInitialized = false;
-
-        // Post-process debug preview, same size as the viewport, never written to unless
-        // GetPostProcessPreviewEnabled() is on (see RenderImGui).
-        VK_CHECK(vmaCreateImage(m_Allocator, &colorInfo, &allocationInfo,
-            &m_PostProcessPreviewImage.image, &m_PostProcessPreviewImage.allocation, nullptr));
-        m_PostProcessPreviewImage.format = m_SwapChain.swapChainImageFormat;
-
-        VkImageViewCreateInfo previewViewInfo = colorViewInfo;
-        previewViewInfo.image = m_PostProcessPreviewImage.image;
-        VK_CHECK(vkCreateImageView(m_Device.logicalDevice, &previewViewInfo, nullptr,
-            &m_PostProcessPreviewImage.imageView));
-
-        const VkDescriptorSet previewDescriptorSet = ImGui_ImplVulkan_AddTexture(
-            m_PostProcessPreviewImage.imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        m_PostProcessPreviewTextureID = reinterpret_cast<uint64_t>(previewDescriptorSet);
-
+        m_ViewportDisplayInitialized = false;
+        m_PostProcessPreviewInitialized = false;
         return true;
     }
 
     void VulkanRHI::DestroyViewportResources() {
-        if (m_ViewportColorImage.imageView != VK_NULL_HANDLE)
-            vkDestroyImageView(m_Device.logicalDevice, m_ViewportColorImage.imageView, nullptr);
-        if (m_ViewportColorImage.image != VK_NULL_HANDLE)
-            vmaDestroyImage(m_Allocator, m_ViewportColorImage.image, m_ViewportColorImage.allocation);
-        if (m_ViewportDepthImage.imageView != VK_NULL_HANDLE)
-            vkDestroyImageView(m_Device.logicalDevice, m_ViewportDepthImage.imageView, nullptr);
-        if (m_ViewportDepthImage.image != VK_NULL_HANDLE)
-            vmaDestroyImage(m_Allocator, m_ViewportDepthImage.image, m_ViewportDepthImage.allocation);
-        if (m_PostProcessPreviewImage.imageView != VK_NULL_HANDLE)
-            vkDestroyImageView(m_Device.logicalDevice, m_PostProcessPreviewImage.imageView, nullptr);
-        if (m_PostProcessPreviewImage.image != VK_NULL_HANDLE)
-            vmaDestroyImage(m_Allocator, m_PostProcessPreviewImage.image, m_PostProcessPreviewImage.allocation);
-
-        m_ViewportColorImage = {};
-        m_ViewportDepthImage = {};
+        for (auto* image : {&m_ViewportColorImage, &m_ViewportDisplayImage,
+                           &m_ViewportDepthImage, &m_PostProcessPreviewImage}) {
+            if (image->imageView != VK_NULL_HANDLE)
+                vkDestroyImageView(m_Device.logicalDevice, image->imageView, nullptr);
+            if (image->image != VK_NULL_HANDLE)
+                vmaDestroyImage(m_Allocator, image->image, image->allocation);
+            *image = {};
+        }
         m_ViewportExtent = {};
         m_ViewportImageInitialized = false;
-        m_PostProcessPreviewImage = {};
+        m_ViewportDisplayInitialized = false;
+        m_PostProcessPreviewInitialized = false;
+        m_ViewportTextureID = 0;
         m_PostProcessPreviewTextureID = 0;
     }
 
@@ -1767,7 +1800,7 @@ namespace Osiris {
         const VkImageCreateInfo colorInfo = {
             .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
             .imageType = VK_IMAGE_TYPE_2D,
-            .format = m_SwapChain.swapChainImageFormat,
+            .format = SCENE_COLOR_FORMAT,
             .extent = {m_SwapChain.swapChainExtent.width, m_SwapChain.swapChainExtent.height, 1},
             .mipLevels = 1,
             .arrayLayers = 1,
@@ -1777,7 +1810,7 @@ namespace Osiris {
         const VmaAllocationCreateInfo allocationInfo = {.usage = VMA_MEMORY_USAGE_GPU_ONLY};
         VK_CHECK(vmaCreateImage(m_Allocator, &colorInfo, &allocationInfo,
             &m_SceneColorImage.image, &m_SceneColorImage.allocation, nullptr));
-        m_SceneColorImage.format = m_SwapChain.swapChainImageFormat;
+        m_SceneColorImage.format = SCENE_COLOR_FORMAT;
 
         const VkImageViewCreateInfo colorViewInfo = {
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -1808,51 +1841,217 @@ namespace Osiris {
         m_SceneColorImageInitialized = false;
     }
 
-    // Assumes rendering is already begun on the destination the caller wants this drawn into.
-    // Repoints this frame-in-flight slot's descriptor set at srcView every call rather than
-    // keeping a set per source image, Play and the Edit preview never run in the same frame so
-    // nothing ever needs both bindings valid at once within a single slot.
-    void VulkanRHI::DrawPostProcessFullscreen(VkCommandBuffer cmd, VkImageView srcView, VkExtent2D extent) {
-        const VkDescriptorSet descriptorSet = m_PostProcessDescriptorSets[m_CurrentFrame];
+    bool VulkanRHI::CreateBloomResources(VkExtent2D extent) {
+        if (extent.width == m_BloomSourceExtent.width && extent.height == m_BloomSourceExtent.height
+            && !m_BloomMips.empty()) return true;
+        if (extent.width == 0 || extent.height == 0) return false;
 
-        UploadDynamicBuffer(m_PostProcessSettingsBuffer, &m_PostProcessSettings, sizeof(PostProcessSettings));
-
-        const VkDescriptorImageInfo imageInfo = {
-            .sampler     = m_PostProcessSampler,
-            .imageView   = srcView,
-            .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        // The same chain serves Play and Edit preview. Wait only when its extent changes,
+        // including mode switches, before releasing images referenced by older submissions.
+        if (!m_BloomMips.empty()) {
+            vkDeviceWaitIdle(m_Device.logicalDevice);
+            DestroyBloomResources();
+        }
+        VkExtent2D mipExtent = extent;
+        for (uint32_t level = 0; level < MAX_BLOOM_MIPS; level++) {
+            mipExtent = {std::max(1u, mipExtent.width / 2), std::max(1u, mipExtent.height / 2)};
+            m_BloomMips.push_back({.extent = mipExtent});
+            if (mipExtent.width == 1 && mipExtent.height == 1) break;
+        }
+        const auto createImage = [&](VulkanImage& image, VkExtent2D size) {
+            const VkImageCreateInfo info = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                .imageType = VK_IMAGE_TYPE_2D,
+                .format = m_BloomFormat,
+                .extent = {size.width, size.height, 1},
+                .mipLevels = 1,
+                .arrayLayers = 1,
+                .samples = VK_SAMPLE_COUNT_1_BIT,
+                .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            };
+            const VmaAllocationCreateInfo allocation = {.usage = VMA_MEMORY_USAGE_GPU_ONLY};
+            if (vmaCreateImage(m_Allocator, &info, &allocation, &image.image, &image.allocation, nullptr) != VK_SUCCESS)
+                return false;
+            image.format = m_BloomFormat;
+            const VkImageViewCreateInfo viewInfo = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                .image = image.image,
+                .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                .format = m_BloomFormat,
+                .subresourceRange = {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .levelCount = 1,
+                    .layerCount = 1,
+                },
+            };
+            return vkCreateImageView(m_Device.logicalDevice, &viewInfo, nullptr, &image.imageView) == VK_SUCCESS;
         };
-        const VkWriteDescriptorSet write = {
-            .sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet          = descriptorSet,
-            .dstBinding      = 0,
-            .descriptorCount = 1,
-            .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .pImageInfo      = &imageInfo,
-        };
-        vkUpdateDescriptorSets(m_Device.logicalDevice, 1, &write, 0, nullptr);
+        for (size_t i = 0; i < m_BloomMips.size(); i++) {
+            auto& mip = m_BloomMips[i];
+            if (!createImage(mip.downsample, mip.extent)
+                || (i + 1 < m_BloomMips.size() && !createImage(mip.upsample, mip.extent))) {
+                OSIRIS_ERROR("Failed to allocate bloom targets");
+                DestroyBloomResources();
+                return false;
+            }
+        }
+        m_BloomSourceExtent = extent;
+        return true;
+    }
 
+    void VulkanRHI::DestroyBloomResources() {
+        for (auto& mip : m_BloomMips) {
+            for (auto* image : {&mip.downsample, &mip.upsample}) {
+                if (image->imageView != VK_NULL_HANDLE)
+                    vkDestroyImageView(m_Device.logicalDevice, image->imageView, nullptr);
+                if (image->image != VK_NULL_HANDLE)
+                    vmaDestroyImage(m_Allocator, image->image, image->allocation);
+            }
+        }
+        m_BloomMips.clear();
+        m_BloomSourceExtent = {};
+    }
+
+    VkImageView VulkanRHI::RenderBloom(VkCommandBuffer cmd, VkImageView sourceView, VkExtent2D extent) {
+        if (!(m_PostProcessSettings.bloomIntensity > 0.0f) || !std::isfinite(m_PostProcessSettings.bloomIntensity))
+            return VK_NULL_HANDLE;
+        if (!CreateBloomResources(extent)) return VK_NULL_HANDLE;
+
+        BeginGPUTimestamp("Bloom");
+        VkImageView lowerView = sourceView;
+        for (uint32_t i = 0; i < m_BloomMips.size(); i++) {
+            DrawBloomPass(cmd, i, true, lowerView, lowerView);
+            lowerView = m_BloomMips[i].downsample.imageView;
+        }
+        for (int i = static_cast<int>(m_BloomMips.size()) - 2; i >= 0; i--) {
+            DrawBloomPass(cmd, static_cast<uint32_t>(i), false, lowerView, m_BloomMips[i].downsample.imageView);
+            lowerView = m_BloomMips[i].upsample.imageView;
+        }
+        EndGPUTimestamp("Bloom");
+        return lowerView;
+    }
+
+    void VulkanRHI::DrawBloomPass(VkCommandBuffer cmd, uint32_t mipIndex, bool downsample,
+                                  VkImageView sourceView, VkImageView detailView) {
+        auto& mip = m_BloomMips[mipIndex];
+        auto& destination = downsample ? mip.downsample : mip.upsample;
+        auto& initialized = downsample ? mip.downsampleInitialized : mip.upsampleInitialized;
+        const VkDescriptorSet set = m_BloomDescriptorSets[m_CurrentFrame][mipIndex][downsample ? 0 : 1];
+        const VkDescriptorImageInfo images[] = {
+            {m_PostProcessSampler, sourceView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+            {m_PostProcessSampler, detailView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+        };
+        VkWriteDescriptorSet writes[2] = {};
+        for (uint32_t binding = 0; binding < 2; binding++) {
+            writes[binding] = {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = set,
+                .dstBinding = binding,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &images[binding],
+            };
+        }
+        vkUpdateDescriptorSets(m_Device.logicalDevice, 2, writes, 0, nullptr);
+
+        m_RenderGraph.Reset();
+        m_RenderGraph.ImportTexture(m_ColorBufferRG, destination.image,
+            initialized ? ResourceState::ShaderRead : ResourceState::Undefined);
+        m_RenderGraph.AddPass(downsample ? "BloomDownsample" : "BloomUpsample", PassType::Graphics)
+            .Write({m_ColorBufferRG, ResourceState::ColorWrite})
+            .SetExecute(nullptr);
+        m_RenderGraph.Compile();
+        m_RenderGraph.Execute(cmd);
+
+        const VkRenderingAttachmentInfo attachment = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .imageView = destination.imageView,
+            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        };
+        const VkRenderingInfo rendering = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+            .renderArea = {.offset = {0, 0}, .extent = mip.extent},
+            .layerCount = 1,
+            .colorAttachmentCount = 1,
+            .pColorAttachments = &attachment,
+        };
+        vkCmdBeginRendering(cmd, &rendering);
         const VkViewport viewport = {
-            .x = 0.0f, .y = 0.0f,
+            .width = static_cast<float>(mip.extent.width),
+            .height = static_cast<float>(mip.extent.height),
+            .minDepth = 0.0f,
+            .maxDepth = 1.0f,
+        };
+        const VkRect2D scissor = {.extent = mip.extent};
+        vkCmdSetViewport(cmd, 0, 1, &viewport);
+        vkCmdSetScissor(cmd, 0, 1, &scissor);
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+            downsample ? m_BloomDownsamplePipeline : m_BloomUpsamplePipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_BloomPipelineLayout, 0, 1, &set, 0, nullptr);
+        const BloomPushConstants push = {
+            .radius = std::isfinite(m_PostProcessSettings.bloomRadius)
+                ? std::clamp(m_PostProcessSettings.bloomRadius, 0.5f, 3.0f) : 1.0f,
+            .firstDownsample = downsample && mipIndex == 0 ? 1u : 0u,
+            .detailWeight = 1.0f / static_cast<float>(m_BloomMips.size() - mipIndex),
+        };
+        vkCmdPushConstants(cmd, m_BloomPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
+        vkCmdDraw(cmd, 3, 1, 0, 0);
+        vkCmdEndRendering(cmd);
+
+        m_RenderGraph.Reset();
+        m_RenderGraph.ImportTexture(m_ColorBufferRG, destination.image, ResourceState::ColorWrite);
+        m_RenderGraph.AddPass("BloomSample", PassType::Graphics)
+            .Read({m_ColorBufferRG, ResourceState::ShaderRead})
+            .SetExecute(nullptr);
+        m_RenderGraph.Compile();
+        m_RenderGraph.Execute(cmd);
+        initialized = true;
+    }
+
+    // The caller has already begun rendering into an LDR target. Settings travel with this
+    // draw's push constants, so a later draw or pending frame cannot observe overwritten UBO data.
+    void VulkanRHI::DrawPostProcessFullscreen(VkCommandBuffer cmd, VkImageView srcView, VkImageView bloomView,
+                                              VkExtent2D extent, uint32_t resolveIndex, bool effectsEnabled) {
+        const VkDescriptorSet descriptorSet = m_PostProcessDescriptorSets[m_CurrentFrame][resolveIndex];
+        const VkDescriptorImageInfo images[] = {
+            {m_PostProcessSampler, srcView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+            {m_PostProcessSampler, bloomView != VK_NULL_HANDLE ? bloomView : srcView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+        };
+        VkWriteDescriptorSet writes[2] = {};
+        for (uint32_t binding = 0; binding < 2; binding++) {
+            writes[binding] = {
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = descriptorSet,
+                .dstBinding = binding,
+                .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                .pImageInfo = &images[binding],
+            };
+        }
+        vkUpdateDescriptorSets(m_Device.logicalDevice, 2, writes, 0, nullptr);
+        const VkViewport viewport = {
             .width = static_cast<float>(extent.width),
             .height = static_cast<float>(extent.height),
-            .minDepth = 0.0f, .maxDepth = 1.0f,
+            .minDepth = 0.0f,
+            .maxDepth = 1.0f,
         };
+        const VkRect2D scissor = {.extent = extent};
         vkCmdSetViewport(cmd, 0, 1, &viewport);
-        const VkRect2D scissor = {.offset = {0, 0}, .extent = extent};
         vkCmdSetScissor(cmd, 0, 1, &scissor);
-
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PostProcessPipeline);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_PostProcessPipelineLayout,
             0, 1, &descriptorSet, 0, nullptr);
-
-        // Wall-clock time, not deltaTime-accumulated, purely so film grain animates frame to
-        // frame instead of looking like a static dirty lens. Doesn't need to be synced with any
-        // other game-time value, it's only ever used to seed the shader's noise hash.
-        const float timeSeconds = static_cast<float>(SDL_GetTicks()) / 1000.0f;
-        vkCmdPushConstants(cmd, m_PostProcessPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT,
-            0, sizeof(float), &timeSeconds);
-
+        PostProcessPushConstants push = {
+            .settings = m_PostProcessSettings,
+            .time = static_cast<float>(SDL_GetTicks()) / 1000.0f,
+            .effectsEnabled = effectsEnabled ? 1u : 0u,
+            .bloomAvailable = bloomView != VK_NULL_HANDLE ? 1u : 0u,
+        };
+        push.settings.bloomIntensity = std::isfinite(push.settings.bloomIntensity)
+            ? std::clamp(push.settings.bloomIntensity, 0.0f, 1.0f) : 0.0f;
+        vkCmdPushConstants(cmd, m_PostProcessPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
         vkCmdDraw(cmd, 3, 1, 0, 0);
     }
 
@@ -2802,7 +3001,7 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
             },
             {
                 .binding         = 1,
-                .descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                 .descriptorCount = 1,
                 .stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT,
             },
@@ -2819,10 +3018,7 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
     }
 
     bool VulkanRHI::CreateDescriptorPool() {
-        // UNIFORM_BUFFER must cover every UBO binding across every set this pool ever allocates
-        // (frame set: 2, post-process: 1 per frame-in-flight slot); kept with headroom since an
-        // exact-fit count here is what silently broke post-processing (VK_CHECK only logs a
-        // failed vkAllocateDescriptorSets, it doesn't surface it hard).
+        // Post-process and bloom sets share this pool with material and frame descriptors.
         VkDescriptorPoolSize poolSizes[] = {
             { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         16 },
             { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 5003  },

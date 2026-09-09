@@ -26,9 +26,7 @@ namespace Osiris {
         float spotDepthBiasSlope    = 1.75f;
     };
 
-    // Mirrored by hand in postprocess.frag's PostProcessUBO: plain floats only, so C++ and
-    // GLSL std140 agree on layout with no manual padding needed (unlike vec3/vec4/mat4 mixes
-    // elsewhere, e.g. CameraBufferFull).
+    // Mirrored by postprocess.frag's push constants and PostProcessPushConstants in VulkanRHI.cpp.
     struct PostProcessSettings {
         float vignetteIntensity   = 1.0f; // 0 = no effect, 1 = full strength
         float vignetteInnerRadius = 0.35f; // distance from center where darkening starts
@@ -36,8 +34,7 @@ namespace Osiris {
         float chromaticAberrationIntensity = 0.0f; // 0 = off, 1 = full strength, off by default
         float filmGrainIntensity = 0.0f; // 0 = off, 1 = full strength, off by default
         float bloomIntensity = 0.0f; // 0 = off, 1 = full strength, off by default
-        float bloomThreshold = 0.8f; // LDR brightness where the soft bright pass starts
-        float bloomRadius = 4.0f; // blur radius in output pixels
+        float bloomRadius = 1.0f; // tent-filter radius in source-mip texels, not output pixels
     };
 
     // Keep in sync with triangle.vert / triangle.frag.

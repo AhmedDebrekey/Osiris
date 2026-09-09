@@ -12,11 +12,8 @@ layout(location = 0) out vec4 outColor;
 void main() {
     vec3 color = texture(environmentMap, normalize(inDir)).rgb * push.exposure;
 
-    // Tone mapping (ACES filmic approximation) — matches triangle.frag. No
-    // manual gamma correction: the sRGB swapchain format encodes that on
-    // write (see triangle.frag's comment on the same line for why).
-    color = (color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14);
-    color = clamp(color, 0.0, 1.0);
+    // Match the forward pass's HDR target. Bloom and tone mapping run in the final composite.
+    color = clamp(color, vec3(0.0), vec3(64000.0));
 
     outColor = vec4(color, 1.0);
 }

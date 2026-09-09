@@ -459,8 +459,8 @@ namespace Osiris {
         ImGui::SliderFloat("Vignette Outer Radius", &postProcessSettings.vignetteOuterRadius, 0.0f, 1.0f);
         ImGui::Separator();
         ImGui::SliderFloat("Bloom Intensity", &postProcessSettings.bloomIntensity, 0.0f, 1.0f);
-        ImGui::SliderFloat("Bloom Threshold", &postProcessSettings.bloomThreshold, 0.0f, 1.0f);
-        ImGui::SliderFloat("Bloom Radius", &postProcessSettings.bloomRadius, 0.5f, 16.0f, "%.1f px");
+        ImGui::SliderFloat("Bloom Radius", &postProcessSettings.bloomRadius, 0.5f, 3.0f, "%.2f mip texels");
+        ImGui::TextDisabled("HDR bloom, no threshold. Six filtered levels with firefly suppression.");
         ImGui::Separator();
         ImGui::SliderFloat("Chromatic Aberration", &postProcessSettings.chromaticAberrationIntensity, 0.0f, 1.0f);
         ImGui::SliderFloat("Film Grain", &postProcessSettings.filmGrainIntensity, 0.0f, 1.0f);

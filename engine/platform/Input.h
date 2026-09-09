@@ -20,6 +20,9 @@ namespace Osiris {
         bool IsMouseButtonHeld(int button) const;
         void ClearMouseDelta() { m_MouseDelta = {0.0f, 0.0f}; }
 
+        void SetGameplayInputLocked(bool locked) { m_GameplayInputLocked = locked; }
+        bool IsGameplayInputLocked() const { return m_GameplayInputLocked; }
+
     private:
         uint8_t        m_CurrentKeys[SDL_NUM_SCANCODES]  = {};
         uint8_t        m_PreviousKeys[SDL_NUM_SCANCODES] = {};
@@ -28,6 +31,7 @@ namespace Osiris {
         glm::vec2 m_MousePosition = {0.0f, 0.0f};
 
         uint32_t m_MouseButtons = 0;
+        bool m_GameplayInputLocked = false;
     };
 }
 

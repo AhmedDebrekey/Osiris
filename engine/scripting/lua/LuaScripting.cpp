@@ -421,7 +421,9 @@ namespace Osiris {
             "IsKeyPressed", [](Input& input, int key) { return input.IsKeyPressed(static_cast<SDL_Scancode>(key)); },
             "GetMouseDelta",    &Input::GetMouseDelta,
             "GetMousePosition", &Input::GetMousePosition,
-            "IsMouseButtonHeld", &Input::IsMouseButtonHeld);
+            "IsMouseButtonHeld", &Input::IsMouseButtonHeld,
+            "SetGameplayInputLocked", &Input::SetGameplayInputLocked,
+            "IsGameplayInputLocked", &Input::IsGameplayInputLocked);
 
         sol::table keyTable = m_Lua.create_table();
         keyTable["W"] = SDL_SCANCODE_W;
@@ -599,10 +601,9 @@ namespace Osiris {
     }
 
     void LuaScripting::Update(float deltaTime) {
-        // Index-based, not range-for: a script's OnUpdate can spawn another scripted entity
-        // (Entity:AddScript -> CreateInstance -> AllocateSlot), growing m_Instances mid-loop.
-        // Re-reading size()/operator[] each pass avoids holding a deque iterator across that
-        // call — see the m_Instances comment in LuaScripting.h for why deque, not vector.
+        // Start every pending instance before any script receives its first update. This lets
+        // setup scripts establish shared state such as a cutscene input lock before controllers
+        // can consume gameplay input in the same frame.
         for (size_t i = 0; i < m_Instances.size(); i++) {
             ScriptInstance& instance = m_Instances[i];
             if (!instance.entity.IsValid()) continue;
@@ -617,6 +618,13 @@ namespace Osiris {
                     }
                 }
             }
+        }
+
+        // Index-based, not range-for: OnUpdate can grow m_Instances through Entity:AddScript.
+        // A new instance waits until the next frame's start pass before receiving OnUpdate.
+        for (size_t i = 0; i < m_Instances.size(); i++) {
+            ScriptInstance& instance = m_Instances[i];
+            if (!instance.entity.IsValid() || !instance.started) continue;
 
             if (instance.onUpdate.valid()) {
                 sol::protected_function_result result = instance.onUpdate(deltaTime);

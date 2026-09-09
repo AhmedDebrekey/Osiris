@@ -62,6 +62,7 @@ namespace Osiris {
             }
 
             m_PlaySnapshot.erase(*it);
+            m_PlayEntities.erase(*it);
             m_Registry.destroy(*it);
         }
     }
@@ -707,21 +708,25 @@ namespace Osiris {
 
     void Scene::CapturePlaySnapshot() {
         m_PlaySnapshot.clear();
+        m_PlayEntities.clear();
 
-        // Static bodies never move, so there's nothing to restore for them.
-        const auto rbView = m_Registry.view<TransformComponent, RigidBodyComponent>();
-        for (auto entity : rbView) {
-            if (rbView.get<RigidBodyComponent>(entity).motionType == BodyMotionType::Static) continue;
-            m_PlaySnapshot[entity] = rbView.get<TransformComponent>(entity);
-        }
-
-        const auto charView = m_Registry.view<TransformComponent, CharacterComponent>();
-        for (auto entity : charView) {
-            m_PlaySnapshot[entity] = charView.get<TransformComponent>(entity);
+        for (Entity entity : GetAllEntities()) {
+            const entt::entity handle = entity.GetHandle();
+            m_PlayEntities.insert(handle);
+            if (entity.HasComponent<TransformComponent>()) {
+                m_PlaySnapshot[handle] = entity.GetComponent<TransformComponent>();
+            }
         }
     }
 
-    void Scene::RestorePlaySnapshot(IPhysics* physics) {
+    void Scene::RestorePlaySnapshot(IPhysics* physics, IAudio* audio, IScripting* scripting) {
+        m_DestroyQueue.clear();
+        for (Entity entity : GetAllEntities()) {
+            if (!m_PlayEntities.contains(entity.GetHandle())) {
+                DestroyEntity(entity, physics, audio, scripting);
+            }
+        }
+
         for (auto& [entityHandle, transform] : m_PlaySnapshot) {
             if (!m_Registry.valid(entityHandle) || !m_Registry.all_of<TransformComponent>(entityHandle)) continue;
 
@@ -736,6 +741,7 @@ namespace Osiris {
             }
         }
         m_PlaySnapshot.clear();
+        m_PlayEntities.clear();
     }
 
     void Scene::ResetScriptInstances(IScripting* scripting) {

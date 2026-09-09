@@ -152,17 +152,20 @@ namespace Osiris {
             scene.DispatchCollisionEvents(m_Physics.get(), m_Scripting.get());
             scene.FlushDestroyQueue(m_Physics.get(), m_Audio.get(), m_Scripting.get());
 
-            float outDistance = 0.0f;
-            auto interactableEntity = scene.FindNearestInteractableEntity(m_PlayCamera.GetPosition(), m_PlayCamera.GetFront(), outDistance);
-            if (interactableEntity.IsValid()) {
-                const InteractableComponent& interactable = interactableEntity.GetComponent<InteractableComponent>();
-                if (outDistance < interactable.maxDistance) {
-                    const std::string keyName = SDL_GetScancodeName(interactable.keyCode);
-                    GameUI::DrawText(0.5f, 0.88f, UIAnchor::Center,
-                        "Press " + keyName + " to interact: " + interactable.prompt, glm::vec4(1.0f), 24.0f);
+            if (!m_Input.IsGameplayInputLocked()) {
+                float outDistance = 0.0f;
+                auto interactableEntity = scene.FindNearestInteractableEntity(
+                    m_PlayCamera.GetPosition(), m_PlayCamera.GetFront(), outDistance);
+                if (interactableEntity.IsValid()) {
+                    const InteractableComponent& interactable = interactableEntity.GetComponent<InteractableComponent>();
+                    if (outDistance < interactable.maxDistance) {
+                        const std::string keyName = SDL_GetScancodeName(interactable.keyCode);
+                        GameUI::DrawText(0.5f, 0.88f, UIAnchor::Center,
+                            "Press " + keyName + " to interact: " + interactable.prompt, glm::vec4(1.0f), 24.0f);
 
-                    if (m_Input.IsKeyPressed(interactable.keyCode)) {
-                        scene.DispatchInteract(interactableEntity, scene.FindCameraEntity(), m_Scripting.get());
+                        if (m_Input.IsKeyPressed(interactable.keyCode)) {
+                            scene.DispatchInteract(interactableEntity, scene.FindCameraEntity(), m_Scripting.get());
+                        }
                     }
                 }
             }
@@ -227,6 +230,7 @@ namespace Osiris {
         scene.CapturePlaySnapshot();
         scene.ResetScriptInstances(m_Scripting.get());
         scene.PlayAutoPlayAudioSources(m_Audio.get());
+        m_Input.SetGameplayInputLocked(false);
         m_PlayCamera.ClearShake();
         m_Window.SetRelativeMouseMode(true);
         m_Input.ClearMouseDelta();
@@ -234,8 +238,9 @@ namespace Osiris {
     }
 
     void Engine::ExitPlayMode(Scene& scene) {
-        scene.RestorePlaySnapshot(m_Physics.get());
+        scene.RestorePlaySnapshot(m_Physics.get(), m_Audio.get(), m_Scripting.get());
         scene.StopAllAudioSources(m_Audio.get());
+        m_Input.SetGameplayInputLocked(false);
         m_PlayCamera.ClearShake();
         m_Window.SetRelativeMouseMode(false);
         m_Input.ClearMouseDelta();

@@ -6,6 +6,7 @@
 #define OSIRIS_SCENE_H
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <entt/entt.hpp>
 #include "Entity.h"
@@ -109,9 +110,9 @@ namespace Osiris {
         // Writes each character's live world position back into its local TransformComponent.
         void SyncCharacterTransforms(IPhysics* physics);
 
-        // Play mode snapshot/restore — Transform only, not a full scene undo.
+        // Play mode snapshot/restore: restores Transforms and removes entities created during Play.
         void CapturePlaySnapshot();
-        void RestorePlaySnapshot(IPhysics* physics);
+        void RestorePlaySnapshot(IPhysics* physics, IAudio* audio, IScripting* scripting);
 
         // Destroys and recreates every script instance, so OnStart reruns fresh each Play session.
         void ResetScriptInstances(IScripting* scripting);
@@ -140,8 +141,9 @@ namespace Osiris {
         uint32_t m_DrawCallCount;
         uint32_t m_CulledCount;
 
-        // Play mode snapshot — see CapturePlaySnapshot/RestorePlaySnapshot.
+        // Play mode snapshot state, see CapturePlaySnapshot/RestorePlaySnapshot.
         std::unordered_map<entt::entity, TransformComponent> m_PlaySnapshot;
+        std::unordered_set<entt::entity> m_PlayEntities;
         std::vector<entt::entity> m_DestroyQueue;
     };
     template<typename T, typename... Args>

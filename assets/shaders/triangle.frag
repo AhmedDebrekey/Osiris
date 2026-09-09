@@ -65,6 +65,7 @@ layout(push_constant) uniform PushConstants {
     vec4 emissive;
     vec4 baseColorFactor;
     vec4 materialParams; // x = alpha cutoff, y = alpha mode, z = double-sided
+    vec4 surfaceParams; // metallic, roughness, normal scale; mirrors VulkanRHI.cpp/triangle.vert
 } push;
 
 layout(location = 0) out vec4 outColor;
@@ -136,12 +137,13 @@ void main() {
         discard;
     }
     vec3 albedo         = albedoSample.rgb;
-    float metallic  = texture(metallicMap,  inTexCoord).b;
-    float roughness = texture(roughnessMap, inTexCoord).g;
+    float metallic = clamp(texture(metallicMap, inTexCoord).b * push.surfaceParams.x, 0.0, 1.0);
+    float roughness = clamp(texture(roughnessMap, inTexCoord).g * push.surfaceParams.y, 0.045, 1.0);
     float ao            = texture(aoMap,        inTexCoord).r;
 
     // ── Normal mapping ────────────────────────────────────────
     vec3 normalSample = texture(normalMap, inTexCoord).rgb * 2.0 - 1.0;
+    normalSample.xy *= push.surfaceParams.z;
     vec3 geometricNormal = normalize(inNormal);
     vec3 tangent = inTangent - geometricNormal * dot(geometricNormal, inTangent);
     tangent = normalize(tangent);

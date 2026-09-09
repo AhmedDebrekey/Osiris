@@ -95,6 +95,10 @@ struct MaterialDesc {
     MaterialAlphaMode alphaMode = MaterialAlphaMode::Opaque;
     float alphaCutoff = 0.5f;
     bool doubleSided = false;
+    // Texture channels multiply these factors; missing scalar maps sample white.
+    float metallicFactor = 0.0f;
+    float roughnessFactor = 0.5f;
+    float normalScale = 1.0f;
 };
 
 

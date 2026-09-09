@@ -256,6 +256,8 @@ namespace Osiris {
                 }
                 matDesc.alphaCutoff = static_cast<float>(mat.alphaCutoff);
                 matDesc.doubleSided = mat.doubleSided;
+                matDesc.metallicFactor = static_cast<float>(mat.pbrData.metallicFactor);
+                matDesc.roughnessFactor = static_cast<float>(mat.pbrData.roughnessFactor);
 
                 // Albedo
                 if (mat.pbrData.baseColorTexture.has_value()) {
@@ -273,6 +275,7 @@ namespace Osiris {
 
                 // Normal
                 if (mat.normalTexture.has_value()) {
+                    matDesc.normalScale = static_cast<float>(mat.normalTexture->scale);
                     size_t texIndex = mat.normalTexture->textureIndex;
                     matDesc.normal = loadTexture(getImageIndex(texIndex), TextureFormat::RGBA8_UNORM);
                 }

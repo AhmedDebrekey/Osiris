@@ -60,7 +60,9 @@ namespace Osiris {
         glm::vec4 emissive; // rgb = color, w = intensity
         glm::vec4 baseColorFactor;
         glm::vec4 materialParams; // x = alpha cutoff, y = alpha mode, z = double-sided
+        glm::vec4 surfaceParams; // metallic, roughness, normal scale; mirrors triangle.vert/frag
     };
+    static_assert(sizeof(ForwardPushConstants) == 128);
 
     // Keep field order and offsets in sync with postprocess.frag.
     struct PostProcessPushConstants {
@@ -434,8 +436,8 @@ namespace Osiris {
         m_DepthBufferRG = RGTexture{1};
         m_DefaultAlbedo     = CreateSolidColorTexture(255, 255, 255, 255, TextureFormat::RGBA8_SRGB);
         m_DefaultNormal     = CreateSolidColorTexture(128, 128, 255, 255, TextureFormat::RGBA8_UNORM);
-        m_DefaultMetallic   = CreateSolidColorTexture(000, 000, 000, 255, TextureFormat::RGBA8_UNORM);
-        m_DefaultRoughness  = CreateSolidColorTexture(128, 128, 128, 255, TextureFormat::RGBA8_UNORM);
+        m_DefaultMetallic   = CreateSolidColorTexture(255, 255, 255, 255, TextureFormat::RGBA8_UNORM);
+        m_DefaultRoughness  = CreateSolidColorTexture(255, 255, 255, 255, TextureFormat::RGBA8_UNORM);
         m_DefaultAO         = CreateSolidColorTexture(255, 255, 255, 255, TextureFormat::RGBA8_UNORM);
 
         return true;
@@ -1255,6 +1257,11 @@ namespace Osiris {
                 m_BoundMaterialDescription.alphaCutoff,
                 static_cast<float>(m_BoundMaterialDescription.alphaMode),
                 m_BoundMaterialDescription.doubleSided ? 1.0f : 0.0f,
+                0.0f),
+            .surfaceParams = glm::vec4(
+                m_BoundMaterialDescription.metallicFactor,
+                m_BoundMaterialDescription.roughnessFactor,
+                m_BoundMaterialDescription.normalScale,
                 0.0f),
         };
         vkCmdPushConstants(cmd, m_BoundForwardPipelineLayout,

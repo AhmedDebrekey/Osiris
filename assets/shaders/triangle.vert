@@ -33,6 +33,7 @@ layout(push_constant) uniform PushConstants {
     vec4 emissive;
     vec4 baseColorFactor;
     vec4 materialParams;
+    vec4 surfaceParams; // Mirrors ForwardPushConstants in VulkanRHI.cpp and triangle.frag.
 } push;
 
 layout(location = 0) out vec3 outNormal;

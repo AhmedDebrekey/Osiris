@@ -1221,19 +1221,28 @@ namespace Osiris {
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                 m_BoundForwardPipelineLayout, 0, 1, &m_DescriptorSet, 0, nullptr);
+            // A different pipeline isn't guaranteed to share set 1's layout, so don't assume the
+            // previously bound material set is still valid against it.
+            m_BoundMaterialDescriptorSet = VK_NULL_HANDLE;
         }
 
+        // Always current for DrawIndexed's push constants below, regardless of whether the
+        // descriptor set itself changed (consecutive entities can share a material).
         m_BoundMaterialDescription = material.description;
+
         const VkDescriptorSet materialSet = material.descriptorSet;
-        vkCmdBindDescriptorSets(
-            cmd,
-            VK_PIPELINE_BIND_POINT_GRAPHICS,
-            m_BoundForwardPipelineLayout,
-            1,
-            1,
-            &materialSet,
-            0, nullptr
-        );
+        if (materialSet != m_BoundMaterialDescriptorSet) {
+            m_BoundMaterialDescriptorSet = materialSet;
+            vkCmdBindDescriptorSets(
+                cmd,
+                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                m_BoundForwardPipelineLayout,
+                1,
+                1,
+                &materialSet,
+                0, nullptr
+            );
+        }
     }
 
     void VulkanRHI::BindPipeline(PipelineHandle pipeline) {
@@ -2127,6 +2136,7 @@ namespace Osiris {
         m_BoundForwardPipeline = m_ForwardPipeline;
         m_BoundForwardPipelineLayout = m_ForwardPipelineLayout;
         m_BoundMaterialDescription = {};
+        m_BoundMaterialDescriptorSet = VK_NULL_HANDLE;
     }
 
     void VulkanRHI::BeginShadowPass(uint32_t cascadeIndex) {

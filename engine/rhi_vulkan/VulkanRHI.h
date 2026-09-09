@@ -134,6 +134,8 @@ namespace Osiris {
             return m_LightSpaceMatrices[cascadeIndex];
         }
 
+        glm::mat4 GetActiveLightSpaceMatrix() const override { return m_ActiveLightSpaceMatrix; }
+
     private:
         static constexpr uint32_t MAX_BLOOM_MIPS = 6;
         static constexpr VkFormat SCENE_COLOR_FORMAT = VK_FORMAT_R16G16B16A16_SFLOAT;
@@ -318,6 +320,7 @@ namespace Osiris {
         glm::vec3 m_EmissiveColor = glm::vec3(1.0f);
         float m_EmissiveIntensity = 0.0f;
         MaterialDesc m_BoundMaterialDescription;
+        VkDescriptorSet m_BoundMaterialDescriptorSet = VK_NULL_HANDLE;
 
         static constexpr uint32_t SHADOW_CASCADE_COUNT = 3;
         static constexpr uint32_t SHADOW_MAP_SIZE      = 2048;

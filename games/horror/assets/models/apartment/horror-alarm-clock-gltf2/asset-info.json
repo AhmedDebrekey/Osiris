@@ -1,0 +1,25 @@
+{
+  "triangles": 5908,
+  "mesh_parts": 5,
+  "dimensions_m": [
+    0.14893,
+    0.2105,
+    0.078
+  ],
+  "bounds_min_m": [
+    -0.07446,
+    -0.0,
+    -0.044
+  ],
+  "bounds_max_m": [
+    0.07446,
+    0.2105,
+    0.034
+  ],
+  "buffer_checks": "passed",
+  "normals_and_winding": "passed",
+  "format": "glTF 2.0",
+  "animation_clips": [
+    "Alarm_Ring"
+  ]
+}

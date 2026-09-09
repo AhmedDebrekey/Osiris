@@ -1,0 +1,11 @@
+Model Information:
+* title:	Dish Rack with Dishes
+* source:	https://sketchfab.com/3d-models/dish-rack-with-dishes-ce69014964624fbb808a028e5c55d88b
+* author:	HippoStance (https://sketchfab.com/hippostance)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Dish Rack with Dishes" (https://sketchfab.com/3d-models/dish-rack-with-dishes-ce69014964624fbb808a028e5c55d88b) by HippoStance (https://sketchfab.com/hippostance) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

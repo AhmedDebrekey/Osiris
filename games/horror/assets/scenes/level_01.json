@@ -1,0 +1,969 @@
+{
+  "entities": [
+    {
+      "name": "Tv_light",
+      "parent": "tv",
+      "spotLight": {
+        "castsShadow": true,
+        "color": [
+          0.47261637449264526,
+          0.7455357313156128,
+          0.7382253408432007
+        ],
+        "enabled": true,
+        "innerCone": 38.0,
+        "intensity": 46.400001525878906,
+        "outerCone": 58.0,
+        "range": 10.0
+      },
+      "transform": {
+        "position": [
+          -0.024562597274780273,
+          0.8364696502685547,
+          0.10362958908081055
+        ],
+        "rotation": [
+          -45.0,
+          -1.017780261111656e-12,
+          -4.071100824076107e-13
+        ],
+        "scale": [
+          1.0000118017196655,
+          1.0000022649765015,
+          0.9999974370002747
+        ]
+      }
+    },
+    {
+      "name": "Spot",
+      "spotLight": {
+        "castsShadow": true,
+        "color": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "enabled": true,
+        "innerCone": 28.5,
+        "intensity": 4.199999809265137,
+        "outerCone": 55.0,
+        "range": 10.0
+      },
+      "transform": {
+        "position": [
+          5.0022478103637695,
+          4.877620697021484,
+          3.52561092376709
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          -23.69015884399414
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "camera": {
+        "eyeHeight": 1.7000000476837158,
+        "isPrimary": true
+      },
+      "character": {
+        "height": 1.7999999523162842,
+        "mass": 70.0,
+        "maxSlopeAngleDeg": 45.0,
+        "radius": 0.30000001192092896
+      },
+      "name": "ExteriorPreviewCamera",
+      "script": {
+        "path": "scripts/fps_controller.lua"
+      },
+      "transform": {
+        "position": [
+          0.0,
+          2.391906499862671,
+          3.352138042449951
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/bedroom/bed/scene.gltf",
+      "name": "bed_Plane.001_Material_0_5",
+      "parent": "bed_Plane.001_3",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/bedroom/bed/scene.gltf",
+      "name": "bed_Plane.001_Material_0_4",
+      "parent": "bed_Plane.001_3",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/bedroom/bed/scene.gltf",
+      "name": "bed_Plane.001_3",
+      "parent": "bed_RootNode_2",
+      "transform": {
+        "position": [
+          7.847580909729004,
+          63.73705291748047,
+          48.11302947998047
+        ],
+        "rotation": [
+          -119.80805969238281,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          32.57767105102539,
+          21.48804473876953,
+          21.48804473876953
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/bedroom/bed/scene.gltf",
+      "name": "bed_RootNode_2",
+      "parent": "bed_Cama.fbx_1",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/bedroom/bed/scene.gltf",
+      "name": "bed_Cama.fbx_1",
+      "parent": "bed_Sketchfab_model_0",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          90.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.009999999776482582,
+          0.009999999776482582,
+          0.009999999776482582
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/bedroom/bed/scene.gltf",
+      "name": "bed_Sketchfab_model_0",
+      "parent": "bed",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          -90.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "collider": {
+        "center": [
+          0.013865351676940918,
+          0.34928157925605774,
+          0.022083044052124023
+        ],
+        "halfExtents": [
+          0.8668695688247681,
+          0.253171443939209,
+          1.054343342781067
+        ]
+      },
+      "interactable": {
+        "keyCode": 8,
+        "maxDistance": 2.0,
+        "prompt": "Sleep"
+      },
+      "mesh": "models/apartment/bedroom/bed/scene.gltf",
+      "name": "bed",
+      "rigidBody": {
+        "isSensor": false,
+        "lockRotationToYAxis": false,
+        "motionType": "Static"
+      },
+      "transform": {
+        "position": [
+          -3.380399703979492,
+          0.2688634395599365,
+          9.889486312866211
+        ],
+        "rotation": [
+          0.0,
+          -90.03427124023438,
+          0.0
+        ],
+        "scale": [
+          1.4199999570846558,
+          1.4199256896972656,
+          1.4199999570846558
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/couch/scene.gltf",
+      "name": "Couch_Object_2_2",
+      "parent": "Couch_couch_model.obj.cleaner.materialmerger.gles_1",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/couch/scene.gltf",
+      "name": "Couch_couch_model.obj.cleaner.materialmerger.gles_1",
+      "parent": "Couch_Sketchfab_model_0",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/couch/scene.gltf",
+      "name": "Couch_Sketchfab_model_0",
+      "parent": "Couch",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          -90.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "collider": {
+        "center": [
+          0.14081043004989624,
+          0.2189139723777771,
+          -0.09352855384349823
+        ],
+        "halfExtents": [
+          1.4398622512817383,
+          0.2189139723777771,
+          0.43072956800460815
+        ]
+      },
+      "interactable": {
+        "keyCode": 8,
+        "maxDistance": 2.0,
+        "prompt": "Sit"
+      },
+      "mesh": "models/apartment/livingroom/couch/scene.gltf",
+      "name": "Couch",
+      "rigidBody": {
+        "isSensor": false,
+        "lockRotationToYAxis": false,
+        "motionType": "Static"
+      },
+      "transform": {
+        "position": [
+          -3.887006998062134,
+          0.28237831592559814,
+          -0.8883203864097595
+        ],
+        "rotation": [
+          0.0,
+          90.0,
+          0.0
+        ],
+        "scale": [
+          0.9011242389678955,
+          1.4904907941818237,
+          1.7599999904632568
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/tv_table/scene.gltf",
+      "name": "TvTable_Mesa_Obj_Mesa_Mat_0_6",
+      "parent": "TvTable_Mesa_Obj_3",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/tv_table/scene.gltf",
+      "name": "TvTable_Mesa_Obj_Mesa_02_Mat_0_5",
+      "parent": "TvTable_Mesa_Obj_3",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/tv_table/scene.gltf",
+      "name": "TvTable_Mesa_Obj_Mesa_03_Mat_0_4",
+      "parent": "TvTable_Mesa_Obj_3",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/tv_table/scene.gltf",
+      "name": "TvTable_Mesa_Obj_3",
+      "parent": "TvTable_RootNode_2",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/tv_table/scene.gltf",
+      "name": "TvTable_RootNode_2",
+      "parent": "TvTable_864ac76b38e0488f84759e9b0c9ef442.fbx_1",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/tv_table/scene.gltf",
+      "name": "TvTable_864ac76b38e0488f84759e9b0c9ef442.fbx_1",
+      "parent": "TvTable_Sketchfab_model_0",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          90.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.009999999776482582,
+          0.009999999776482582,
+          0.009999999776482582
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/tv_table/scene.gltf",
+      "name": "TvTable_Sketchfab_model_0",
+      "parent": "TvTable",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          -90.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "collider": {
+        "center": [
+          -1.4901161193847656e-08,
+          0.031873103231191635,
+          0.0
+        ],
+        "halfExtents": [
+          0.04599998518824577,
+          0.031894002109766006,
+          0.1210000067949295
+        ]
+      },
+      "mesh": "models/apartment/livingroom/tv_table/scene.gltf",
+      "name": "TvTable",
+      "rigidBody": {
+        "isSensor": false,
+        "lockRotationToYAxis": false,
+        "motionType": "Static"
+      },
+      "transform": {
+        "position": [
+          1.2930140495300293,
+          0.2800000011920929,
+          -1.5182117223739624
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          9.628799438476563,
+          9.628799438476563,
+          9.628799438476563
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/apartment_shell.gltf",
+      "name": "apartment_shell_Ceiling_4",
+      "parent": "apartment_shell",
+      "transform": {
+        "position": [
+          -1.9640873670578003,
+          3.75,
+          -1.2190887928009033
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "collider": {
+        "center": [
+          2.7090861797332764,
+          0.0,
+          2.370450496673584
+        ],
+        "halfExtents": [
+          5.774764060974121,
+          0.009999999776482582,
+          8.449987411499023
+        ]
+      },
+      "modelChild": "models/apartment/apartment_shell.gltf",
+      "name": "apartment_shell_Floor_3",
+      "parent": "apartment_shell",
+      "rigidBody": {
+        "isSensor": false,
+        "lockRotationToYAxis": false,
+        "motionType": "Static"
+      },
+      "transform": {
+        "position": [
+          -1.9640873670578003,
+          0.0,
+          -1.2190887928009033
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/apartment_shell.gltf",
+      "name": "apartment_shell_EastSideWalls_2",
+      "parent": "apartment_shell",
+      "transform": {
+        "position": [
+          3.0610458850860596,
+          0.0,
+          -0.7227358818054199
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          2.920523166656494,
+          0.75,
+          0.5
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/apartment_shell.gltf",
+      "name": "apartment_shell_WestSideWalls_1",
+      "parent": "apartment_shell",
+      "transform": {
+        "position": [
+          -5.330374717712402,
+          0.0,
+          1.555893898010254
+        ],
+        "rotation": [
+          0.0,
+          90.01979064941406,
+          0.0
+        ],
+        "scale": [
+          9.401676177978516,
+          0.75,
+          0.3838168978691101
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/apartment_shell.gltf",
+      "name": "apartment_shell_Empty_0",
+      "parent": "apartment_shell",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          5.0,
+          5.0,
+          5.0
+        ]
+      }
+    },
+    {
+      "mesh": "models/apartment/apartment_shell.gltf",
+      "name": "apartment_shell",
+      "transform": {
+        "position": [
+          -1.354673173636911e-07,
+          0.28496646881103516,
+          1.7253506183624268
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/tv/scene.gltf",
+      "name": "tv_TV_Screen_Livingroom_TV_0_9",
+      "parent": "tv_Object_8_8",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/tv/scene.gltf",
+      "name": "tv_Object_8_8",
+      "parent": "tv_TV_Screen_7",
+      "transform": {
+        "position": [
+          0.0,
+          -1.595794677734375,
+          -37.5
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/tv/scene.gltf",
+      "name": "tv_TV_Screen_7",
+      "parent": "tv_Livingroom_TV_3",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          43.53431701660156
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/tv/scene.gltf",
+      "name": "tv_TV_Legs_Livingroom_TV_0_6",
+      "parent": "tv_Object_5_5",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/tv/scene.gltf",
+      "name": "tv_Object_5_5",
+      "parent": "tv_TV_Legs_4",
+      "transform": {
+        "position": [
+          56.10716247558594,
+          0.0,
+          -6.7168731689453125
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/tv/scene.gltf",
+      "name": "tv_TV_Legs_4",
+      "parent": "tv_Livingroom_TV_3",
+      "transform": {
+        "position": [
+          0.0,
+          -1.5957908630371094,
+          6.0343170166015625
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/tv/scene.gltf",
+      "name": "tv_Livingroom_TV_3",
+      "parent": "tv_RootNode_2",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          -90.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/tv/scene.gltf",
+      "name": "tv_RootNode_2",
+      "parent": "tv_Livingroom_TV.fbx_1",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/tv/scene.gltf",
+      "name": "tv_Livingroom_TV.fbx_1",
+      "parent": "tv_Sketchfab_model_0",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          90.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          0.009999999776482582,
+          0.009999999776482582,
+          0.009999999776482582
+        ]
+      }
+    },
+    {
+      "modelChild": "models/apartment/livingroom/tv/scene.gltf",
+      "name": "tv_Sketchfab_model_0",
+      "parent": "tv",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          -90.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "mesh": "models/apartment/livingroom/tv/scene.gltf",
+      "name": "tv",
+      "transform": {
+        "position": [
+          1.2659720182418823,
+          0.9008341431617737,
+          -1.5483534336090088
+        ],
+        "rotation": [
+          0.0,
+          -90.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          0.9999720454216003,
+          1.0
+        ]
+      }
+    }
+  ]
+}

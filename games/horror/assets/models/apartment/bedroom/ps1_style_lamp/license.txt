@@ -1,0 +1,11 @@
+Model Information:
+* title:	ps1 style lamp
+* source:	https://sketchfab.com/3d-models/ps1-style-lamp-17aab30248a34734ae3c64137444aeae
+* author:	vanillao03 (https://sketchfab.com/kevinandst)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "ps1 style lamp" (https://sketchfab.com/3d-models/ps1-style-lamp-17aab30248a34734ae3c64137444aeae) by vanillao03 (https://sketchfab.com/kevinandst) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

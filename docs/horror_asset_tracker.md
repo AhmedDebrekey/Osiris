@@ -56,10 +56,10 @@ currently available.
 |---|---|---|---|---|---|
 | ✅ Done | P0 | Horror executable target | `../Horror.exe` build target | Project | Builds from `games/horror/main.cpp` |
 | ✅ Done | P0 | Game launch configuration | `game.json` | Project | Selects scene, HDR, frame cap, and editor/play behavior |
-| 🟡 In development | P0 | Main horror scene | `scenes/horror.json` | Project | Asphalt material preview scene; apartment layout not started |
+| 🟡 In development | P0 | Main horror scene | `scenes/apartment.json` | Project | Current launch scene with 590 saved entries, 90 model roots, 211 scene boxes, 15 interactables, and an ordered key-search route; includes living-room glazing and a courtyard view, pending an in-engine play test |
 | ✅ Done | P0 | Audio folder | `audio/` | Project | Folder exists |
-| ✅ Done | P0 | HDR folder | `hdr/` | Project | Folder exists |
-| ✅ Done | P0 | Models folder | `models/` | Project | Folder exists |
+| ✅ Done | P0 | HDR folder | `hdr/` | Project | `EveningRoad.hdr` is active and `ferndale.hdr` is available as an alternative; both still need source and license records |
+| ✅ Done | P0 | Models folder | `models/` | Project | Contains the apartment set, asphalt preview, modular exterior packs, and street lamp |
 | ✅ Done | P0 | Scripts folder | `scripts/` | Project | Folder exists |
 | ✅ Done | P0 | Textures folder | `textures/` | Project | Folder exists |
 
@@ -69,29 +69,29 @@ The first playable target ends after the opening apartment sequence and one dark
 
 | Status | Asset | Type | Suggested path | Source | Notes |
 |---|---|---|---|---|---|
-| 🟡 In development | Apartment floor plan and scale reference | Reference | `references/apartment/opening_apartment_floor_plan.png` | Project | Dimensioned first-scene layout exists; country and building age still need choosing |
-| ⬜ Not started | Apartment shell | Static model | `models/apartment/apartment_shell.gltf` |  | Bedroom, living room, kitchen, bathroom, hall, entrance |
-| ⬜ Not started | Apartment collision layout | Scene content | `scenes/apartment.json` | Project | Box colliders authored in the scene |
-| ⬜ Not started | Front door | Static model | `models/apartment/front_door.gltf` |  | Separate pivot for scripted opening |
-| ⬜ Not started | Keys and keychain | Static model | `models/props/keys.gltf` |  | Must be movable or hideable by script |
-| ⬜ Not started | Alarm clock or phone alarm | Static model | `models/props/alarm_clock.gltf` |  | Place beside bed |
-| ⬜ Not started | Bed and bedding | Static model | `models/furniture/bed.gltf` |  | Main opening view |
-| ⬜ Not started | Refrigerator | Static model | `models/apartment/refrigerator.gltf` |  | Source of recurring room sound |
+| ✅ Done | Apartment floor plan and scale reference | Reference | `references/apartment/opening_apartment_floor_plan.png` | Project | Dimensioned first-scene layout is saved beside the apartment source files |
+| ✅ Done | Apartment shell | Static model | `models/apartment/apartment_shell.gltf` | Project | Authored in Blender, imported, placed, and used as the current apartment layout |
+| 🟡 In development | Apartment collision layout | Scene content | `scenes/apartment.json` | Project | 19 collider and static rigid-body pairs, including the new coffee table; original layout was play-tested, latest addition needs verification |
+| 🟡 In development | Front door | Static model | `models/apartment/door_with_frame/scene.gltf` | Sketchfab | Imported, placed, and connected to the locked or unlocked exit prototype; a clean movable door leaf is still needed |
+| ✅ Done | Keys and keychain | Static model | `models/apartment/keys/scene.gltf` | Sketchfab | Imported, placed, licensed, and tested with reveal and pickup behavior |
+| 🟡 In development | Alarm clock | Static model | `models/apartment/horror-alarm-clock-gltf2/alarm_clock.gltf` | Project | Real-scale model is imported, placed beside the bed, and interactable; alarm sound and animation are pending |
+| ✅ Done | Bed and bedding | Static model | `models/apartment/bedroom/bed/scene.gltf` | Sketchfab | Imported, placed, collidable, and connected to the tested sleep interaction |
+| 🟡 In development | Refrigerator | Static model | `models/apartment/kitchen/fridge/scene.gltf` | Unknown | Imported, placed, and collidable; source record and refrigerator hum are missing |
 | ⬜ Not started | Childhood drawing | Texture and plane | `textures/story/doctor_drawing.png` | Project | “I want to help people” visual callback |
 | ⬜ Not started | School certificate | Texture and plane | `textures/story/school_certificate.png` | Project | Establishes lost potential |
 | ⬜ Not started | Biology or medical textbook | Static model | `models/props/biology_textbook.gltf` |  | Story prop |
 | ⬜ Not started | Empty bottles and cans set | Static models | `models/props/bottles/` |  | Use restrained quantities rather than caricature |
 | ⬜ Not started | Clothes and rubbish set | Static models | `models/props/clutter/` |  | Lived-in apartment dressing |
 | ⬜ Not started | One static dark figure | Static model | `models/figures/dark_figure_standing.gltf` |  | No animation required for the first encounter |
-| ⬜ Not started | First-person controller script | Lua | `scripts/fps_controller.lua` | Project | Horror-owned copy, not shared with Testbed |
-| ⬜ Not started | Opening sequence director | Lua | `scripts/opening_sequence.lua` | Project | Controls wake-up, voices, keys, and sequence state |
-| ⬜ Not started | Key-search interaction | Lua | `scripts/keys.lua` | Project | Keys appear after the player checks expected locations |
-| ⬜ Not started | Door interaction | Lua | `scripts/door.lua` | Project | Requires keys before leaving |
+| ✅ Done | First-person controller script | Lua | `scripts/fps_controller.lua` | Project | Attached to the apartment camera and used during current scene testing |
+| 🟡 In development | Opening sequence director | Lua | `scripts/opening_sequence.lua` | Project | Timed mother and child dialogue, a bedside wake-up camera transition, input lock, objectives, shared state, and ending fade are implemented; voice audio and a play test are pending |
+| 🟡 In development | Key-search interaction | Lua | `scripts/keys.lua` | Project | Counter, coat stand, sofa, then back to the counter; keys appear in a tray after the final search response. Standalone Lua checks pass; new route needs a play test |
+| ✅ Done | Door interaction | Lua | `scripts/door.lua` | Project | Tested locked and key-gated ending behavior; physical door movement and scene transition are deferred |
 | ⬜ Not started | Dark-figure encounter | Lua | `scripts/dark_figure.lua` | Project | Whisper, approach response, disappearance |
 | ⬜ Not started | Opening mother and child dialogue | Voice audio | `audio/dialogue/opening/` |  | See dialogue manifest below |
 | ⬜ Not started | Apartment ambient loop | Audio | `audio/ambience/apartment_room_tone.wav` |  | Quiet neutral room bed |
 | ⬜ Not started | Refrigerator hum | Audio | `audio/ambience/refrigerator_hum.wav` |  | Mono positional source |
-| ⬜ Not started | Traffic through window | Audio | `audio/ambience/morning_traffic.wav` |  | Distant and subdued |
+| 🟡 In development | Traffic through window | Audio | `audio/Suburban_Nighttime_Traffic_Ambience.wav` | Unknown | Looping auto-play source is attached at low gain; mix, source, and license need verification |
 | ⬜ Not started | Neighbor or television through wall | Audio | `audio/ambience/neighbor_tv.wav` |  | Helps establish normality |
 | ⬜ Not started | Heartbeat layers | Audio | `audio/player/heartbeat/` |  | Calm, tense, and intense variants |
 | ⬜ Not started | Breathing layers | Audio | `audio/player/breathing/` |  | Calm, tense, and recovery variants |
@@ -99,7 +99,37 @@ The first playable target ends after the opening apartment sequence and one dark
 | ⬜ Not started | Footstep set | Audio | `audio/player/footsteps/` |  | Minimum wood, carpet, and concrete |
 | ⬜ Not started | Key jingle | Audio | `audio/sfx/keys_jingle.wav` |  | Interaction feedback |
 | ⬜ Not started | Door sounds | Audio | `audio/sfx/doors/` |  | Handle, locked, open, close |
-| ⬜ Not started | Apartment morning HDR | HDR | `hdr/apartment_morning.hdr` |  | Optional if interior lighting works without a visible sky |
+| 🟡 In development | Apartment environment HDR | HDR | `hdr/EveningRoad.hdr` | Unknown | Loaded by `game.json`; source and license need recording, and the evening look may change later |
+
+### Current apartment scene inventory
+
+This table records the model roots currently saved in `scenes/apartment.json`. An imported model
+remains In development when its local source or license record is missing, or when its gameplay
+role still needs work.
+
+| Status | Area | Model | Path | Current scene use |
+|---|---|---|---|---|
+| ✅ Done | Structure | Apartment shell | `models/apartment/apartment_shell.gltf` | Main room layout and floor |
+| 🟡 In development | Entrance | Door with frame | `models/apartment/door_with_frame/scene.gltf` | Placed near the entrance with locked and unlocked interaction; physical movement is pending |
+| 🟡 In development | Kitchen | Keys | `models/apartment/keys/scene.gltf` | Hidden until the ordered search finishes, then revealed in the tray beside the fruit bowl on the kitchen counter |
+| ✅ Done | Bedroom | Bed | `models/apartment/bedroom/bed/scene.gltf` | Collidable and interactable with `scripts/sleep.lua` |
+| 🟡 In development | Bedroom | Alarm clock | `models/apartment/horror-alarm-clock-gltf2/alarm_clock.gltf` | Real-scale original model is placed beside the bed with a short inspection response; alarm behavior and audio are pending |
+| 🟡 In development | Bedroom | Closet | `models/apartment/bedroom/closet/scene.gltf` | Placed and collidable; source record is missing |
+| 🟡 In development | Living room | Couch | `models/apartment/livingroom/couch/scene.gltf` | Placed, collidable, and connected to a short interaction response |
+| 🟡 In development | Living room | Television | `models/apartment/livingroom/tv/scene.gltf` | Placed with a scripted light toggle; source record is missing |
+| 🟡 In development | Living room | Television table | `models/apartment/livingroom/tv_table/scene.gltf` | Placed and collidable; source record is missing |
+| 🟡 In development | Living room | Bottled car | `models/apartment/livingroom/bottled_car/scene.gltf` | Placed as a transparency test; CC-BY-NC-4.0 restricts commercial use |
+| 🟡 In development | Living room | Balcony door and window | `models/apartment/windows/glass_pane.gltf`, scene boxes | Six transparent panes with frames, handles, static blockers, and an overhead infill; opening behavior is not implemented |
+| 🟡 In development | Living room | Shelf books | `textures/books/` | Three generated cloth bindings in blue, green, and red; prompts and provenance recorded in the folder README |
+| 🟡 In development | Outside living room | Balcony and courtyard | `scenes/apartment.json`, `models/modular_exterior_parts/` | Static balcony floor and railing, three-sided residential backdrop, bench, paving, and two lamp models; not a playable exterior |
+| 🟡 In development | Kitchen | Refrigerator | `models/apartment/kitchen/fridge/scene.gltf` | Placed and collidable; source record and hum are missing |
+| 🟡 In development | Kitchen | Oven | `models/apartment/kitchen/oven/scene.gltf` | Placed and collidable; source record is missing |
+| 🟡 In development | Kitchen | Counter and sink | `models/apartment/kitchen/kitchen_counter/scene.gltf` | Placed and collidable |
+| 🟡 In development | Kitchen | Table, chairs, and bench | `models/apartment/kitchen/kitchen_table_chairs_and_bench_low_poly/scene.gltf` | Placed and collidable |
+| 🟡 In development | Bathroom | Bathtub | `models/apartment/bathroom/bathtub/scene.gltf` | Placed and collidable; source record is missing |
+| 🟡 In development | Bathroom | Sink | `models/apartment/bathroom/sink/scene.gltf` | Placed, collidable, and connected to a short interaction response |
+| 🟡 In development | Bathroom | Toilet | `models/apartment/bathroom/toilet/scene.gltf` | Placed, collidable, and connected to a short interaction response; source record is missing |
+| 🟡 In development | Bathroom | Rug | `models/apartment/bathroom/bathroom_rug/scene.gltf` | Placed; final material and scale review remain |
 
 ## Environment and location assets
 
@@ -107,13 +137,13 @@ The first playable target ends after the opening apartment sequence and one dark
 
 | Status | Priority | Asset | Suggested path | Source | Notes |
 |---|---|---|---|---|---|
-| ⬜ Not started | P0 | Modular walls, floors, and ceilings | `models/apartment/modular/` |  | Reusable interior pieces |
-| ⬜ Not started | P0 | Doorframes and interior doors | `models/apartment/doors/` |  | Separate movable door leaves |
-| ⬜ Not started | P0 | Windows and curtains | `models/apartment/windows/` |  | Curtains can hide exterior limitations |
-| ⬜ Not started | P0 | Kitchen cabinets, counter, and sink | `models/apartment/kitchen/` |  | Grounded ordinary apartment |
-| ⬜ Not started | P0 | Bathroom fixtures | `models/apartment/bathroom/` |  | Toilet, sink, shower or bath |
+| 🟡 In development | P0 | Walls, floors, and ceilings | `models/apartment/apartment_shell.gltf` | Project | Current apartment shell is usable; future rooms may still benefit from reusable interior pieces |
+| 🟡 In development | P0 | Doorframes and interior doors | `models/apartment/door_with_frame/` | Sketchfab | Entrance door and frame are imported; a clean movable door leaf is still needed |
+| 🟡 In development | P0 | Windows and curtains | `models/apartment/windows/` | Project | Living-room window and closed balcony door now have transparent panes and scene-box frames; curtains and opening behavior are still missing |
+| 🟡 In development | P0 | Kitchen cabinets, counter, and sink | `models/apartment/kitchen/` | Mixed | Counter, sink, refrigerator, oven, table, chairs, and bench are placed; several source records are missing |
+| 🟡 In development | P0 | Bathroom fixtures | `models/apartment/bathroom/` | Mixed | Bathtub, sink, toilet, and rug are placed; several source records are missing |
 | ⬜ Not started | P0 | Light switches and outlets | `models/apartment/fixtures/` |  | Must match the chosen country |
-| ⬜ Not started | P0 | Lamps and ceiling fixtures | `models/apartment/lighting/` |  | Light meshes plus scene spot lights |
+| 🟡 In development | P0 | Lamps and ceiling fixtures | `models/apartment/lighting/` | Project | Six spot lights are saved, including the television, bathroom flicker, and non-shadow courtyard fill; some ceiling fixture meshes are still missing |
 | ⬜ Not started | P1 | Building corridor and landing | `models/building/corridor.gltf` |  | First possible dark-figure location |
 | ⬜ Not started | P1 | Stairwell or elevator lobby | `models/building/stairwell.gltf` |  | Choose one based on the building reference |
 | ⬜ Not started | P1 | Mailboxes, notices, and number signs | `models/building/props/` |  | Regional detail |
@@ -124,7 +154,7 @@ The first playable target ends after the opening apartment sequence and one dark
 |---|---|---|---|---|---|
 | ⬜ Not started | P1 | Route from apartment to work | `models/town/work_route.gltf` |  | Small controlled route, not an open world |
 | ⬜ Not started | P1 | Road, pavement, and curb kit | `models/town/streets/` |  | Modular pieces |
-| 🟡 In development | P1 | Residential and shop facades | `models/modular_exterior_parts/` | Fab | Individual 2.2-meter modules assembled into a two-story facade in `scenes/assembled_exterior.json`; needs an in-engine scale/material test and source license record |
+| 🟡 In development | P1 | Residential and shop facades | `models/modular_exterior_parts/` | Fab | Individual 2.2-meter modules and the source pack in `models/modular_set_template_gltf/` exist; an assembly is saved in `scenes/assembled_exterior.json`, but source license details still need recording |
 | 🟡 In development | P1 | Streetlights | `models/street_lamp_01_2k.gltf/` |  | Two lamps and matching lights placed in `scenes/assembled_exterior.json`; needs an in-engine test and source/license record |
 | ⬜ Not started | P1 | Parked and moving car set | `models/vehicles/cars/` |  | Include the final-impact vehicle later |
 | ⬜ Not started | P1 | Road signs and markings | `models/town/signs/` |  | Match chosen location |
@@ -184,11 +214,11 @@ The first playable target ends after the opening apartment sequence and one dark
 
 | Status | Priority | Asset set | Suggested path | Notes |
 |---|---|---|---|---|
-| ⬜ Not started | P0 | Bedroom furniture | `models/furniture/bedroom/` | Bed, nightstand, wardrobe, lamp |
-| ⬜ Not started | P0 | Living-room furniture | `models/furniture/living_room/` | Couch, chair, table, television stand |
-| ⬜ Not started | P0 | Kitchen objects | `models/props/kitchen/` | Dishes, cups, food packaging, kettle |
-| ⬜ Not started | P0 | Bathroom objects | `models/props/bathroom/` | Towels, toiletries, medication |
-| ⬜ Not started | P0 | Personal clutter | `models/props/personal/` | Wallet, phone, charger, work badge, shoes |
+| 🟡 In development | P0 | Bedroom furniture | `models/apartment/bedroom/` | Bed and closet are placed; nightstand and lamp are missing |
+| 🟡 In development | P0 | Living-room furniture | `models/apartment/livingroom/` | Couch, television, television table, and bottled car are placed; smaller dressing is missing |
+| 🟡 In development | P0 | Kitchen objects | `models/apartment/kitchen/` | Major furniture and appliances are placed; dishes, cups, food packaging, and kettle are missing |
+| 🟡 In development | P0 | Bathroom objects | `models/apartment/bathroom/` | Major fixtures and rug are placed; towels, toiletries, and medication are missing |
+| 🟡 In development | P0 | Personal clutter | `models/apartment/keys/` | Keys exist; wallet, phone, charger, work badge, and shoes are missing |
 | ⬜ Not started | P0 | Cleaning and rubbish | `models/props/cleaning/` | Bin, bags, broom, containers |
 | ⬜ Not started | P1 | Paper and mail props | `models/props/paper/` | Letters, bills, notices, receipts |
 | ⬜ Not started | P1 | Town dressing set | `models/town/street_props/` | Reuse across exterior scenes |
@@ -247,7 +277,7 @@ These are asset requirements only if the final presentation shows animated peopl
 |---|---|---|---|---|
 | ⬜ Not started | P0 | Apartment room tone | `audio/ambience/apartment_room_tone.wav` | Looping |
 | ⬜ Not started | P0 | Refrigerator hum | `audio/ambience/refrigerator_hum.wav` | Positional |
-| ⬜ Not started | P0 | Distant morning traffic | `audio/ambience/morning_traffic.wav` | Window source |
+| 🟡 In development | P0 | Distant traffic | `audio/Suburban_Nighttime_Traffic_Ambience.wav` | Looping auto-play source is attached; mix, source, and license still need verification |
 | ⬜ Not started | P0 | Neighbor television | `audio/ambience/neighbor_tv.wav` | Through-wall sound |
 | ⬜ Not started | P0 | Pipes and building creaks | `audio/ambience/building/` | Sparse one-shots |
 | ⬜ Not started | P1 | Apartment corridor tone | `audio/ambience/apartment_corridor.wav` | Looping |
@@ -309,8 +339,9 @@ These are asset requirements only if the final presentation shows animated peopl
 
 | Status | Priority | Asset set | Suggested path | Notes |
 |---|---|---|---|---|
-| ⬜ Not started | P0 | Painted apartment walls | `textures/surfaces/painted_wall/` | Several subtle wear variants |
-| ⬜ Not started | P0 | Wood or laminate floor | `textures/surfaces/wood_floor/` | Apartment main surface |
+| 🟡 In development | P0 | Painted apartment walls | `textures/painted_plaster_wall_2k.blend/` | Blender material source exists; runtime texture maps and source license record are still needed |
+| 🟡 In development | P0 | Wood or laminate floor | `textures/wood_floor_worn_2k.blend/` | Blender material source exists; runtime texture maps and source license record are still needed |
+| 🟡 In development | P0 | Interior ceiling | `textures/ceiling_interior_2k.blend/` | Blender material source exists; runtime texture maps and source license record are still needed |
 | ⬜ Not started | P0 | Carpet | `textures/surfaces/carpet/` | Bedroom or hallway |
 | ⬜ Not started | P0 | Kitchen and bathroom tile | `textures/surfaces/tile/` | Floor and wall variants |
 | ⬜ Not started | P0 | Door and cabinet wood | `textures/surfaces/woodwork/` | Match apartment age |
@@ -321,6 +352,10 @@ These are asset requirements only if the final presentation shows animated peopl
 | ⬜ Not started | P1 | Workplace signs and labels | `textures/workplace/signage/` | Fictional brands only |
 | ⬜ Not started | P1 | Street signs and road markings | `textures/town/signage/` | Match setting |
 | 🟡 In development | P1 | Asphalt surface | `textures/asphalt/` | Albedo, OpenGL normal, and packed ARM maps placed in `scenes/horror.json`; source and license still need recording |
+| 🟡 In development | P1 | Willow bark material | `textures/bark_willow_2k.blend/` | Blender material source only; export runtime maps before engine use |
+| 🟡 In development | P1 | Green rusted metal material | `textures/green_metal_rust_2k.blend/` | Blender material source only; export runtime maps before engine use |
+| 🟡 In development | P1 | Rusted metal material | `textures/rusty_metal_03_2k.blend/` | Blender material source only; export runtime maps before engine use |
+| 🟡 In development | P1 | Sandstone blocks material | `textures/sandstone_blocks_05_2k.blend/` | Blender material source only; export runtime maps before engine use |
 | ⬜ Not started | P1 | Dirt, leaks, scratches, and wall marks | `textures/decals/environment/` | Use decals or plane overlays |
 | ⬜ Not started | P2 | Dark-figure material set | `textures/figures/dark/` | Must retain a readable silhouette without obvious detail |
 | ⬜ Not started | P2 | White-figure material set | `textures/figures/white/` | Work around the lack of emissive textures |
@@ -330,7 +365,7 @@ These are asset requirements only if the final presentation shows animated peopl
 
 | Status | Priority | Asset | Suggested path | Notes |
 |---|---|---|---|---|
-| ⬜ Not started | P0 | Interaction prompt treatment | `textures/ui/interaction/` | Text-only is acceptable for the prototype |
+| ✅ Done | P0 | Interaction prompt treatment | Built-in text prompt | Current Interactable component draws the text-only prototype prompt |
 | ⬜ Not started | P0 | Subtitle style reference | `references/ui/subtitles/` | Choose size, color, placement, speaker rules |
 | ⬜ Not started | P1 | Main title or wordmark | `textures/ui/title.png` | Working title can remain text initially |
 | ⬜ Not started | P1 | Main menu background | `textures/ui/main_menu.png` | May be rendered in-engine instead |
@@ -345,7 +380,9 @@ These are asset requirements only if the final presentation shows animated peopl
 
 | Status | Priority | Scene | Suggested path | Notes |
 |---|---|---|---|---|
-| 🟡 In development | P0 | Opening apartment | `scenes/horror.json` | Currently an asphalt material preview; apartment layout not started |
+| 🟡 In development | P0 | Opening apartment | `scenes/apartment.json` | 90 model roots, 211 scene boxes, 15 interactables, and a revised key-to-door route. Includes living-room glazing, balcony/courtyard scenery, cloth book textures, and entrance infill; see `docs/apartment_scene_notes.md` |
+| 🟡 In development | Optional | Exterior assembly preview | `scenes/assembled_exterior.json` | Two-story facade assembled from the modular exterior pack |
+| 🟡 In development | Optional | Development previews | `scenes/horror.json`, `scenes/modular_exterior.json`, `scenes/level_01.json` | Asphalt, modular-kit, and earlier apartment development scenes retained for reference |
 | ⬜ Not started | P1 | Apartment corridor or exit | `scenes/apartment_building.json` | Can remain part of apartment scene if small |
 | ⬜ Not started | P1 | Walk to work | `scenes/work_route.json` | Includes first street figure |
 | ⬜ Not started | P1 | Workplace | `scenes/workplace.json` | Boss confrontation |
@@ -359,15 +396,18 @@ These are asset requirements only if the final presentation shows animated peopl
 
 | Status | Priority | Script | Suggested path | Responsibility |
 |---|---|---|---|---|
-| ⬜ Not started | P0 | First-person controller | `scripts/fps_controller.lua` | Movement, look, and footsteps |
-| ⬜ Not started | P0 | Opening sequence director | `scripts/opening_sequence.lua` | Conversation timing and apartment state |
-| ⬜ Not started | P0 | Keys interaction | `scripts/keys.lua` | Search progression and appearance |
-| ⬜ Not started | P0 | Door interaction | `scripts/door.lua` | Locked and unlocked behavior |
+| ✅ Done | P0 | First-person controller | `scripts/fps_controller.lua` | Movement and mouse look; footsteps are still a separate audio task |
+| 🟡 In development | P0 | Opening sequence director | `scripts/opening_sequence.lua` | Dialogue now lasts 21 seconds before the 3.2-second wake-up; explicit location prompts replace the generic key objective. Input lock and timing pass standalone Lua checks; voice audio and in-engine verification remain |
+| 🟡 In development | P0 | Keys interaction | `scripts/keys.lua` | Ordered route and delayed counter reveal pass standalone Lua checks, including replay reset; new placement and targeting need an in-engine play test |
+| ✅ Done | P0 | Door interaction | `scripts/door.lua` | Tested locked feedback and key-gated prototype ending |
+| 🟡 In development | P0 | Apartment prop responses | `scripts/apartment_interaction.lua` | Counter, coat stand, and sofa drive the search in order. Optional props remain inspectable, and repeated or out-of-order searches cannot skip the route |
+| ✅ Done | P0 | Bed interaction | `scripts/sleep.lua` | Tested fade-to-black sleep behavior plus coordination with the opening UI |
+| ✅ Done | P0 | Television interaction | `scripts/tv_script.lua` | Tested toggle for the television child spot light |
 | ⬜ Not started | P0 | Dark figure behavior | `scripts/dark_figure.lua` | Distance response, sound, shake, disappearance |
 | ⬜ Not started | P0 | Subtitle queue | `scripts/subtitles.lua` | Timed lines and fades |
 | ⬜ Not started | P0 | Horror post-process controller | `scripts/perception_effects.lua` | Vignette, aberration, grain, and recovery |
 | ⬜ Not started | P1 | Narrative trigger | `scripts/narrative_trigger.lua` | Reusable one-shot area event after trigger support exists |
-| ⬜ Not started | P1 | Light flicker | `scripts/light_flicker.lua` | Controlled spot-light intensity changes |
+| 🟡 In development | P1 | Light flicker | `scripts/light_flicker.lua` | Attached to the bathroom spot light; final timing and intensity need a play test |
 | ⬜ Not started | P1 | Workplace sequence | `scripts/workplace_sequence.lua` | Clock-in and boss conversation |
 | ⬜ Not started | P1 | Street encounter director | `scripts/street_encounter.lua` | Figure and passing vehicle timing |
 | ⬜ Not started | P2 | Phone and messages | `scripts/phone.lua` | Message history and unreliable changes |
@@ -384,7 +424,7 @@ These are not assets, but the corresponding content cannot be completed cleanly 
 | Status | Priority | Dependency | Needed by | Notes |
 |---|---|---|---|---|
 | ⬜ Not started | P0 | Character enter/exit trigger callbacks | Apartment and every narrative sequence | CharacterVirtual does not currently dispatch sensor events to Lua |
-| ⬜ Not started | P0 | Scriptable entity visibility | Keys and figures | Avoid destroying entities that must reappear later |
+| ⬜ Not started | P0 | Scriptable entity visibility | Figures and reusable hidden objects | The key prototype temporarily moves its model root out of view; a real visibility API is still needed |
 | ⬜ Not started | P1 | Runtime scene transitions | Multi-location story | Load the next scene safely during Play mode |
 | ⬜ Not started | P1 | Footstep surface selection | Player audio | Select samples by floor material or tagged area |
 | ⏸ Blocked | P1 | Skeletal animation and skinned meshes | Visible human characters | Not required for static P0 figures |
@@ -404,21 +444,45 @@ recording. Keep the original license file beside the asset when redistribution r
 
 | Status | Asset or pack | Author | Source URL or local origin | License | License path | Modifications |
 |---|---|---|---|---|---|---|
-| ⬜ Not started |  |  |  |  |  |  |
+| ✅ Done | Bathroom Rug | robfitzy | https://sketchfab.com/3d-models/bathroom-rug-3f0baf6b6a2c4a919c85c1cee0f0eb2f | CC-BY-4.0 | `models/apartment/bathroom/bathroom_rug/license.txt` | Imported and placed |
+| ✅ Done | Bed | rickmaolly | https://sketchfab.com/3d-models/bed-b8c16d4b69f64335b46379b119b102b4 | CC-BY-4.0 | `models/apartment/bedroom/bed/license.txt` | Imported, scaled, made collidable, and scripted |
+| ✅ Done | Door with frame | witnessk | https://sketchfab.com/3d-models/door-with-frame-2f2f149f3ec44d658a02c1f924dfa449 | CC-BY-4.0 | `models/apartment/door_with_frame/license.txt` | Imported, scaled, and placed |
+| ✅ Done | Keys | stfuaahil | https://sketchfab.com/3d-models/keys-2dbcae14689b42ba9b55912d8be15326 | CC-BY-4.0 | `models/apartment/keys/license.txt` | Imported, scaled, and placed |
+| ✅ Done | Kitchen Counter | euanford12321 | https://sketchfab.com/3d-models/kitchen-counter-e46deaab889548948a31e4264de61e5a | CC-BY-4.0 | `models/apartment/kitchen/kitchen_counter/license.txt` | Imported, scaled, and placed |
+| ✅ Done | Kitchen table chairs and bench (low poly) | Andrey 3D | https://sketchfab.com/3d-models/kitchen-table-chairs-and-bench-low-poly-1128dbc593c440e9b513c689f496827c | CC-BY-4.0 | `models/apartment/kitchen/kitchen_table_chairs_and_bench_low_poly/license.txt` | Imported, scaled, and placed |
+| ✅ Done | Bottled car | Urizel | https://sketchfab.com/3d-models/bottled-car-cd38a415db8a4607ab9dd3cc67d27462 | CC-BY-NC-4.0 | `models/apartment/livingroom/bottled_car/license.txt` | Imported and used to test transparent materials; not suitable for commercial distribution |
+| ✅ Done | Apartment shell | Project | Local Blender source | Project-owned | `references/apartment/apartment_shell.blend` | Authored for this scene and exported to `models/apartment/apartment_shell.gltf` |
+| ✅ Done | Horror alarm clock | Project | Local original asset | Project-owned | `models/apartment/horror-alarm-clock-gltf2/README.txt` | Real-scale glTF with five mesh parts, PBR textures, separate hands, and an unused `Alarm_Ring` animation clip |
+| 🟡 In development | Bathtub | Unknown | Not recorded | Unknown | Missing | Imported and placed; record the original page and license before distribution |
+| 🟡 In development | Bathroom sink | Unknown | Not recorded | Unknown | Missing | Imported and placed; record the original page and license before distribution |
+| 🟡 In development | Toilet | Unknown | Not recorded | Unknown | Missing | Imported and placed; record the original page and license before distribution |
+| 🟡 In development | Closet | Unknown | Not recorded | Unknown | Missing | Imported and placed; record the original page and license before distribution |
+| 🟡 In development | Refrigerator | Unknown | Not recorded | Unknown | Missing | Imported and placed; record the original page and license before distribution |
+| 🟡 In development | Oven | Unknown | Not recorded | Unknown | Missing | Imported and placed; record the original page and license before distribution |
+| 🟡 In development | Couch | Unknown | Not recorded | Unknown | Missing | Imported and placed; record the original page and license before distribution |
+| 🟡 In development | Television | Unknown | Not recorded | Unknown | Missing | Imported and placed; record the original page and license before distribution |
+| 🟡 In development | Television table | Unknown | Not recorded | Unknown | Missing | Imported and placed; record the original page and license before distribution |
+| 🟡 In development | Evening Road HDR | Unknown | Not recorded | Unknown | Missing | Active environment in `game.json`; record source and redistribution terms |
+| 🟡 In development | Ferndale HDR | Unknown | Not recorded | Unknown | Missing | Alternative environment; record source and redistribution terms |
+| 🟡 In development | Suburban nighttime traffic ambience | Unknown | Embedded WAV metadata only | Unknown | Missing | Attached as the apartment loop; record the exact library item and redistribution terms |
+| 🟡 In development | Asphalt material | Unknown | Not recorded | Unknown | Missing | Runtime albedo, normal, and ARM maps exist |
+| 🟡 In development | Blender material source set | Unknown | Not recorded | Unknown | Missing | Bark, ceiling, green metal, painted plaster, rusted metal, sandstone, and worn wood `.blend` files need individual source records |
+| 🟡 In development | Modular exterior template | Fab | Original listing not recorded | Unknown | Missing | Imported and used in exterior preview scenes |
+| 🟡 In development | Street lamp | Unknown | Not recorded | Unknown | Missing | Imported and used in the assembled exterior preview |
 
 ## Milestone readiness checks
 
 ### P0 opening apartment vertical slice
 
-- [ ] Apartment is navigable at real-world scale.
-- [ ] Player collision and first-person controls work.
+- [x] Apartment is navigable at real-world scale.
+- [x] Player collision and first-person controls work.
 - [ ] Opening mother and child conversation plays correctly.
 - [ ] Environmental loops are balanced and spatialized.
-- [ ] The player can search for and obtain the keys.
-- [ ] The front door reacts correctly before and after finding the keys.
+- [x] The player can search for and obtain the keys.
+- [x] The front door reacts correctly before and after finding the keys.
 - [ ] The dark figure appears, whispers, affects perception, and disappears on approach.
 - [ ] Returning to normal restores audio and post-process settings.
-- [ ] The sequence reaches a deliberate ending or fade.
+- [x] The sequence reaches a deliberate ending or fade.
 - [ ] The scene exports and runs from an extracted package outside the repository.
 
 ### P1 Act I

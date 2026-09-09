@@ -1,0 +1,11 @@
+Model Information:
+* title:	Broken-ceiling-lamp
+* source:	https://sketchfab.com/3d-models/broken-ceiling-lamp-bdeb86e145874e27922e662267e6887f
+* author:	BILAL-NAV (https://sketchfab.com/BILAL-NAV)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Broken-ceiling-lamp" (https://sketchfab.com/3d-models/broken-ceiling-lamp-bdeb86e145874e27922e662267e6887f) by BILAL-NAV (https://sketchfab.com/BILAL-NAV) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

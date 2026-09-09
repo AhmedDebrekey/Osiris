@@ -1,0 +1,565 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "Original procedural horror prop"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Nightfall Alarm Clock",
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "AlarmClock_Root",
+      "children": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "name": "Clock_Body",
+      "mesh": 0
+    },
+    {
+      "name": "Hammer_Pivot",
+      "mesh": 1,
+      "translation": [
+        0,
+        0.154,
+        0
+      ]
+    },
+    {
+      "name": "Hour_Hand",
+      "mesh": 2,
+      "translation": [
+        0,
+        0.092,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        -0.7283709698824002,
+        0.6851829903263592
+      ]
+    },
+    {
+      "name": "Minute_Hand",
+      "mesh": 3,
+      "translation": [
+        0,
+        0.092,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        -0.35836794954530027,
+        0.9335804264972017
+      ]
+    },
+    {
+      "name": "Second_Hand",
+      "mesh": 4,
+      "translation": [
+        0,
+        0.092,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        -0.8090169943749475,
+        -0.587785252292473
+      ]
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Clock_Body",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0
+        }
+      ]
+    },
+    {
+      "name": "Hammer",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 4,
+            "NORMAL": 5,
+            "TEXCOORD_0": 6
+          },
+          "indices": 7,
+          "material": 0
+        }
+      ]
+    },
+    {
+      "name": "Hour_Hand",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 8,
+            "NORMAL": 9,
+            "TEXCOORD_0": 10
+          },
+          "indices": 11,
+          "material": 1
+        }
+      ]
+    },
+    {
+      "name": "Minute_Hand",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 12,
+            "NORMAL": 13,
+            "TEXCOORD_0": 14
+          },
+          "indices": 15,
+          "material": 1
+        }
+      ]
+    },
+    {
+      "name": "Second_Hand",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 16,
+            "NORMAL": 17,
+            "TEXCOORD_0": 18
+          },
+          "indices": 19,
+          "material": 2
+        }
+      ]
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 3775,
+      "type": "VEC3",
+      "min": [
+        -0.07446344941854477,
+        -8.881784618863365e-19,
+        -0.04399999976158142
+      ],
+      "max": [
+        0.07446344941854477,
+        0.21050000190734863,
+        0.03400000184774399
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 3775,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 3775,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5123,
+      "count": 17148,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 4,
+      "componentType": 5126,
+      "count": 122,
+      "type": "VEC3",
+      "min": [
+        -0.004999999888241291,
+        0.0,
+        -0.004999999888241291
+      ],
+      "max": [
+        0.004999999888241291,
+        0.032999999821186066,
+        0.004999999888241291
+      ]
+    },
+    {
+      "bufferView": 5,
+      "componentType": 5126,
+      "count": 122,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 6,
+      "componentType": 5126,
+      "count": 122,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 7,
+      "componentType": 5123,
+      "count": 432,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 8,
+      "componentType": 5126,
+      "count": 30,
+      "type": "VEC3",
+      "min": [
+        -0.003000000026077032,
+        -0.00800000037997961,
+        0.028699999675154686
+      ],
+      "max": [
+        0.003000000026077032,
+        0.03400000184774399,
+        0.029349999502301216
+      ]
+    },
+    {
+      "bufferView": 9,
+      "componentType": 5126,
+      "count": 30,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 10,
+      "componentType": 5126,
+      "count": 30,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 11,
+      "componentType": 5123,
+      "count": 48,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 12,
+      "componentType": 5126,
+      "count": 30,
+      "type": "VEC3",
+      "min": [
+        -0.0020000000949949026,
+        -0.009999999776482582,
+        0.02969999983906746
+      ],
+      "max": [
+        0.0020000000949949026,
+        0.04800000041723251,
+        0.03034999966621399
+      ]
+    },
+    {
+      "bufferView": 13,
+      "componentType": 5126,
+      "count": 30,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 14,
+      "componentType": 5126,
+      "count": 30,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 15,
+      "componentType": 5123,
+      "count": 48,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 16,
+      "componentType": 5126,
+      "count": 30,
+      "type": "VEC3",
+      "min": [
+        -0.0005499999970197678,
+        -0.013000000268220901,
+        0.030700000002980232
+      ],
+      "max": [
+        0.0005499999970197678,
+        0.05400000140070915,
+        0.03135000169277191
+      ]
+    },
+    {
+      "bufferView": 17,
+      "componentType": 5126,
+      "count": 30,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 18,
+      "componentType": 5126,
+      "count": 30,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 19,
+      "componentType": 5123,
+      "count": 48,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 20,
+      "componentType": 5126,
+      "count": 25,
+      "type": "SCALAR",
+      "min": [
+        0.0
+      ],
+      "max": [
+        0.6000000238418579
+      ]
+    },
+    {
+      "bufferView": 21,
+      "componentType": 5126,
+      "count": 25,
+      "type": "VEC4"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 45300
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 45300,
+      "byteLength": 45300
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 90600,
+      "byteLength": 30200
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 120800,
+      "byteLength": 34296
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 155096,
+      "byteLength": 1464
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 156560,
+      "byteLength": 1464
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 158024,
+      "byteLength": 976
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 159000,
+      "byteLength": 864
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 159864,
+      "byteLength": 360
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 160224,
+      "byteLength": 360
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 160584,
+      "byteLength": 240
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 160824,
+      "byteLength": 96
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 160920,
+      "byteLength": 360
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 161280,
+      "byteLength": 360
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 161640,
+      "byteLength": 240
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 161880,
+      "byteLength": 96
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 161976,
+      "byteLength": 360
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 162336,
+      "byteLength": 360
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 162696,
+      "byteLength": 240
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 162936,
+      "byteLength": 96
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 163032,
+      "byteLength": 100
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 163132,
+      "byteLength": 400
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "alarm_clock.bin",
+      "byteLength": 163532
+    }
+  ],
+  "images": [
+    {
+      "uri": "textures/clock_basecolor.png"
+    },
+    {
+      "uri": "textures/clock_orm.png"
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    },
+    {
+      "sampler": 0,
+      "source": 1
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987,
+      "wrapS": 33071,
+      "wrapT": 33071
+    }
+  ],
+  "materials": [
+    {
+      "name": "Aged_Metal_And_Dial",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0
+        },
+        "metallicRoughnessTexture": {
+          "index": 1
+        },
+        "metallicFactor": 1,
+        "roughnessFactor": 1
+      }
+    },
+    {
+      "name": "Blackened_Clock_Hands",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.018,
+          0.021,
+          0.016,
+          1
+        ],
+        "metallicFactor": 0.55,
+        "roughnessFactor": 0.58
+      }
+    },
+    {
+      "name": "Oxide_Red_Second_Hand",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.3,
+          0.032,
+          0.019,
+          1
+        ],
+        "metallicFactor": 0.25,
+        "roughnessFactor": 0.7
+      }
+    }
+  ],
+  "extras": {
+    "units": "metres",
+    "up_axis": "+Y",
+    "front_axis": "+Z",
+    "floor_pivot": [
+      0,
+      0,
+      0
+    ],
+    "default_time": "03:07:42",
+    "design": "Original aged twin-bell mechanical alarm clock; illustrative NIGHTFALL branding"
+  },
+  "animations": [
+    {
+      "name": "Alarm_Ring",
+      "samplers": [
+        {
+          "input": 20,
+          "output": 21,
+          "interpolation": "LINEAR"
+        }
+      ],
+      "channels": [
+        {
+          "sampler": 0,
+          "target": {
+            "node": 2,
+            "path": "rotation"
+          }
+        }
+      ]
+    }
+  ]
+}

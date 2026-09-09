@@ -1,0 +1,11 @@
+Model Information:
+* title:	Fruit Bowl
+* source:	https://sketchfab.com/3d-models/fruit-bowl-373c679b7bd644aea12373945834e973
+* author:	Meerschaum Digital (https://sketchfab.com/meerschaumdigital)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Fruit Bowl" (https://sketchfab.com/3d-models/fruit-bowl-373c679b7bd644aea12373945834e973) by Meerschaum Digital (https://sketchfab.com/meerschaumdigital) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

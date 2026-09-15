@@ -61,6 +61,7 @@ namespace Osiris
         // processing) whose vertex shader generates positions from
         // gl_VertexIndex instead of reading the Vertex struct.
         bool vertexInput = true;
+        bool skinned = false;
 
         // Pipeline layout.
         uint32_t setLayoutCount = 0;
@@ -171,6 +172,7 @@ namespace Osiris
                 VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
             VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
             bool vertexInput = true;
+            bool skinned = false;
 
             std::vector<VkDescriptorSetLayout> setLayouts;
 

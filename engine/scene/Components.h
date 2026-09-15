@@ -16,6 +16,7 @@
 #include "physics/PhysicsTypes.h"
 #include "audio/AudioTypes.h"
 #include "scripting/ScriptTypes.h"
+#include "animation/Animation.h"
 
 namespace Osiris {
     class Scene;
@@ -61,6 +62,11 @@ namespace Osiris {
     struct EmissiveComponent {
         glm::vec3 color = glm::vec3(1.0f);
         float intensity = 1.0f;
+    };
+
+    struct AnimatorComponent {
+        Animator player;
+        bool previewInEditor = false;
     };
 
     struct TagComponent {

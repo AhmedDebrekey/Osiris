@@ -135,6 +135,7 @@ namespace Osiris {
 
         if (!m_IsPlaying) {
             if (m_EditorEnabled) m_Editor->Draw(scene, m_EditCamera, *this, m_DeltaTime);
+            scene.UpdateAnimations(m_DeltaTime, false);
         } else {
             if (m_ShowFps && m_DisplayedFps > 0.0f) {
                 GameUI::DrawText(0.015f, 0.02f, UIAnchor::TopLeft,
@@ -151,6 +152,7 @@ namespace Osiris {
             scene.SyncCharacterTransforms(m_Physics.get());
             scene.DispatchCollisionEvents(m_Physics.get(), m_Scripting.get());
             scene.FlushDestroyQueue(m_Physics.get(), m_Audio.get(), m_Scripting.get());
+            scene.UpdateAnimations(m_DeltaTime, true);
 
             if (!m_Input.IsGameplayInputLocked()) {
                 float outDistance = 0.0f;
@@ -269,6 +271,7 @@ namespace Osiris {
         // RenderFrame's GetWorldTransform calls (spot lights, 3 cascades, up to 3 spot casters,
         // the forward pass) instead of re-walking the same parent chain up to 8x per entity.
         scene.ClearWorldTransformCache();
+        scene.PrepareSkinning(m_RHI.get());
 
         if (m_IsPlaying) {
             SyncPlayCamera(scene);

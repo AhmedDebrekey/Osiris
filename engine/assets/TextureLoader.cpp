@@ -10,6 +10,7 @@
 #include <bit>
 #include <filesystem>
 #include <unordered_map>
+#include <limits>
 
 #include "core/AssetManager.h"
 #include "core/Log.h"
@@ -70,6 +71,28 @@ namespace Osiris {
         if (handle.IsValid()) {
             cache.emplace(cacheKey, handle);
         }
+        return handle;
+    }
+
+    TextureHandle TextureLoader::LoadFromMemory(std::span<const uint8_t> bytes, IRHI* rhi, TextureFormat format) {
+        if (bytes.empty() || bytes.size() > static_cast<size_t>(std::numeric_limits<int>::max())) return {};
+        int width, height, channels;
+        stbi_uc* pixels = stbi_load_from_memory(bytes.data(), static_cast<int>(bytes.size()),
+            &width, &height, &channels, STBI_rgb_alpha);
+        if (!pixels) {
+            OSIRIS_ERROR("Failed to decode embedded glTF texture: {}", stbi_failure_reason());
+            return {};
+        }
+        const TextureDesc desc = {
+            .pixels = pixels,
+            .dataSize = static_cast<uint64_t>(width) * height * 4,
+            .width = static_cast<uint32_t>(width),
+            .height = static_cast<uint32_t>(height),
+            .mipLevels = static_cast<uint32_t>(std::bit_width(static_cast<uint32_t>(std::max(width, height)))),
+            .format = format,
+        };
+        const auto handle = rhi->CreateTexture(desc);
+        stbi_image_free(pixels);
         return handle;
     }
 

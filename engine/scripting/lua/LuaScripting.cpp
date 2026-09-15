@@ -82,6 +82,36 @@ namespace Osiris {
     }
 
     void LuaScripting::BindAPI() {
+        m_Lua.new_enum("AnimationComparison",
+            "Less", AnimationComparison::Less, "LessEqual", AnimationComparison::LessEqual,
+            "Greater", AnimationComparison::Greater, "GreaterEqual", AnimationComparison::GreaterEqual,
+            "Equal", AnimationComparison::Equal, "NotEqual", AnimationComparison::NotEqual);
+        m_Lua.new_usertype<AnimationGraph>("AnimationGraph", sol::no_constructor,
+            "AddState", [](AnimationGraph& graph, const std::string& name, const std::string& clip,
+                            sol::optional<bool> loop, sol::optional<float> speed) {
+                return graph.AddState(name, clip, loop.value_or(true), speed.value_or(1.0f));
+            },
+            "AddTransition", [](AnimationGraph& graph, const std::string& from, const std::string& to,
+                                 const std::string& parameter, AnimationComparison comparison, float threshold,
+                                 sol::optional<float> fadeSeconds) {
+                return graph.AddTransition(from, to, parameter, comparison, threshold, fadeSeconds.value_or(0.2f));
+            },
+            "Clear", &AnimationGraph::Clear);
+        m_Lua.new_usertype<Animator>("Animator", sol::no_constructor,
+            "GetClips", [](const Animator& animator) { return sol::as_table(animator.GetClips()); },
+            "Play", [](Animator& animator, const std::string& clip, sol::optional<float> fade, sol::optional<bool> loop) {
+                return animator.Play(clip, fade.value_or(0.2f), loop.value_or(true));
+            },
+            "GetGraph", [](Animator& animator) -> AnimationGraph& { return animator.GetGraph(); },
+            "StartGraph", &Animator::StartGraph,
+            "SetFloat", &Animator::SetFloat, "GetFloat", &Animator::GetFloat, "SetBool", &Animator::SetBool,
+            "Pause", &Animator::Pause, "Resume", &Animator::Resume, "Stop", &Animator::Stop,
+            "Seek", &Animator::Seek, "SetSpeed", &Animator::SetSpeed, "GetSpeed", &Animator::GetSpeed,
+            "IsPlaying", &Animator::IsPlaying, "IsLooping", &Animator::IsLooping,
+            "IsFinished", &Animator::IsFinished, "GetTime", &Animator::GetTime, "GetDuration", &Animator::GetDuration,
+            "GetCurrentClip", &Animator::GetCurrentClip, "GetCurrentState", &Animator::GetCurrentState);
+        m_Lua.new_usertype<AnimatorComponent>("AnimatorComponent", sol::no_constructor,
+            "player", &AnimatorComponent::player, "previewInEditor", &AnimatorComponent::previewInEditor);
         m_Lua.new_usertype<glm::vec3>("vec3",
             sol::constructors<glm::vec3(), glm::vec3(float), glm::vec3(float, float, float)>(),
             "x", &glm::vec3::x,
@@ -266,6 +296,13 @@ namespace Osiris {
             "GetEmissive", &Entity::GetComponent<EmissiveComponent>,
             "HasEmissive", &Entity::HasComponent<EmissiveComponent>,
             "AddEmissive", &Entity::AddComponent<EmissiveComponent>,
+            "GetAnimator", [](Entity entity) -> Animator& { return entity.GetComponent<AnimatorComponent>().player; },
+            "GetAnimatorComponent", &Entity::GetComponent<AnimatorComponent>,
+            "HasAnimator", &Entity::HasComponent<AnimatorComponent>,
+            "AddAnimator", [](Entity entity) -> Animator& {
+                if (!entity.GetScene()->CanAnimate(entity)) throw sol::error("AddAnimator requires an imported animated model root");
+                return entity.GetScene()->AddAnimator(entity).player;
+            },
 
             "GetCollider", &Entity::GetComponent<ColliderComponent>,
             "HasCollider", &Entity::HasComponent<ColliderComponent>,

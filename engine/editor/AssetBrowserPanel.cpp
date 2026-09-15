@@ -65,7 +65,7 @@ namespace Osiris {
 
     EditorIcon AssetBrowserPanel::IconForFile(const std::string& fileName) {
         const std::string ext = std::filesystem::path(fileName).extension().string();
-        if (ext == ".gltf") return EditorIcon::GltfModel;
+        if (ext == ".gltf" || ext == ".glb") return EditorIcon::GltfModel;
         if (ext == ".lua") return EditorIcon::LuaScript;
         if (ext == ".json") return EditorIcon::JsonScene;
         if (ext == ".wav") return EditorIcon::WavAudio;
@@ -74,7 +74,7 @@ namespace Osiris {
 
     const char* AssetBrowserPanel::PayloadForFile(const std::string& fileName) {
         const std::string ext = std::filesystem::path(fileName).extension().string();
-        if (ext == ".gltf") return kAssetEntryPayload;
+        if (ext == ".gltf" || ext == ".glb") return kAssetEntryPayload;
         if (ext == ".lua") return kScriptAssetPayload;
         if (ext == ".wav") return kAudioAssetPayload;
         return nullptr; // scenes (and anything else): no drop target consumes these, no drag source

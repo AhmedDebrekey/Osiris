@@ -7,6 +7,8 @@
 #include "glm/glm.hpp"
 #include "rhi/RHITypes.h"
 #include <array>
+#include <memory>
+#include <vector>
 namespace Osiris
 {
     struct Vertex {
@@ -37,12 +39,21 @@ namespace Osiris
         }
     };
 
+    struct SkinVertex {
+        // Matches binding 1 in PipelineManager and locations 4/5 in skinning.glsl.
+        glm::uvec4 joints{0};
+        glm::vec4 weights{0.0f};
+    };
+    static_assert(sizeof(SkinVertex) == 32 && offsetof(SkinVertex, weights) == 16);
+
     struct Mesh {
         BufferHandle vertexBuffer   = BufferHandle();
         BufferHandle indexBuffer    = BufferHandle();
         uint32_t     vertexCount    = 0;
         uint32_t     indexCount     = 0;
         AABB bounds;
+        BufferHandle skinVertexBuffer;
+        std::shared_ptr<const std::vector<AABB>> jointBounds;
     };
 
     struct MeshPrimitive {

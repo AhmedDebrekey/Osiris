@@ -11,6 +11,7 @@
 #include <nlohmann/json.hpp>
 
 #include "AudioLoader.h"
+#include "animation/AnimationSerialization.h"
 #include "MeshLoader.h"
 #include "TextureLoader.h"
 #include "core/AssetManager.h"
@@ -139,6 +140,15 @@ namespace Osiris {
 
             if (!entity.IsValid()) continue;
             entity.GetComponent<TransformComponent>() = savedTransform;
+            if (entityJson.contains("animator") && scene.CanAnimate(entity)) {
+                if (entityJson["animator"].is_null()) {
+                    entity.RemoveComponent<AnimatorComponent>();
+                } else {
+                    std::string error;
+                    if (!LoadAnimator(scene.AddAnimator(entity).player, entityJson["animator"], error))
+                        OSIRIS_ERROR("Failed to restore animator '{}': {}", name, error);
+                }
+            }
 
             if (entityJson.contains("box") && !isModelEntry) {
                 auto& j = entityJson["box"];
@@ -314,6 +324,11 @@ namespace Osiris {
             }
 
             WriteParent(entityJson, scene, entity);
+            if (entity.HasComponent<AnimatorComponent>()) {
+                entityJson["animator"] = SaveAnimator(entity.GetComponent<AnimatorComponent>().player);
+            } else if (scene.CanAnimate(entity)) {
+                entityJson["animator"] = nullptr;
+            }
 
             if (entity.HasComponent<SpotLightComponent>()) {
                 auto& light = entity.GetComponent<SpotLightComponent>();

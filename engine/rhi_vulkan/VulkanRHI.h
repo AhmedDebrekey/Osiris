@@ -51,6 +51,8 @@ namespace Osiris {
 
         void SetModelMatrix(const glm::mat4 &model) override;
         void SetEmissive(const glm::vec3& color, float intensity) override;
+        void PrepareSkinning(const std::vector<std::vector<glm::mat4>>& palettes) override;
+        void SetSkinPalette(uint32_t index) override { m_SkinPaletteIndex = index; }
 
         BufferHandle CreateBuffer(const BufferDesc &) override;
 
@@ -306,6 +308,8 @@ namespace Osiris {
         std::array<GPUTimestampFrame, MAX_FRAMES_IN_FLIGHT> m_GPUTimestampFrames;
         std::vector<std::pair<std::string, float>> m_GPUTimings;
         float m_TimestampPeriod = 0.0f;
+        uint64_t m_SkinBufferAlignment = sizeof(glm::mat4);
+        uint64_t m_MaxSkinBufferRange = 0;
 
         VmaAllocator m_Allocator = VK_NULL_HANDLE;
         std::vector<VulkanBuffer> m_Buffers;
@@ -315,6 +319,18 @@ namespace Osiris {
         BufferHandle m_CameraUniformBuffer;
 
         Mesh m_BoundMesh;
+        VkDescriptorSetLayout m_SkinDescriptorLayout = VK_NULL_HANDLE;
+        VkDescriptorPool m_SkinDescriptorPool = VK_NULL_HANDLE;
+        std::array<VkDescriptorSet, MAX_FRAMES_IN_FLIGHT> m_SkinDescriptorSets{};
+        std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> m_SkinBuffers{};
+        std::array<uint64_t, MAX_FRAMES_IN_FLIGHT> m_SkinBufferSizes{};
+        std::vector<uint32_t> m_SkinOffsets;
+        uint32_t m_SkinPaletteIndex = INVALID_HANDLE_ID;
+        std::array<VkPipeline, 4> m_SkinnedForwardPipelines{};
+        VkPipeline m_SkinnedShadowPipeline = VK_NULL_HANDLE;
+        VkPipeline m_BoundShadowPipeline = VK_NULL_HANDLE;
+        bool HasSkinPalette() const;
+        void BindSkinPalette(VkCommandBuffer cmd, VkPipelineLayout layout);
         TextureHandle m_BoundTexture;
         glm::mat4 m_ModelMatrix = glm::mat4(1.0f);
         glm::vec3 m_EmissiveColor = glm::vec3(1.0f);

@@ -6,6 +6,7 @@
 #include "VulkanRHI.h"
 
 #include <algorithm>
+#include <bit>
 #include <cfloat>
 #include <cmath>
 #include <cstddef>
@@ -171,6 +172,8 @@ namespace Osiris {
         VkPhysicalDeviceProperties physicalDeviceProperties;
         vkGetPhysicalDeviceProperties(m_Device.physicalDevice, &physicalDeviceProperties);
         m_TimestampPeriod = physicalDeviceProperties.limits.timestampPeriod;
+        m_SkinBufferAlignment = std::max<uint64_t>(sizeof(glm::mat4), physicalDeviceProperties.limits.minStorageBufferOffsetAlignment);
+        m_MaxSkinBufferRange = physicalDeviceProperties.limits.maxStorageBufferRange;
 
         if (!CreateLogicalDevice()) {
             OSIRIS_ERROR("Failed to create logical device!");
@@ -221,11 +224,36 @@ namespace Osiris {
             OSIRIS_WARN("R11G11B10 bloom unsupported, using RGBA16F bloom targets");
         }
 
-        VkDescriptorSetLayout forwardLayouts[] = { m_FrameDescriptorLayout, m_MaterialDescriptorLayout };
+        const VkDescriptorSetLayoutBinding skinBinding = {
+            .binding = 0, .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC,
+            .descriptorCount = 1, .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+        };
+        const VkDescriptorSetLayoutCreateInfo skinLayoutInfo = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .bindingCount = 1, .pBindings = &skinBinding,
+        };
+        if (vkCreateDescriptorSetLayout(m_Device.logicalDevice, &skinLayoutInfo, nullptr, &m_SkinDescriptorLayout) != VK_SUCCESS)
+            return false;
+        const VkDescriptorPoolSize skinPoolSize = {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, MAX_FRAMES_IN_FLIGHT};
+        const VkDescriptorPoolCreateInfo skinPoolInfo = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+            .maxSets = MAX_FRAMES_IN_FLIGHT, .poolSizeCount = 1, .pPoolSizes = &skinPoolSize,
+        };
+        if (vkCreateDescriptorPool(m_Device.logicalDevice, &skinPoolInfo, nullptr, &m_SkinDescriptorPool) != VK_SUCCESS)
+            return false;
+        for (auto& set : m_SkinDescriptorSets) {
+            const VkDescriptorSetAllocateInfo info = {
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                .descriptorPool = m_SkinDescriptorPool, .descriptorSetCount = 1, .pSetLayouts = &m_SkinDescriptorLayout,
+            };
+            if (vkAllocateDescriptorSets(m_Device.logicalDevice, &info, &set) != VK_SUCCESS) return false;
+        }
 
-        const auto createForwardPipeline = [&](bool alphaBlend, bool doubleSided) {
+        VkDescriptorSetLayout forwardLayouts[] = { m_FrameDescriptorLayout, m_MaterialDescriptorLayout, m_SkinDescriptorLayout };
+
+        const auto createForwardPipeline = [&](bool alphaBlend, bool doubleSided, bool skinned = false) {
             return m_PipelineManager->GetOrCreate({
-                .vertexShader     = AssetManager::GetEnginePath("shaders/triangle.vert.spv"),
+                .vertexShader     = AssetManager::GetEnginePath(skinned ? "shaders/triangle_skinned.vert.spv" : "shaders/triangle.vert.spv"),
                 .fragmentShader   = AssetManager::GetEnginePath("shaders/triangle.frag.spv"),
                 .colorAttachment  = true,
                 .colorFormat      = SCENE_COLOR_FORMAT,
@@ -238,7 +266,8 @@ namespace Osiris {
                                   ? static_cast<VkCullModeFlags>(VK_CULL_MODE_NONE)
                                   : static_cast<VkCullModeFlags>(VK_CULL_MODE_BACK_BIT),
                 .frontFace        = VK_FRONT_FACE_COUNTER_CLOCKWISE,
-                .setLayoutCount   = 2,
+                .skinned          = skinned,
+                .setLayoutCount   = skinned ? 3u : 2u,
                 .pSetLayouts      = forwardLayouts,
                 .pushConstantSize = sizeof(ForwardPushConstants),
                 .pushConstantStages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -249,6 +278,8 @@ namespace Osiris {
         m_ForwardDoubleSidedPipeline = createForwardPipeline(false, true);
         m_TransparentPipeline = createForwardPipeline(true, false);
         m_TransparentDoubleSidedPipeline = createForwardPipeline(true, true);
+        for (uint32_t variant = 0; variant < 4; variant++)
+            m_SkinnedForwardPipelines[variant] = createForwardPipeline((variant & 2) != 0, (variant & 1) != 0, true);
 
         m_ForwardPipelineLayout = m_PipelineManager->GetLayout(m_ForwardPipeline);
 
@@ -273,6 +304,16 @@ namespace Osiris {
         });
 
         m_ShadowPipelineLayout = m_PipelineManager->GetLayout(m_ShadowPipeline);
+        m_SkinnedShadowPipeline = m_PipelineManager->GetOrCreate({
+            .vertexShader = AssetManager::GetEnginePath("shaders/shadow_skinned.vert.spv"),
+            .fragmentShader = "",
+            .colorAttachment = false, .colorFormat = VK_FORMAT_UNDEFINED,
+            .depthAttachment = true, .depthFormat = VK_FORMAT_D32_SFLOAT,
+            .depthTest = true, .depthWrite = true, .depthBias = true,
+            .cullMode = VK_CULL_MODE_NONE, .frontFace = VK_FRONT_FACE_CLOCKWISE,
+            .skinned = true, .setLayoutCount = 3, .pSetLayouts = forwardLayouts,
+            .pushConstantSize = sizeof(glm::mat4) * 2, .pushConstantStages = VK_SHADER_STAGE_VERTEX_BIT,
+        });
 
         VkDescriptorSetLayout skyboxLayouts[] = { m_FrameDescriptorLayout };
 
@@ -533,6 +574,8 @@ namespace Osiris {
 
         m_PipelineManager->Shutdown();
         m_PipelineManager.reset();
+        vkDestroyDescriptorPool(m_Device.logicalDevice, m_SkinDescriptorPool, nullptr);
+        vkDestroyDescriptorSetLayout(m_Device.logicalDevice, m_SkinDescriptorLayout, nullptr);
 
         for (const auto& imageView: m_SwapChain.swapChainImageViews) {
             vkDestroyImageView(m_Device.logicalDevice, imageView, nullptr);
@@ -747,6 +790,9 @@ namespace Osiris {
 
     void VulkanRHI::SetMeshData(const Mesh &mesh) {
         m_BoundMesh = mesh;
+        // Reset so a draw path that sets mesh data without also calling SetSkinPalette renders
+        // unskinned instead of silently reusing whichever palette a previous draw left behind.
+        m_SkinPaletteIndex = INVALID_HANDLE_ID;
     }
 
     void VulkanRHI::SetModelMatrix(const glm::mat4 &model) {
@@ -756,6 +802,70 @@ namespace Osiris {
     void VulkanRHI::SetEmissive(const glm::vec3& color, float intensity) {
         m_EmissiveColor = color;
         m_EmissiveIntensity = intensity;
+    }
+
+    void VulkanRHI::PrepareSkinning(const std::vector<std::vector<glm::mat4>>& palettes) {
+        m_SkinOffsets.clear();
+        m_SkinPaletteIndex = INVALID_HANDLE_ID;
+        if (!m_FrameStarted || palettes.empty()) return;
+        const uint64_t alignment = m_SkinBufferAlignment;
+        uint64_t total = 0;
+        uint64_t range = sizeof(glm::mat4);
+        for (const auto& palette : palettes) {
+            const uint64_t bytes = palette.size() * sizeof(glm::mat4);
+            total = (total + alignment - 1) / alignment * alignment;
+            if (palette.empty() || bytes > m_MaxSkinBufferRange || total + bytes > UINT32_MAX) {
+                OSIRIS_ERROR("Skin palettes exceed device limits");
+                m_SkinOffsets.clear();
+                return;
+            }
+            m_SkinOffsets.push_back(static_cast<uint32_t>(total));
+            total += bytes;
+            range = std::max(range, bytes);
+        }
+        // Every dynamic offset uses the same descriptor range, including the last, shorter skin.
+        const uint64_t required = static_cast<uint64_t>(m_SkinOffsets.back()) + range;
+        if (required > UINT32_MAX) {
+            OSIRIS_ERROR("Skin palette descriptor ranges exceed supported buffer size");
+            m_SkinOffsets.clear();
+            return;
+        }
+        auto& bufferHandle = m_SkinBuffers[m_CurrentFrame];
+        auto& capacity = m_SkinBufferSizes[m_CurrentFrame];
+        if (capacity < required) {
+            // No wait needed before destroying this slot's old buffer: BeginFrame already waited on
+            // this frame-in-flight's fence before we got here, so the GPU is done with whatever this
+            // slot's buffer held last time it was used.
+            if (bufferHandle.IsValid()) DestroyBuffer(bufferHandle);
+            capacity = std::bit_ceil(required);
+            bufferHandle = CreateBuffer({.size = capacity, .usage = BufferUsage::Storage, .cpuVisible = true});
+        }
+        auto& buffer = m_Buffers[bufferHandle.id];
+        if (!buffer.allocationInfo.pMappedData) { m_SkinOffsets.clear(); return; }
+        for (size_t i = 0; i < palettes.size(); i++)
+            memcpy(static_cast<char*>(buffer.allocationInfo.pMappedData) + m_SkinOffsets[i], palettes[i].data(),
+                palettes[i].size() * sizeof(glm::mat4));
+        vmaFlushAllocation(m_Allocator, buffer.allocation, 0, required);
+        const VkDescriptorBufferInfo bufferInfo = {buffer.buffer, 0, range};
+        const VkWriteDescriptorSet write = {
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .dstSet = m_SkinDescriptorSets[m_CurrentFrame], .dstBinding = 0,
+            .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC,
+            .pBufferInfo = &bufferInfo,
+        };
+        vkUpdateDescriptorSets(m_Device.logicalDevice, 1, &write, 0, nullptr);
+    }
+
+    bool VulkanRHI::HasSkinPalette() const {
+        return m_BoundMesh.skinVertexBuffer.IsValid() && m_SkinPaletteIndex < m_SkinOffsets.size();
+    }
+
+    void VulkanRHI::BindSkinPalette(VkCommandBuffer cmd, VkPipelineLayout layout) {
+        const VkBuffer buffer = m_Buffers[m_BoundMesh.skinVertexBuffer.id].buffer;
+        const VkDeviceSize offset = 0;
+        vkCmdBindVertexBuffers(cmd, 1, 1, &buffer, &offset);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2, 1,
+            &m_SkinDescriptorSets[m_CurrentFrame], 1, &m_SkinOffsets[m_SkinPaletteIndex]);
     }
 
     BufferHandle VulkanRHI::CreateBuffer(const BufferDesc & desc) {
@@ -1199,12 +1309,14 @@ namespace Osiris {
     }
 
     void VulkanRHI::BindMaterial(MaterialHandle handle) {
-        if (!handle.IsValid() || handle.id >= m_Materials.size()) return;
+        if (!m_FrameStarted || !handle.IsValid() || handle.id >= m_Materials.size()) return;
 
         const VulkanMaterial& material = m_Materials[handle.id];
         const bool transparent = material.description.alphaMode == MaterialAlphaMode::Blend;
         VkPipeline pipeline;
-        if (transparent) {
+        if (HasSkinPalette()) {
+            pipeline = m_SkinnedForwardPipelines[(transparent ? 2 : 0) + (material.description.doubleSided ? 1 : 0)];
+        } else if (transparent) {
             pipeline = material.description.doubleSided
                      ? m_TransparentDoubleSidedPipeline
                      : m_TransparentPipeline;
@@ -1252,7 +1364,9 @@ namespace Osiris {
     }
 
     void VulkanRHI::DrawIndexed(uint32_t indexCount) {
+        if (!m_FrameStarted) return;
         VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
+        if (HasSkinPalette()) BindSkinPalette(cmd, m_BoundForwardPipelineLayout);
 
         const ForwardPushConstants push = {
             .model = m_ModelMatrix,
@@ -2186,6 +2300,7 @@ namespace Osiris {
 
     vkCmdBeginRendering(cmd, &renderingInfo);
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_ShadowPipeline);
+    m_BoundShadowPipeline = m_ShadowPipeline;
     vkCmdSetDepthBias(cmd, m_ShadowSettings.depthBiasConstant, 0.0f,
         m_ShadowSettings.depthBiasSlope);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -2236,6 +2351,14 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
     void VulkanRHI::DrawShadowIndexed(uint32_t indexCount) {
         if (!m_FrameStarted) return;
         VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
+        const bool skinned = HasSkinPalette();
+        const VkPipeline pipeline = skinned ? m_SkinnedShadowPipeline : m_ShadowPipeline;
+        const VkPipelineLayout layout = m_PipelineManager->GetLayout(pipeline);
+        if (pipeline != m_BoundShadowPipeline) {
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+            m_BoundShadowPipeline = pipeline;
+        }
+        if (skinned) BindSkinPalette(cmd, layout);
 
         struct ShadowPushConstants {
             glm::mat4 model;
@@ -2247,7 +2370,7 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
             .lightSpaceMatrix = m_ActiveLightSpaceMatrix,
         };
 
-        vkCmdPushConstants(cmd, m_ShadowPipelineLayout,
+        vkCmdPushConstants(cmd, layout,
             VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ShadowPushConstants), &push);
 
         if (m_BoundMesh.vertexBuffer.IsValid()) {
@@ -2264,6 +2387,7 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
     }
 
     void VulkanRHI::BeginSpotShadowPass(uint32_t index) {
+        if (!m_FrameStarted) return;
         VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
         m_ActiveLightSpaceMatrix = m_SpotShadowMatrices[index];
         VkImageMemoryBarrier barrier = {
@@ -2305,6 +2429,7 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
 
         vkCmdBeginRendering(cmd, &renderingInfo);
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, m_ShadowPipeline);
+        m_BoundShadowPipeline = m_ShadowPipeline;
         vkCmdSetDepthBias(cmd, m_ShadowSettings.spotDepthBiasConstant, 0.0f,
             m_ShadowSettings.spotDepthBiasSlope);
 
@@ -2321,6 +2446,7 @@ void VulkanRHI::EndShadowPass(uint32_t cascadeIndex) {
     }
 
     void VulkanRHI::EndSpotShadowPass(uint32_t index) {
+        if (!m_FrameStarted) return;
         VkCommandBuffer cmd = m_Frames[m_CurrentFrame].commandBuffer;
 
         vkCmdEndRendering(cmd);

@@ -163,6 +163,7 @@ namespace Osiris
                topology == rhs.topology &&
                samples == rhs.samples &&
                vertexInput == rhs.vertexInput &&
+               skinned == rhs.skinned &&
                pushConstantSize == rhs.pushConstantSize &&
                pushConstantStages == rhs.pushConstantStages &&
                DescriptorLayoutsEqual(*this, rhs);
@@ -198,6 +199,7 @@ namespace Osiris
         HashCombine(seed, static_cast<int32_t>(desc.topology));
         HashCombine(seed, static_cast<int32_t>(desc.samples));
         HashCombine(seed, desc.vertexInput);
+        HashCombine(seed, desc.skinned);
 
         HashCombine(seed, desc.setLayoutCount);
 
@@ -512,6 +514,7 @@ namespace Osiris
         HashCombine(seed, static_cast<int32_t>(key.topology));
         HashCombine(seed, static_cast<int32_t>(key.samples));
         HashCombine(seed, key.vertexInput);
+        HashCombine(seed, key.skinned);
 
         HashCombine(seed, key.setLayouts.size());
 
@@ -560,6 +563,7 @@ namespace Osiris
         key.topology = desc.topology;
         key.samples = desc.samples;
         key.vertexInput = desc.vertexInput;
+        key.skinned = desc.skinned;
 
         if (desc.setLayoutCount > 0)
         {
@@ -784,15 +788,14 @@ namespace Osiris
                 };
             }
 
-            const VkVertexInputBindingDescription bindingDescription{
-                .binding = 0,
-                .stride = sizeof(Vertex),
-                .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
+            const VkVertexInputBindingDescription bindingDescriptions[] = {
+                {0, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX},
+                {1, sizeof(SkinVertex), VK_VERTEX_INPUT_RATE_VERTEX},
             };
 
             const std::array<
                 VkVertexInputAttributeDescription,
-                4> attributeDescriptions{
+                6> attributeDescriptions{
                 VkVertexInputAttributeDescription{
                     .location = 0,
                     .binding = 0,
@@ -819,8 +822,10 @@ namespace Osiris
                         .binding = 0,
                         .format = VK_FORMAT_R32G32B32A32_SFLOAT,
                         .offset = static_cast<uint32_t>(
-                            offsetof(Vertex, Tangent))
+                        offsetof(Vertex, Tangent))
                     },
+                VkVertexInputAttributeDescription{4, 1, VK_FORMAT_R32G32B32A32_UINT, offsetof(SkinVertex, joints)},
+                VkVertexInputAttributeDescription{5, 1, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(SkinVertex, weights)},
             };
 
             const VkPipelineVertexInputStateCreateInfo
@@ -830,13 +835,12 @@ namespace Osiris
                     .pNext = nullptr,
                     .flags = 0,
                     .vertexBindingDescriptionCount =
-                        key.vertexInput ? 1U : 0U,
+                        key.vertexInput ? (key.skinned ? 2U : 1U) : 0U,
                     .pVertexBindingDescriptions =
-                        key.vertexInput ? &bindingDescription : nullptr,
+                        key.vertexInput ? bindingDescriptions : nullptr,
                     .vertexAttributeDescriptionCount =
                         key.vertexInput
-                            ? static_cast<uint32_t>(
-                                attributeDescriptions.size())
+                            ? (key.skinned ? 6U : 4U)
                             : 0U,
                     .pVertexAttributeDescriptions =
                         key.vertexInput

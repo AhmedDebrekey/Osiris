@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include "animation/Animation.h"
 
 namespace Osiris {
     struct GltfNode {
@@ -17,6 +18,8 @@ namespace Osiris {
         std::vector<MeshPrimitive> primitives;
         std::vector<std::size_t> childIndices;
         std::optional<std::size_t> parentIndex;
+        uint32_t sourceIndex = 0;
+        std::optional<std::size_t> skinIndex;
     };
 
     struct GltfPrimitiveInstance {
@@ -26,7 +29,8 @@ namespace Osiris {
 
     class MeshLoader {
         public:
-            static std::vector<GltfNode> LoadFromGLTF(const std::string& path, IRHI* rhi);
+            static std::vector<GltfNode> LoadFromGLTF(const std::string& path, IRHI* rhi,
+                std::shared_ptr<const AnimationAsset>* animation = nullptr);
             static void ClearCache(IRHI* rhi);
             static std::vector<GltfPrimitiveInstance> FlattenPrimitives(const std::vector<GltfNode>& nodes);
             static Mesh CreatePlane(float width, float height, IRHI* rhi);

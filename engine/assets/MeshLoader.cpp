@@ -5,6 +5,7 @@
 #include "MeshLoader.h"
 
 #include "TextureLoader.h"
+#include "AnimationLoader.h"
 #include "fastgltf/core.hpp"
 #include "fastgltf/types.hpp"
 #include "fastgltf/tools.hpp"
@@ -22,7 +23,11 @@
 
 namespace Osiris {
     namespace {
-        std::unordered_map<IRHI*, std::unordered_map<std::string, std::vector<GltfNode>>> s_GltfModelCaches;
+        struct CachedModel {
+            std::vector<GltfNode> nodes;
+            std::shared_ptr<const AnimationAsset> animation;
+        };
+        std::unordered_map<IRHI*, std::unordered_map<std::string, CachedModel>> s_GltfModelCaches;
 
         // glTF node transforms are either a raw column-major matrix or separate T/R/S components.
         glm::mat4 GetNodeLocalMatrix(const fastgltf::Node& node) {
@@ -51,6 +56,8 @@ namespace Osiris {
             gltfNode.name = node.name;
             gltfNode.localTransform = GetNodeLocalMatrix(node);
             gltfNode.parentIndex = parentIndex;
+            gltfNode.sourceIndex = static_cast<uint32_t>(nodeIndex);
+            if (node.skinIndex.has_value()) gltfNode.skinIndex = node.skinIndex.value();
             if (node.meshIndex.has_value() && node.meshIndex.value() < meshPrimitives.size()) {
                 gltfNode.primitives = meshPrimitives[node.meshIndex.value()];
             }
@@ -65,11 +72,14 @@ namespace Osiris {
         }
     }
 
-    std::vector<GltfNode> MeshLoader::LoadFromGLTF(const std::string& path, IRHI* rhi) {
+    std::vector<GltfNode> MeshLoader::LoadFromGLTF(const std::string& path, IRHI* rhi,
+                                                 std::shared_ptr<const AnimationAsset>* animation) {
+    if (animation) animation->reset();
     const std::string cacheKey = AssetManager::NormalizePathKey(path);
     auto& modelCache = s_GltfModelCaches[rhi];
     if (const auto cached = modelCache.find(cacheKey); cached != modelCache.end()) {
-        return cached->second;
+        if (animation) *animation = cached->second.animation;
+        return cached->second.nodes;
     }
 
     std::vector<GltfNode> result;
@@ -84,7 +94,7 @@ namespace Osiris {
 
     auto asset = parser.loadGltf(&data,
         std::filesystem::path(path).parent_path(),
-        fastgltf::Options::LoadExternalBuffers);
+        fastgltf::Options::LoadExternalBuffers | fastgltf::Options::LoadGLBBuffers);
 
     if (asset.error() != fastgltf::Error::None) {
         OSIRIS_ERROR("Failed to parse glTF file '{}': {} ({})",
@@ -92,6 +102,19 @@ namespace Osiris {
             fastgltf::getErrorName(asset.error()),
             fastgltf::getErrorMessage(asset.error()));
         return result;
+    }
+
+    std::string animationError;
+    if (!asset->animations.empty() || !asset->skins.empty()) {
+        if (const auto validation = fastgltf::validate(asset.get()); validation != fastgltf::Error::None) {
+            OSIRIS_ERROR("Invalid animated glTF '{}': {}", path, fastgltf::getErrorMessage(validation));
+            return {};
+        }
+    }
+    const auto animationAsset = LoadAnimationAsset(asset.get(), animationError);
+    if (!animationError.empty()) {
+        OSIRIS_ERROR("Cannot import animations from '{}': {}", path, animationError);
+        return {};
     }
 
     // An image referenced as both color and material data needs a separate Vulkan view because
@@ -107,16 +130,28 @@ namespace Osiris {
         if (it != textureCache.end()) return it->second;
 
         auto& image = asset->images[imageIndex];
-        std::string texturePath;
-
+        TextureHandle handle;
         if (auto* uri = std::get_if<fastgltf::sources::URI>(&image.data)) {
-            texturePath = (std::filesystem::path(path).parent_path() / uri->uri.path()).string();
+            const std::string texturePath = (std::filesystem::path(path).parent_path() / uri->uri.path()).string();
+            handle = TextureLoader::LoadFromFile(texturePath, rhi, format);
         } else {
-            OSIRIS_ERROR("MeshLoader: unsupported image source type");
-            return TextureHandle{};
+            const auto bytesOf = [](const fastgltf::DataSource& source) -> std::span<const uint8_t> {
+                if (const auto* array = std::get_if<fastgltf::sources::Array>(&source))
+                    return {array->bytes.data(), array->bytes.size()};
+                if (const auto* bytes = std::get_if<fastgltf::sources::ByteView>(&source))
+                    return {reinterpret_cast<const uint8_t*>(bytes->bytes.data()), bytes->bytes.size()};
+                return {};
+            };
+            auto bytes = bytesOf(image.data);
+            if (const auto* imageView = std::get_if<fastgltf::sources::BufferView>(&image.data)) {
+                const auto& view = asset->bufferViews[imageView->bufferViewIndex];
+                const auto bufferBytes = bytesOf(asset->buffers[view.bufferIndex].data);
+                if (view.byteOffset <= bufferBytes.size() && view.byteLength <= bufferBytes.size() - view.byteOffset)
+                    bytes = bufferBytes.subspan(view.byteOffset, view.byteLength);
+            }
+            handle = TextureLoader::LoadFromMemory(bytes, rhi, format);
+            if (!handle.IsValid()) OSIRIS_ERROR("MeshLoader: failed to load embedded image {} in '{}'", imageIndex, path);
         }
-
-        TextureHandle handle = TextureLoader::LoadFromFile(texturePath, rhi, format);
         textureCache[imageIndex] = handle;
         return handle;
     };
@@ -200,6 +235,64 @@ namespace Osiris {
                 continue;
             }
 
+            std::vector<SkinVertex> skinVertices;
+            std::shared_ptr<std::vector<AABB>> jointBounds;
+            const auto jointsIt = primitive.findAttribute("JOINTS_0");
+            const auto weightsIt = primitive.findAttribute("WEIGHTS_0");
+            if (jointsIt != primitive.attributes.end() || weightsIt != primitive.attributes.end()) {
+                if (jointsIt == primitive.attributes.end() || weightsIt == primitive.attributes.end()
+                    || primitive.findAttribute("JOINTS_1") != primitive.attributes.end()
+                    || primitive.findAttribute("WEIGHTS_1") != primitive.attributes.end()) {
+                    OSIRIS_ERROR("MeshLoader: '{}' requires exactly one JOINTS_0/WEIGHTS_0 pair (four influences)", path);
+                    return {};
+                }
+                const auto& jointsAccessor = asset->accessors[jointsIt->second];
+                const auto& weightsAccessor = asset->accessors[weightsIt->second];
+                if (jointsAccessor.count != vertices.size() || weightsAccessor.count != vertices.size()
+                    || jointsAccessor.type != fastgltf::AccessorType::Vec4 || weightsAccessor.type != fastgltf::AccessorType::Vec4) {
+                    OSIRIS_ERROR("MeshLoader: skin vertex attribute count/type mismatch in '{}'", path);
+                    return {};
+                }
+                skinVertices.resize(vertices.size());
+                size_t index = 0;
+                fastgltf::iterateAccessor<glm::uvec4>(asset.get(), jointsAccessor,
+                    [&](glm::uvec4 value) { skinVertices[index++].joints = value; });
+                index = 0;
+                fastgltf::iterateAccessor<glm::vec4>(asset.get(), weightsAccessor,
+                    [&](glm::vec4 value) { skinVertices[index++].weights = value; });
+                size_t jointCount = 0;
+                for (const auto& node : asset->nodes) {
+                    if (node.meshIndex.has_value() && node.meshIndex.value() == meshIndex && node.skinIndex.has_value()) {
+                        const size_t count = asset->skins[node.skinIndex.value()].joints.size();
+                        jointCount = jointCount == 0 ? count : std::min(jointCount, count);
+                    }
+                }
+                if (jointCount == 0) { OSIRIS_ERROR("MeshLoader: skin attributes have no skin in '{}'", path); return {}; }
+                jointBounds = std::make_shared<std::vector<AABB>>(jointCount);
+                for (size_t vertex = 0; vertex < skinVertices.size(); vertex++) {
+                    auto& skin = skinVertices[vertex];
+                    for (int axis = 0; axis < 4; axis++) {
+                        if (!std::isfinite(skin.weights[axis]) || skin.weights[axis] < 0.0f) {
+                            OSIRIS_ERROR("MeshLoader: invalid skin weight in '{}'", path); return {};
+                        }
+                        if (skin.weights[axis] == 0.0f) skin.joints[axis] = 0;
+                        if (skin.joints[axis] >= jointCount) {
+                            OSIRIS_ERROR("MeshLoader: skin joint index is out of range in '{}'", path); return {};
+                        }
+                    }
+                    const float sum = glm::dot(skin.weights, glm::vec4(1.0f));
+                    if (!std::isfinite(sum) || sum <= 0.0f) {
+                        OSIRIS_ERROR("MeshLoader: vertex has no valid skin weights in '{}'", path); return {};
+                    }
+                    skin.weights /= sum;
+                    for (int axis = 0; axis < 4; axis++) if (skin.weights[axis] > 0.0f) {
+                        auto& bounds = (*jointBounds)[skin.joints[axis]];
+                        bounds.min = glm::min(bounds.min, vertices[vertex].Position);
+                        bounds.max = glm::max(bounds.max, vertices[vertex].Position);
+                    }
+                }
+            }
+
             // Compute AABB
             AABB bounds;
             for (const auto& v : vertices) {
@@ -232,6 +325,12 @@ namespace Osiris {
                 .indexCount   = static_cast<uint32_t>(indices.size()),
                 .bounds       = bounds,
             };
+            if (!skinVertices.empty()) {
+                mesh.skinVertexBuffer = rhi->CreateBuffer({
+                    .size = skinVertices.size() * sizeof(SkinVertex), .usage = BufferUsage::Vertex});
+                rhi->UploadBufferData(mesh.skinVertexBuffer, skinVertices.data(), skinVertices.size() * sizeof(SkinVertex));
+                mesh.jointBounds = std::move(jointBounds);
+            }
 
             // Load material
             MaterialDesc matDesc;
@@ -303,12 +402,28 @@ namespace Osiris {
         CollectGltfNode(asset.get(), nodeIndex, std::nullopt, meshPrimitives, result);
     }
 
+    if (animationAsset) {
+        std::vector<bool> included(asset->nodes.size(), false);
+        for (const auto& node : result) included[node.sourceIndex] = true;
+        for (const auto& node : result) if (node.skinIndex.has_value()) {
+            for (uint32_t joint : animationAsset->skins[*node.skinIndex].joints) if (!included[joint]) {
+                OSIRIS_ERROR("MeshLoader: skin joint is outside the default scene in '{}'", path);
+                return {};
+            }
+            for (const auto& primitive : node.primitives) if (!primitive.mesh.skinVertexBuffer.IsValid()) {
+                OSIRIS_ERROR("MeshLoader: skinned node is missing joint/weight vertex data in '{}'", path);
+                return {};
+            }
+        }
+    }
+
     std::size_t primitiveCount = 0;
     for (const GltfNode& node : result) primitiveCount += node.primitives.size();
     OSIRIS_INFO("MeshLoader: loaded {} nodes and {} primitives from {}", result.size(), primitiveCount, path);
     if (!result.empty()) {
-        modelCache.emplace(cacheKey, result);
+        modelCache.emplace(cacheKey, CachedModel{result, animationAsset});
     }
+    if (animation) *animation = animationAsset;
     return result;
 }
 

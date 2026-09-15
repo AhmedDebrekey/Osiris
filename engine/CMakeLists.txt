@@ -3,6 +3,9 @@
 # ============================================================
 
 add_library(OsirisEngine STATIC
+        animation/Animation.cpp
+        animation/AnimationSerialization.cpp
+        assets/AnimationLoader.cpp
         core/Engine.cpp
         platform/Window.cpp
         core/Log.cpp
@@ -102,3 +105,6 @@ target_link_libraries(OsirisEngine PUBLIC
     ufbx
     stb
 )
+
+add_executable(OsirisAnimationTests EXCLUDE_FROM_ALL ../tests/AnimationTests.cpp)
+target_link_libraries(OsirisAnimationTests PRIVATE OsirisEngine)

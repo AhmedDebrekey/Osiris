@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <limits>
+#include <cmath>
+#include <stdexcept>
 
 #include "renderer/Frustum.h"
 #include "renderer/Camera.h"
@@ -62,9 +64,15 @@ namespace Osiris {
             }
 
             m_PlaySnapshot.erase(*it);
+            m_AnimatedModels.erase(*it);
+            m_AnimatedLocalTransforms.erase(*it);
+            m_DeformedBounds.erase(*it);
+            m_MeshSkinPalettes.erase(*it);
+            m_PlayAnimators.erase(*it);
             m_PlayEntities.erase(*it);
             m_Registry.destroy(*it);
         }
+        ClearWorldTransformCache();
     }
 
     void Scene::QueueDestroyEntity(Entity entity) {
@@ -89,11 +97,15 @@ namespace Osiris {
     }
 
     Entity Scene::SpawnModel(const std::string& name, const std::string& relativePath, IRHI* rhi) {
-        std::vector<GltfNode> nodes = MeshLoader::LoadFromGLTF(AssetManager::GetPath(relativePath), rhi);
+        std::shared_ptr<const AnimationAsset> animation;
+        std::vector<GltfNode> nodes = MeshLoader::LoadFromGLTF(AssetManager::GetPath(relativePath), rhi, &animation);
         if (nodes.empty()) return Entity{};
 
         Entity root = CreateEntity(name);
         root.AddComponent<ModelSourceComponent>(relativePath);
+        AnimatedModel animatedModel;
+        animatedModel.asset = animation;
+        if (animation) animatedModel.nodes.resize(animation->bindPose.size(), entt::null);
 
         std::vector<Entity> nodeEntities;
         nodeEntities.reserve(nodes.size());
@@ -108,6 +120,11 @@ namespace Osiris {
                 entity.AddComponent<MaterialComponent>(nodes[i].primitives[0].material);
             }
             nodeEntities.push_back(entity);
+            if (animation) {
+                animatedModel.nodes[nodes[i].sourceIndex] = entity.GetHandle();
+                if (nodes[i].skinIndex.has_value() && !nodes[i].primitives.empty())
+                    animatedModel.skins.emplace_back(entity.GetHandle(), static_cast<uint32_t>(*nodes[i].skinIndex));
+            }
         }
 
         for (std::size_t i = 0; i < nodes.size(); i++) {
@@ -132,7 +149,13 @@ namespace Osiris {
                 // already the right local transform relative to nodeEntities[i] (it's just
                 // another material slice of the same node's mesh) — no need to preserve/rewrite it.
                 SetParent(primitiveEntity, nodeEntities[i], false);
+                if (animation && nodes[i].skinIndex.has_value())
+                    animatedModel.skins.emplace_back(primitiveEntity.GetHandle(), static_cast<uint32_t>(*nodes[i].skinIndex));
             }
+        }
+        if (animation) {
+            m_AnimatedModels.emplace(root.GetHandle(), std::move(animatedModel));
+            AddAnimator(root);
         }
         return root;
     }
@@ -258,7 +281,9 @@ namespace Osiris {
 
         glm::mat4 worldTransform(1.0f);
         for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
-            if (const auto* transform = m_Registry.try_get<TransformComponent>(*it)) {
+            if (const auto animated = m_AnimatedLocalTransforms.find(*it); animated != m_AnimatedLocalTransforms.end()) {
+                worldTransform *= animated->second;
+            } else if (const auto* transform = m_Registry.try_get<TransformComponent>(*it)) {
                 worldTransform *= transform->GetModelMatrix();
             }
         }
@@ -268,6 +293,83 @@ namespace Osiris {
 
     void Scene::ClearWorldTransformCache() {
         m_WorldTransformCache.clear();
+    }
+
+    bool Scene::CanAnimate(Entity entity) const {
+        return entity.GetScene() == this && m_Registry.valid(entity.GetHandle())
+            && m_AnimatedModels.contains(entity.GetHandle());
+    }
+
+    AnimatorComponent& Scene::AddAnimator(Entity entity) {
+        if (!CanAnimate(entity)) throw std::invalid_argument("Animator requires an imported animated model root");
+        auto& component = m_Registry.get_or_emplace<AnimatorComponent>(entity.GetHandle());
+        if (!component.player.GetAsset()) {
+            component.player.SetAsset(m_AnimatedModels.at(entity.GetHandle()).asset);
+            const auto clips = component.player.GetClips();
+            if (!clips.empty()) component.player.Play(clips.front(), 0.0f, true);
+        }
+        return component;
+    }
+
+    void Scene::UpdateAnimations(float deltaTime, bool playMode) {
+        m_AnimatedLocalTransforms.clear();
+        for (const auto& [root, model] : m_AnimatedModels) {
+            const auto* component = m_Registry.try_get<AnimatorComponent>(root);
+            if (!component || (!playMode && !component->previewInEditor)) continue;
+            auto& player = m_Registry.get<AnimatorComponent>(root).player;
+            player.Update(deltaTime);
+            const auto& pose = player.GetPose();
+            for (size_t i = 0; i < model.nodes.size() && i < pose.size(); i++) {
+                if (model.asset->animatedNodes[i] && m_Registry.valid(model.nodes[i]))
+                    m_AnimatedLocalTransforms[model.nodes[i]] = pose[i].Matrix();
+            }
+        }
+        ClearWorldTransformCache();
+    }
+
+    const AABB& Scene::GetMeshBounds(Entity entity) const {
+        const auto found = m_DeformedBounds.find(entity.GetHandle());
+        return found != m_DeformedBounds.end() ? found->second : m_Registry.get<MeshComponent>(entity.GetHandle()).mesh.bounds;
+    }
+
+    void Scene::PrepareSkinning(IRHI* rhi) {
+        m_MeshSkinPalettes.clear();
+        m_DeformedBounds.clear();
+        size_t paletteIndex = 0;
+        for (const auto& [root, model] : m_AnimatedModels) {
+            for (const auto& [meshEntity, skinIndex] : model.skins) {
+                if (!m_Registry.valid(meshEntity) || !m_Registry.all_of<MeshComponent>(meshEntity)) continue;
+                const auto& skin = model.asset->skins[skinIndex];
+                bool valid = true;
+                for (uint32_t joint : skin.joints) if (!m_Registry.valid(model.nodes[joint])) valid = false;
+                if (!valid) continue;
+                const glm::mat4 world = GetWorldTransform(Entity(meshEntity, this));
+                if (std::abs(glm::determinant(world)) < 1e-10f) continue;
+                const glm::mat4 inverseMesh = glm::inverse(world);
+                if (paletteIndex == m_SkinPalettes.size()) m_SkinPalettes.emplace_back();
+                auto& palette = m_SkinPalettes[paletteIndex];
+                palette.resize(skin.joints.size());
+                for (size_t i = 0; i < palette.size(); i++) {
+                    palette[i] = inverseMesh * GetWorldTransform(Entity(model.nodes[skin.joints[i]], this)) * skin.inverseBindMatrices[i];
+                }
+                const auto& mesh = m_Registry.get<MeshComponent>(meshEntity).mesh;
+                if (mesh.jointBounds) {
+                    AABB bounds;
+                    for (size_t i = 0; i < mesh.jointBounds->size(); i++) {
+                        const AABB& joint = (*mesh.jointBounds)[i];
+                        if (glm::any(glm::greaterThan(joint.min, joint.max))) continue;
+                        for (const glm::vec3& corner : joint.GetWorldCorners(palette[i])) {
+                            bounds.min = glm::min(bounds.min, corner);
+                            bounds.max = glm::max(bounds.max, corner);
+                        }
+                    }
+                    m_DeformedBounds[meshEntity] = bounds;
+                }
+                m_MeshSkinPalettes[meshEntity] = static_cast<uint32_t>(paletteIndex++);
+            }
+        }
+        m_SkinPalettes.resize(paletteIndex);
+        rhi->PrepareSkinning(m_SkinPalettes);
     }
 
     bool Scene::GroundEntity(Entity entity) {
@@ -377,6 +479,8 @@ namespace Osiris {
                 emissive ? emissive->color : glm::vec3(1.0f),
                 emissive ? emissive->intensity : 0.0f);
             rhi->SetMeshData(mesh.mesh);
+            const auto skin = m_MeshSkinPalettes.find(entity);
+            rhi->SetSkinPalette(skin != m_MeshSkinPalettes.end() ? skin->second : INVALID_HANDLE_ID);
             rhi->BindMaterial(material.material);
             rhi->DrawIndexed(mesh.mesh.indexCount);
         };
@@ -386,14 +490,15 @@ namespace Osiris {
             auto& material  = view.get<MaterialComponent>(entity);
 
             const glm::mat4 model = GetWorldTransform(Entity(entity, this));
-            if (!frustum.IsVisible(mesh.mesh.bounds, model)) {
+            const AABB& bounds = GetMeshBounds(Entity(entity, this));
+            if (!frustum.IsVisible(bounds, model)) {
                 m_CulledCount++;
                 continue;
             }
             m_DrawCallCount++;
 
             if (rhi->GetMaterialAlphaMode(material.material) == MaterialAlphaMode::Blend) {
-                const glm::vec3 localCenter = (mesh.mesh.bounds.min + mesh.mesh.bounds.max) * 0.5f;
+                const glm::vec3 localCenter = (bounds.min + bounds.max) * 0.5f;
                 const glm::vec3 worldCenter = glm::vec3(model * glm::vec4(localCenter, 1.0f));
                 const float viewDepth = -(viewMatrix * glm::vec4(worldCenter, 1.0f)).z;
                 transparentDraws.push_back({entity, model, viewDepth});
@@ -429,10 +534,12 @@ namespace Osiris {
             }
 
             const glm::mat4 model = GetWorldTransform(Entity(entity, this));
-            if (!frustum.IsVisible(mesh.mesh.bounds, model)) continue;
+            if (!frustum.IsVisible(GetMeshBounds(Entity(entity, this)), model)) continue;
 
             rhi->SetModelMatrix(model);
             rhi->SetMeshData(mesh.mesh);
+            const auto skin = m_MeshSkinPalettes.find(entity);
+            rhi->SetSkinPalette(skin != m_MeshSkinPalettes.end() ? skin->second : INVALID_HANDLE_ID);
             rhi->DrawShadowIndexed(mesh.mesh.indexCount);
         }
     }
@@ -728,11 +835,13 @@ namespace Osiris {
 
     void Scene::CapturePlaySnapshot() {
         m_PlaySnapshot.clear();
+        m_PlayAnimators.clear();
         m_PlayEntities.clear();
 
         for (Entity entity : GetAllEntities()) {
             const entt::entity handle = entity.GetHandle();
             m_PlayEntities.insert(handle);
+            if (entity.HasComponent<AnimatorComponent>()) m_PlayAnimators.emplace(handle, entity.GetComponent<AnimatorComponent>());
             if (entity.HasComponent<TransformComponent>()) {
                 m_PlaySnapshot[handle] = entity.GetComponent<TransformComponent>();
             }
@@ -761,7 +870,15 @@ namespace Osiris {
             }
         }
         m_PlaySnapshot.clear();
+        for (const entt::entity handle : m_PlayEntities)
+            if (m_Registry.valid(handle) && !m_PlayAnimators.contains(handle)) m_Registry.remove<AnimatorComponent>(handle);
         m_PlayEntities.clear();
+        for (auto& [handle, animator] : m_PlayAnimators)
+            if (m_Registry.valid(handle)) m_Registry.emplace_or_replace<AnimatorComponent>(handle, std::move(animator));
+        m_PlayAnimators.clear();
+        m_AnimatedLocalTransforms.clear();
+        m_DeformedBounds.clear();
+        ClearWorldTransformCache();
     }
 
     void Scene::ResetScriptInstances(IScripting* scripting) {
@@ -793,7 +910,7 @@ namespace Osiris {
         float maxDistance = std::numeric_limits<float>::max();
         Entity interactableEntity {};
         for (auto entity : view) {
-            AABB meshBounds = view.get<MeshComponent>(entity).mesh.bounds;
+            const AABB meshBounds = GetMeshBounds(Entity(entity, this));
             const glm::mat4 model = GetWorldTransform(Entity(entity, this));
             float hitDistance = 0.0f;
             // useExitDistanceWhenInside=true: the player standing inside a large mesh's bounds

@@ -1,0 +1,9 @@
+{
+  "entities": [
+    { "name": "GraphCharacter", "mesh": "models/animation_test/test_character.glb", "transform": { "position": [-1.1, 0, 0] }, "script": { "path": "scripts/animation_demo.lua" } },
+    { "name": "IndependentCharacter", "mesh": "models/animation_test/test_character.gltf", "transform": { "position": [1.1, 0, 0] }, "animator": { "clip": "Walk", "speed": 0.7, "loop": true } },
+    { "name": "AnimationFloor", "box": { "halfExtents": [5, 0.1, 5] }, "transform": { "position": [0, -0.1, 0] } },
+    { "name": "AnimationSpot", "transform": { "position": [0, 4, 1] }, "spotLight": { "intensity": 18, "range": 10, "innerCone": 35, "outerCone": 55, "castsShadow": true } },
+    { "name": "AnimationCamera", "transform": { "position": [0, 1.5, 5], "rotation": [-6, 0, 0] }, "camera": { "isPrimary": true, "eyeHeight": 0 } }
+  ]
+}

@@ -41,6 +41,7 @@ namespace Osiris {
             if (label == "Character")    return {0.45f, 0.76f, 0.34f, 1.0f};
             if (label == "Audio Source") return {0.85f, 0.40f, 0.70f, 1.0f};
             if (label == "Script")       return {0.58f, 0.47f, 0.90f, 1.0f};
+            if (label == "Animator")     return {0.30f, 0.78f, 0.75f, 1.0f};
             return {0.45f, 0.52f, 0.60f, 1.0f};
         }
 
@@ -378,6 +379,36 @@ namespace Osiris {
             entity.RemoveComponent<EmissiveComponent>();
         }
 
+        if (DrawComponentSection<AnimatorComponent>(entity, "Animator", [](AnimatorComponent& component) {
+            auto& player = component.player;
+            ImGui::Checkbox("Preview in editor", &component.previewInEditor);
+            if (ImGui::BeginCombo("Clip", player.GetCurrentClip().c_str())) {
+                for (const auto& name : player.GetClips()) {
+                    if (ImGui::Selectable(name.c_str(), name == player.GetCurrentClip()))
+                        player.Play(name, 0.2f, player.IsLooping());
+                }
+                ImGui::EndCombo();
+            }
+            if (ImGui::Button(player.IsPlaying() ? "Pause" : "Resume")) {
+                if (player.IsPlaying()) player.Pause(); else player.Resume();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Restart")) { player.Seek(0.0f); player.Resume(); }
+            ImGui::SameLine();
+            if (ImGui::Button("Bind pose")) player.Stop();
+            bool loop = player.IsLooping();
+            if (ImGui::Checkbox("Loop", &loop)) player.SetLooping(loop);
+            float speed = player.GetSpeed();
+            if (ImGui::DragFloat("Playback speed", &speed, 0.01f, 0.0f, 10.0f)) player.SetSpeed(speed);
+            float time = player.GetTime();
+            if (ImGui::SliderFloat("Time", &time, 0.0f, player.GetDuration(), "%.2f s")) {
+                player.Seek(time);
+                player.Pause();
+            }
+            ImGui::Text("State: %s", player.GetCurrentState().empty() ? "Direct playback" : player.GetCurrentState().c_str());
+            ImGui::TextDisabled("Graph configuration is available in C++ and Lua.\nThe controller moves the model root; use in-place clips.");
+        })) entity.RemoveComponent<AnimatorComponent>();
+
         if (DrawComponentSection<ModelSourceComponent>(entity, "Model Source", [](ModelSourceComponent& source) {
             ImGui::Text("Path: %s", source.relativePath.c_str());
             ImGui::TextDisabled("Read-only — set once by Scene::SpawnModel. This is what\nlets Save Scene write a \"mesh\" path back out for this entity.");
@@ -559,6 +590,10 @@ namespace Osiris {
             if (!entity.HasComponent<EmissiveComponent>()) {
                 anyOffered = true;
                 if (ImGui::MenuItem("Emissive")) entity.AddComponent<EmissiveComponent>();
+            }
+            if (!entity.HasComponent<AnimatorComponent>() && entity.GetScene()->CanAnimate(entity)) {
+                anyOffered = true;
+                if (ImGui::MenuItem("Animator")) entity.GetScene()->AddAnimator(entity);
             }
             if (!entity.HasComponent<ColliderComponent>()) {
                 anyOffered = true;

@@ -245,6 +245,8 @@ foreach(GLSL_FILE ${GLSL_SOURCE_FILES})
             OUTPUT ${SPIRV_FILE}
             COMMAND ${GLSLC} ${GLSL_FILE} -o ${SPIRV_FILE}
             DEPENDS ${GLSL_FILE}
+                "${CMAKE_SOURCE_DIR}/assets/shaders/skinning.glsl"
+                "${CMAKE_SOURCE_DIR}/assets/shaders/triangle_vertex.glsl"
             COMMENT "Compiling shader: ${GLSL_FILE}"
             VERBATIM
     )

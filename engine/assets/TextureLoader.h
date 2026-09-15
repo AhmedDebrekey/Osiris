@@ -7,6 +7,7 @@
 
 #include <string>
 #include <vector>
+#include <span>
 #include "rhi/RHI.h"
 
 namespace Osiris {
@@ -24,6 +25,7 @@ namespace Osiris {
         static TextureHandle LoadFromFile(const std::string& path, IRHI* rhi,
             TextureFormat format = TextureFormat::RGBA8_SRGB);
         static void ClearCache(IRHI* rhi);
+        static TextureHandle LoadFromMemory(std::span<const uint8_t> bytes, IRHI* rhi, TextureFormat format);
         static HDRImageData LoadHDR(const std::string& path);
     };
 } // Osiris

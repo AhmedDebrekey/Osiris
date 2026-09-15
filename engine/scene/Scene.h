@@ -63,6 +63,11 @@ namespace Osiris {
         // call once per frame, after this frame's last Transform write and before the first read,
         // so those reads share one computed matrix instead of re-walking the parent chain each time.
         void ClearWorldTransformCache();
+        void UpdateAnimations(float deltaTime, bool playMode);
+        void PrepareSkinning(IRHI* rhi);
+        const AABB& GetMeshBounds(Entity entity) const;
+        AnimatorComponent& AddAnimator(Entity entity);
+        bool CanAnimate(Entity entity) const;
 
         // Moves the bottom of an entity's mesh hierarchy onto the nearest mesh below it.
         // Uses render bounds, so neither the moved entity nor the surface needs physics components.
@@ -157,6 +162,17 @@ namespace Osiris {
         // GetWorldTransform is logically const (it doesn't change scene data) but still populates
         // this cache as a memoization side effect.
         mutable std::unordered_map<entt::entity, glm::mat4> m_WorldTransformCache;
+        struct AnimatedModel {
+            std::shared_ptr<const AnimationAsset> asset;
+            std::vector<entt::entity> nodes;
+            std::vector<std::pair<entt::entity, uint32_t>> skins;
+        };
+        std::unordered_map<entt::entity, AnimatedModel> m_AnimatedModels;
+        std::unordered_map<entt::entity, glm::mat4> m_AnimatedLocalTransforms;
+        std::unordered_map<entt::entity, uint32_t> m_MeshSkinPalettes;
+        std::unordered_map<entt::entity, AABB> m_DeformedBounds;
+        std::unordered_map<entt::entity, AnimatorComponent> m_PlayAnimators;
+        std::vector<std::vector<glm::mat4>> m_SkinPalettes;
     };
     template<typename T, typename... Args>
     T& Entity::AddComponent(Args&&... args) {

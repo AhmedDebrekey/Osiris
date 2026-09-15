@@ -34,6 +34,10 @@ namespace Osiris {
         virtual void SetMeshData(const Mesh& mesh) = 0;
         virtual void SetModelMatrix(const glm::mat4& model) = 0;
         virtual void SetEmissive(const glm::vec3& color, float intensity) = 0;
+        // Rebuilt from scratch every frame (no create/destroy lifecycle), so this is a whole-scene
+        // batch upload plus a raw index rather than the usual per-draw Handle<Tag> resource pattern.
+        virtual void PrepareSkinning(const std::vector<std::vector<glm::mat4>>& palettes) = 0;
+        virtual void SetSkinPalette(uint32_t index) = 0;
 
         virtual void UpdateCamera(const glm::mat4& view, const glm::mat4& projection, const glm::vec4& position, const glm::vec3& front) = 0;
         virtual void SetCameraBuffer(const glm::mat4& view, const glm::mat4& projection, const glm::vec4& position) = 0;

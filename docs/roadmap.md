@@ -12,7 +12,7 @@ Solo developer, Windows + CLion, CMake `FetchContent`.
 | **GPU** | RTX 4060 |
 
 This document is the authoritative phase plan. Status: ✅ done · 🔶 partial · ⬜ not started.
-Last reconciled with the implementation: 2026-08-29.
+Last reconciled with the implementation: 2026-09-09.
 
 ---
 
@@ -70,7 +70,10 @@ Core → Platform → RHI → Renderer → ECS/Scene → Game
 | 6–8 | IBL environment / irradiance / prefiltered cubemaps |
 | 9 | IBL BRDF LUT |
 
-**Descriptor set 1 (material data):** albedo, normal, metallic, roughness, AO (no emissive slot yet).
+**Descriptor set 1 (material data):** albedo, normal, metallic, roughness, AO textures, plus scalar
+`metallicFactor`/`roughnessFactor`/`normalScale` from glTF, multiplied into the texture samples in
+`triangle.frag`. Emissive is a per-draw push-constant color+intensity (`Scene::Render` walks up the
+parent chain for the nearest `EmissiveComponent`), not a descriptor texture slot.
 
 ---
 
@@ -123,6 +126,10 @@ Instance, validation layers, physical/logical device, surface, swapchain (FIFO w
 **6B: Cascaded shadow maps ✅** 3 cascades, 2048×2048, `VK_FORMAT_D32_SFLOAT`, `sampler2DShadow` hardware PCF. `UpdateCascades()` computes split distances (log/uniform blend via `cascadeSplitLambda`), fits a stable cascade sphere, and snaps the projection to shadow-map texels to prevent edge swimming during camera motion. `nearClip`, `farClip`, and `cascadeSplitLambda` are exposed live via ImGui; the raster depth-bias values remain baked into the cached shadow pipeline. The shadow pipeline uses `VK_CULL_MODE_FRONT_BIT` to reduce peter-panning. `triangle.frag` also dims IBL ambient partway inside directional shadow as an intentional stylistic choice.
 
 **6C: PBR shading ✅** Cook-Torrance BRDF (GGX, Smith geometry, Schlick fresnel) in `triangle.frag`. 5-texture material system with 1×1 fallback textures via `CreateSolidColorTexture()` (white albedo, flat normal, black metallic, mid-grey roughness, white AO), created after `CreateCommandBuffers()` since they need `BeginOneTimeCommands()`. `MeshLoader::GenerateTangents` runs automatically when a glTF primitive has no `TANGENT` attribute (UV-gradient method, Gram-Schmidt orthogonalized, handedness from bitangent sign). `MeshLoader::LoadFromGLTF` returns `std::vector<GltfNode>` with local transforms, child/parent indices, and PBR-loaded primitives; `Scene::SpawnModel` mirrors that hierarchy into ECS entities. Validated against DamagedHelmet, MetalRoughSpheres-class tests, and a scaled Sponza (`0.01` cm→m).
+`MaterialDesc` also carries glTF's scalar `metallicFactor`/`roughnessFactor`/`normalScale` (read in
+`MeshLoader`), multiplied into the respective texture samples in `triangle.frag`; the default
+metallic/roughness fallback textures changed from black/mid-grey to white so a material with no
+texture but a real factor isn't silently zeroed out.
 
 **6D: Post-processing 🔶**
 
@@ -138,8 +145,7 @@ Instance, validation layers, physical/logical device, surface, swapchain (FIFO w
   - `IRHI::GetEnvironmentExposure()`: mutable float (ImGui-tunable), applied to skybox and IBL terms via `CameraUBO.cascadeSplits.w` (previously unused padding). HDR radiance has no fixed display scale, tuned empirically per environment (0.25–0.5 for `EveningRoad.hdr`).
   - Fallback: `CreateDefaultEnvironmentCubemap()`, a 1×1×6 black placeholder written into bindings 6–8 at `Init()`, since `triangle.frag` reads those bindings unconditionally every draw (unlike the skybox draw, gated behind `m_EnvironmentLoaded`).
 - ✅ **Fullscreen cinematic post-process pass.** Play mode renders forward shading into an offscreen scene-color image, then runs a bufferless fullscreen triangle into the swapchain. Current effects are Bloom, vignette, chromatic aberration, and animated film grain. Settings are live-editable in the editor, available to Lua through `postprocess`, and can be previewed in Edit mode without replacing the normal viewport.
-- 🔶 **Bloom:** an initial single-pass LDR Bloom is implemented in `postprocess.frag`. It uses a configurable soft brightness threshold plus two blur sample rings, then composites the glow before vignette and film grain. `bloomIntensity`, `bloomThreshold`, and `bloomRadius` are exposed in the Post-Process editor panel and through Lua's `postprocess` global. The shader compiles; visual tuning in both Play mode and the Edit-mode post-process preview is still required before marking it complete.
-- ⬜ **HDR multi-resolution Bloom upgrade:** move the Play and Edit scene-color targets to `RGBA16_FLOAT`, keep lighting untonemapped until the final composite, and replace the single-pass blur with a downsample/upsample chain. This becomes worthwhile if the initial Bloom is too narrow, too expensive at high resolutions, or cannot preserve enough highlight range after the current forward and skybox ACES tonemapping.
+- ✅ **HDR bloom.** Replaced the initial single-pass LDR bloom with the multi-resolution upgrade: Play and Edit scene-color targets are `RGBA16_FLOAT` (`SCENE_COLOR_FORMAT`), forward/skybox shading stays in linear HDR (clamped, not tonemapped) until `postprocess.frag` does the one tonemap pass for the whole frame. The blur is a 6-level downsample/upsample mip chain (`assets/shaders/bloom_downsample.frag`/`bloom_upsample.frag`: Karis-average on the first downsample to suppress fireflies, tent-filter upsample), driven by `VulkanRHI::RenderBloom`/`DrawBloomPass`. Post-process settings moved from a UBO to push constants (`PostProcessPushConstants`/`BloomPushConstants` in `VulkanRHI.cpp`). `bloomIntensity` and `bloomRadius` stay live-editable in the Post-Process panel and via Lua's `postprocess` global; `bloomThreshold` was removed since the Karis average thresholds implicitly. Compiles cleanly and the Debug performance pass (below) accounted for its per-frame cost; nobody has yet eyeballed it in Play mode against the actual apartment/CTF scenes, so visual tuning is still the open follow-up.
 - ⬜ **SSAO**: needs a geometry buffer (positions/normals), hemisphere sampling, blur pass.
 
 **6E: Spot lights (with shadows) ✅** `SpotLightComponent` (color, intensity, innerCone, outerCone, range, enabled, castsShadow), position/direction sourced from `TransformComponent` (`GetForward()`, rest direction `(0,-1,0)`). Perspective shadow projection (FOV from `outerCone * 2`, square aspect, near/far from a small constant and `range`), reuses the existing depth-only `m_ShadowPipeline`. Separate `SpotLightUBO` at frame set bindings 4–5. Up to `MAX_SPOT_LIGHTS` (8) illuminate; shadow-casting capped at `MAX_SPOT_SHADOW_CASTERS` (3, in `engine/renderer/Light.h`): `Scene::GatherSpotLights` assigns the 3 shadow slots to the nearest `castsShadow=true` lights each frame. All 3 slot passes still begin/end every frame so their maps reach the descriptor-set layout, but unclaimed slots only clear instead of redrawing the entire scene. Fully ECS-driven end-to-end.
@@ -222,11 +228,41 @@ Twice in this project, a find-and-replace across similarly-named variables (`m_A
 - **8D: Render graph visualizer 🔶** `RenderDebugPanel` now shows CPU frame time, per-pass Vulkan timestamp results (cascades, spot shadows, forward), all shadow maps, and an on-demand post-process preview. The actual pass/resource dependency graph is not visualized yet.
 - **8E: CommandBuffer abstraction ⬜** (completes 5D). Revisit once a second backend is attempted or Forward+ compute passes make the raw `VkCommandBuffer` leakage actively painful. Not started.
 - **8F: Entity parent/child hierarchy ✅** `ParentComponent`/`ChildrenComponent` (fields private, `friend class Scene`, only `Scene::SetParent` may write them, keeping the two in sync). `Scene::SetParent(child, newParent)` rejects cycles (walks the proposed new parent's ancestor chain first) and preserves world transform across a reparent. `Scene::GetWorldTransform(entity)` composes the model matrix up the parent chain: every read site that used to treat `TransformComponent` as world space now goes through it instead (`Render`, `RenderShadows`, `GatherSpotLights`, `CreatePhysicsBodies`/`RebuildPhysicsBody`, `SyncPhysicsTransforms`, `RebuildCharacter`/`SyncCharacterTransforms`, the 8C gizmo). A child's `TransformComponent` is local to its parent now; a root entity's is still world space, so nothing about the existing flat scene changed meaning. Known, accepted limitation: a non-uniformly-scaled ancestor can introduce shear a local TRS transform can't represent exactly, same limitation Unity/Unreal/Godot all have, not solved here. `Scene::DestroyEntity` cascades to children (leaf-first). `SceneInspectorPanel`'s entity list became a tree (`ImGui::TreeNodeEx`), reparenting via drag-and-drop (same payload pattern `AssetBrowserPanel` already used), plus a right-click "Delete" and a `Del`-key shortcut (guarded by `IsAnyItemActive()` so it doesn't fire while typing in a text field), both cascade to children through the same `DestroyEntity`. `Scene::SpawnModel` now returns one root entity with mesh-bearing primitives as its children, instead of a flat vector of primitives.
-- **8G: Play/Edit mode ✅** `Engine::RunFrame` owns the F5 toggle and gates the editor, scripting, fixed updates, physics, transform sync, collision dispatch, and queued destruction. Entering Play rebuilds live bodies/characters/audio from edited component data, captures the transform snapshot, resets script instances so `OnStart` gets fresh local state, and starts autoplay sources. Exiting restores non-static rigid-body and character transforms, rebuilds their Jolt objects, and stops audio. The snapshot is intentionally not a full scene undo, so entities created during Play remain after returning to Edit. Edit uses the free-fly camera; Play follows `Scene::FindCameraEntity()` and its transform. Character movement is script-driven. Editor windows are hidden in Play, while game-facing `ui.Text`/`ui.Rect` remain visible.
+- **8G: Play/Edit mode ✅** `Engine::RunFrame` owns the F5 toggle and gates the editor, scripting, fixed updates, physics, transform sync, collision dispatch, and queued destruction. Entering Play rebuilds live bodies/characters/audio from edited component data, captures a full snapshot of every entity in the scene (not just rigidbody/character, `Scene::CapturePlaySnapshot`), resets script instances so `OnStart` gets fresh local state, and starts autoplay sources. Exiting restores non-static rigid-body and character transforms, rebuilds their Jolt objects, destroys any entity that didn't exist when Play started (so runtime-spawned entities, e.g. CTF projectiles, no longer leak back into Edit), and stops audio. `Input::SetGameplayInputLocked`/`IsGameplayInputLocked` lets a script (e.g. a cutscene director) suppress the interaction prompt/dispatch and tell controller scripts to submit zero input; checked once per Play frame before both. Edit uses the free-fly camera; Play follows `Scene::FindCameraEntity()` and its transform. Character movement is script-driven. Editor windows are hidden in Play, while game-facing `ui.Text`/`ui.Rect` remain visible.
 
 - **8H: `main.cpp`/`Engine` boundary refactor ✅** `Engine` now owns `Editor`, two cameras, frame timing, event/input handling, Play/Edit transitions, gameplay-system ordering, interaction prompts, rendering, ImGui submission, and presentation. `Engine::RunFrame(Scene&)` is the default complete frame loop; lower-level entry points remain available for custom clients. `games/testbed/main.cpp` only initializes the engine/HDR environment, owns a `Scene`, and calls `RunFrame`. First-person and tank controls live in Lua instead of the client executable.
 
 - **8I: Portable Windows game export 🔶** Release builds expose `File > Export Game...`. `GameExporter` copies the running executable and runtime DLLs, clones the asset tree, serializes the current scene as the launch scene, writes `assets/game.json` plus a recipient README, and produces both an `exports/<name>/` folder and `exports/<name>-win64.zip`. Packaged builds resolve assets beside the executable, enter Play automatically, hide the editor/F5 path, and preserve the editor's frame-cap/FPS-overlay settings. Debug exports are rejected because their MSVC debug runtime is not redistributable. Debug and Release compile/link cleanly; an extracted ZIP and a second Windows machine still need end-to-end validation before this is marked complete. Selective dependency-only asset packaging, an installer, and code signing are deliberately outside the current proof-of-shipping scope.
+
+## Performance: closing the Debug/Release frame-time gap (2026-09-09)
+
+The horror apartment scene ran at ~6 FPS (166ms/frame) in Debug vs. 300–380 FPS in Release, a
+50–65x gap far past the usual 2–5x Debug/Release differential. Root cause was CPU-side waste that's
+cheap in Release (optimized away or just small in absolute terms) but expensive once MSVC's stock
+Debug settings (`_ITERATOR_DEBUG_LEVEL`/`/RTC1`/`/Ob0`, never tuned away from CMake's defaults) and
+Vulkan validation layers check every allocation and API call in full:
+
+- ✅ **`Scene::GetWorldTransform` per-frame cache.** Was recomputing the identical parent-chain walk,
+  heap-allocating a fresh vector each time, up to 8x per entity per frame (forward pass, 3 cascades,
+  up to 3 spot casters, the interaction raycast). Now memoized in `m_WorldTransformCache`, cleared
+  once at the top of `Engine::RenderFrame` (after this frame's last Transform write, before the
+  first read).
+- ✅ **`RenderGraph::Compile()`/`Execute()` scratch buffers.** The graph is `Reset()` and rebuilt from
+  scratch for nearly every individual sub-pass (bloom alone does ~22 cycles/frame across its 11
+  downsample/upsample draws), each allocating a fresh `unordered_map`/vectors/queue for what's
+  almost always a 1-node graph. Those scratch containers are now class members cleared, not
+  reallocated, each call.
+- ✅ **Shadow-pass frustum culling.** `Scene::RenderShadows` culls each entity against whichever
+  cascade/spot light's frustum is currently active (`IRHI::GetActiveLightSpaceMatrix()`, reusing the
+  same `Frustum::IsVisible` already trusted for the main forward pass), instead of unconditionally
+  redrawing every opaque entity into every shadow pass regardless of visibility to that light.
+- ✅ **Material descriptor rebind dedup.** `VulkanRHI::BindMaterial` skips the set-1
+  `vkCmdBindDescriptorSets` call when consecutive entities share a material, mirroring the existing
+  pipeline-dedup check two lines above it.
+
+Result: ~22 FPS / 45ms per frame in Debug, roughly a 3.7x improvement. Remaining Debug-specific
+overhead (validation layers; `SOL_ALL_SAFETIES_ON` checks left un-inlined by `/Ob0`) is expected and
+wasn't chased further, since Release performance was never the concern.
 
 ## Phase 9: First Demo (Local Co-op Tank CTF) 🔶
 
@@ -251,27 +287,73 @@ own base.
 - ⬜ **Validate the shipped artifact.** Export from Release at a verified frame cap, extract the ZIP to a directory unrelated to the repository, and run it without relying on the development working directory. Then repeat on a second Windows machine to confirm the Vulkan-driver and VC++ Redistributable instructions are sufficient.
 - **Controller input is not required for this demo.** The accepted control scheme is the existing two-player split keyboard setup.
 
-## Phase 10: Horror Prototype ⬜
+## Phase 10: Horror Prototype 🔶
 
-Deliberately small scope, proving the full stack end-to-end, not a full game. The planned first
-full-scope game on Osiris, after the Phase 9 demo:
+No longer the deliberately-small proving slice originally scoped here: work has gone straight into
+building the full-scope horror game's opening content. `docs/horror_asset_tracker.md` is the
+authoritative day-to-day checklist for this phase (assets, scripts, scenes, audio, licensing); this
+section only summarizes status. The active scene is `games/horror/assets/scenes/apartment.json`.
 
-- One small level (room + corridors), built via the JSON `SceneLoader` pipeline
-- Player can walk and collide with world geometry (7A)
-- Basic interaction (engine support exists; horror-specific interactions are not authored)
-- One enemy with simple AI. A static silhouette is acceptable for the first slice; animated idle/walk behavior depends on 7E.
-- Ambient audio, footsteps, triggered events (7B)
-- A jump-scare mechanism
-- Win/lose condition
+**P0 opening apartment vertical slice, in progress:**
+
+- ✅ Apartment shell, real-world scale, fully collidable interior (90 model roots, 211 scene boxes,
+  15 interactables), authored end to end through the JSON `SceneLoader` pipeline, well beyond the
+  original "one small level (room + corridors)" scope.
+- ✅ First-person controller (`fps_controller.lua`) on a `CameraComponent`/`CharacterComponent`
+  entity, colliding with world geometry via 7A.
+- ✅ Ordered key-search interaction chain: `apartment_interaction.lua`/`keys.lua` gate a multi-prop
+  search (counter → coat stand → sofa → counter) before revealing the keys; `door.lua` gates the
+  exit on having them.
+- ✅ Supporting interactions: `sleep.lua` (bed, fade-to-black), `tv_script.lua` (toggles a child spot
+  light), `light_flicker.lua` (bathroom spot light).
+- 🔶 **Opening cutscene director** (`opening_sequence.lua`): timed mother/child dialogue, a bedside
+  wake-up camera transition, and the new gameplay input lock (8G) to suppress movement/interaction
+  during it. Standalone Lua checks (`tools/check_apartment_story.lua`) pass; voice audio and an
+  in-engine play test are still pending.
+- ⬜ **The one enemy (dark figure).** Not yet authored: no model, no `dark_figure.lua`
+  (distance response, whisper, disappearance), no `perception_effects.lua` post-process controller.
+- ⬜ **Ambient audio, footsteps, dialogue.** Folder structure exists; almost everything in the audio
+  manifest (breathing, heartbeat, footsteps, room tone, dialogue) is still ⬜. One looping traffic
+  ambience WAV is attached with unverified source/license.
+- ⬜ **Jump-scare mechanism and win/lose condition.** Not yet designed.
+- ⬜ **Export/package validation for this scene.** 8I validates the export mechanism generally, not
+  this content specifically.
+
+See `docs/horror_asset_tracker.md`'s "Milestone readiness checks" for the granular P0 checklist, and
+its Act I / Act II (P1/P2) sections for everything planned beyond the opening slice.
 
 ---
 
 ## Suggested session priority from here
 
-1. **Acceptance-test the canonical CTF match.** Play through the complete steal/drop/capture/win/reset loop several times with both keyboard players, including repeated F5 Play/Edit sessions. Fix only issues the test exposes.
-2. **Validate the portable Release artifact.** Set a known cap (start with 60 FPS), export the current scene, extract the ZIP outside the repository, run it there, and then send that exact ZIP to a second Windows PC. This closes 8I and proves the game can actually be shipped rather than only compiled.
-3. **Runtime-test and tune the initial Bloom.** Check bright HDR environments, spot lights, the CTF HUD, and the horror scene in both Play mode and the Edit-mode post-process preview. Adjust the defaults only after seeing them in motion. Keep the HDR multi-resolution upgrade deferred unless this simpler pass shows a concrete quality or performance problem.
-4. **Choose the next content-driven slice.** The strongest next milestone after the CTF proof is Phase 10's small horror prototype; pull inventory, OGG/reverb/occlusion, SSAO, or point lights/Forward+ forward only when that slice needs them.
-5. **Add skeletal animation before animated character production.** Phase 10 can start with the documented static dark figure, but complete 7E before committing to animated pedestrians, coworkers, or speaking characters for the larger horror game.
-6. **Keep tooling abstractions behind concrete pressure.** Finish 8D's pass/resource graph view when render-graph debugging needs it; revisit 8E only when compute scheduling or a second backend makes raw `VkCommandBuffer` exposure costly.
-7. **Script hot-reload** remains a useful small follow-up, but it does not block either the CTF build or the horror slice.
+Actual work has been on the horror apartment slice for a while now, not the CTF demo: priorities
+below reflect that rather than rigidly re-enforcing phase order.
+
+1. **Finish the opening apartment P0 slice** (see Phase 10 and `docs/horror_asset_tracker.md`):
+   - Author the dark figure: a static silhouette model, `dark_figure.lua` (distance response,
+     whisper, disappearance), and a `perception_effects.lua` post-process controller (vignette/
+     aberration/grain tied to figure proximity).
+   - Play-test the opening cutscene end to end (input lock, wake-up transition, key-search route)
+     now that it passes its standalone Lua checks.
+   - Fill in the P0 audio gaps: apartment room tone, breathing/heartbeat layers, footsteps, and the
+     opening dialogue recording, the largest ⬜ block in the asset tracker right now.
+   - Define what actually ends the slice (win/lose framing) and add a subtitle queue
+     (`subtitles.lua`) once voice lines exist to time against.
+2. **Runtime-verify the HDR bloom upgrade in the actual scenes.** It compiles, and the Debug
+   performance fix accounted for its per-frame cost, but nobody has looked at it in Play mode yet.
+   Check bright windows, the TV's emissive spot light, and the courtyard fill in the apartment
+   scene, plus the CTF HUD, for banding, blown-out highlights, or a wrong default exposure.
+3. **Close out the loose Phase 9 (CTF) validation whenever it needs to ship:** a full acceptance
+   playtest of the capture/drop/score/reset loop, and exporting + running the Release ZIP outside
+   the repo (ideally on a second machine). Neither blocks horror work.
+4. **Record missing source/license entries** in the asset tracker's licensing register while each
+   asset is still fresh (several models, both HDRs, the traffic ambience, and the Blender material
+   sources are currently "Unknown / Not recorded").
+5. **Skeletal animation (7E) stays correctly deferred.** Nothing in the current P0 scope needs it
+   (the dark figure is a static silhouette); revisit before authoring the P1 pedestrian/coworker
+   cast, which does.
+6. **Keep tooling abstractions behind concrete pressure.** Finish 8D's pass/resource graph view when
+   render-graph debugging needs it; revisit 8E only when compute scheduling or a second backend
+   makes raw `VkCommandBuffer` exposure costly.
+7. **Script hot-reload** remains a useful small follow-up, but blocks neither the CTF build nor the
+   horror slice.
